@@ -1,0 +1,30 @@
+table {
+  border: solid 1px #616161;
+  border-collapse: collapse;
+  box-sizing: border-box;
+}
+th,
+td {
+  border: solid 1px green;
+  border-collapse: collapse;
+}
+
+table,
+th,
+td {
+  border-style: none;
+}
+td + td {
+  border-left: solid 1px #616161;
+}
+tr {
+  border-bottom: solid 1px #616161;
+  border-right: solid 1px #616161;
+  border-left: solid 1px #616161;
+}
+tr:last-child {
+  border-radius: 0 0 6px 6px;
+}
+tr:first-child {
+  border-top: solid 1px #616161;
+}
