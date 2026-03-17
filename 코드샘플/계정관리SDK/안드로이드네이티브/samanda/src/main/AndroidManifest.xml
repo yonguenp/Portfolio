@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.sandbox.gs.samanda">
+
+    <application>
+        <activity
+            android:name="com.sandbox.gs.samanda.GoogleSignInHandlerActivity"
+            android:theme="@style/AppThemeSamandaAuth"
+            android:screenOrientation="behind"/>
+    </application>
+
+</manifest>
