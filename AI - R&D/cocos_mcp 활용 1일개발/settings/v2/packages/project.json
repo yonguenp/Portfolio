@@ -1,0 +1,18 @@
+{
+  "__version__": "1.0.6",
+  "start-scene": "db://assets/scenes/MainMenu.scene",
+  "scenes": [
+    {
+      "url": "db://assets/scenes/MainMenu.scene",
+      "uuid": "d4f275c0-7765-435a-9b18-7d390653f4e4"
+    },
+    {
+      "url": "db://assets/scenes/GameScene.scene",
+      "uuid": "6d34ed86-aab5-4b8c-a7e4-0ec3a046109a"
+    },
+    {
+      "url": "db://assets/scenes/GameOver.scene",
+      "uuid": "341885f8-8844-4630-ad7e-b9d158f4fe07"
+    }
+  ]
+}

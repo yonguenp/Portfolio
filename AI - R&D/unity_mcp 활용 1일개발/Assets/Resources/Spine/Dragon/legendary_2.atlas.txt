@@ -1,0 +1,4227 @@
+legendary_2.png
+size:2048,2048
+filter:Linear,Linear
+pma:true
+2. main eff 1
+bounds:1020,1272,94,97
+offsets:1,1,96,99
+2. main eff 2
+bounds:426,989,92,92
+offsets:1,1,94,94
+2. main eff 3
+bounds:561,1336,90,95
+offsets:1,1,92,97
+rotate:90
+2. main eff 4
+bounds:938,1291,80,88
+offsets:1,1,83,90
+2. main eff 5
+bounds:816,1003,79,92
+offsets:1,1,81,94
+2. main eff 6
+bounds:1020,1172,95,98
+offsets:1,1,97,100
+2. main eff 7
+bounds:718,1003,96,92
+offsets:1,1,98,94
+2. main eff 8
+bounds:937,1201,81,88
+offsets:1,1,83,90
+2. sub eff 1
+bounds:947,146,24,22
+offsets:2,2,27,25
+2. sub eff 2
+bounds:1473,1353,72,41
+offsets:2,2,76,44
+rotate:90
+2. sub eff 3
+bounds:402,252,74,41
+offsets:2,2,78,44
+2. sub eff 4
+bounds:2,2,94,53
+offsets:2,2,98,57
+2. sub eff 5
+bounds:982,1513,124,105
+offsets:1,2,127,109
+rotate:90
+2. sub eff 6
+bounds:1213,1075,49,83
+offsets:1,2,52,87
+2. sub eff 7
+bounds:620,243,45,26
+offsets:2,2,49,29
+L new L/15013/arm_l
+bounds:727,233,20,32
+offsets:1,1,22,34
+L new L/15013/arm_r
+bounds:727,233,20,32
+offsets:1,1,22,34
+L new L/15013/body
+bounds:846,698,40,40
+offsets:1,1,42,42
+L new L/15013/eye
+bounds:1750,1357,12,14
+offsets:1,1,14,16
+L new L/15013/eyes
+bounds:1195,808,12,14
+offsets:1,1,14,16
+L new L/15013/hair
+bounds:889,847,52,52
+L new L/15013/head
+bounds:1336,1783,72,60
+offsets:1,1,74,62
+rotate:90
+L new L/15013/leg_l
+bounds:1710,1141,22,18
+offsets:1,1,24,20
+L new L/15013/leg_r
+bounds:1710,1141,22,18
+offsets:1,1,24,20
+L new L/15013/tail
+bounds:418,1571,26,14
+offsets:1,1,28,16
+L new L/15013/weapons
+bounds:819,426,34,36
+offsets:1,1,36,38
+L new L/15013/weapons1
+bounds:1264,1010,56,56
+L new L/15013/wing1
+bounds:328,87,46,38
+rotate:90
+L new L/15013/wing2
+bounds:1211,1525,41,12
+L new L/15013/wing3
+bounds:1766,1065,24,24
+L new L/15014/arm_l
+bounds:1025,204,16,28
+offsets:1,1,18,30
+rotate:90
+L new L/15014/arm_r
+bounds:1025,204,16,28
+offsets:1,1,18,30
+rotate:90
+L new L/15014/body
+bounds:1388,774,38,40
+offsets:1,1,40,42
+rotate:90
+L new L/15014/eye
+bounds:648,532,56,24
+offsets:1,1,58,26
+rotate:90
+L new L/15014/head
+bounds:769,868,64,56
+offsets:1,1,66,58
+L new L/15014/leg_l
+bounds:739,21,22,18
+offsets:1,1,24,20
+rotate:90
+L new L/15014/leg_r
+bounds:739,21,22,18
+offsets:1,1,24,20
+rotate:90
+L new L/15014/tail
+bounds:1766,1049,26,14
+offsets:1,1,28,16
+L new L/15014/weapons
+bounds:316,1335,144,48
+offsets:1,1,146,50
+rotate:90
+L new L/15014/wing00
+bounds:1714,679,22,22
+offsets:1,1,24,24
+L new L/15014/wing01
+bounds:712,3,16,26
+offsets:1,1,18,28
+rotate:90
+L new L/15014/wing02
+bounds:1240,624,18,45
+offsets:1,1,20,47
+L new L/15014/wing03
+bounds:1544,707,38,28
+offsets:1,1,40,30
+L new L/15014/wing04
+bounds:739,79,32,14
+offsets:1,1,34,16
+rotate:90
+L new L/15016/arm_l
+bounds:907,359,20,32
+offsets:1,1,22,34
+rotate:90
+L new L/15016/arm_r
+bounds:1927,1221,20,32
+offsets:1,1,22,34
+rotate:90
+L new L/15016/body
+bounds:1544,635,40,40
+offsets:1,1,42,42
+L new L/15016/eye
+bounds:1927,969,10,13
+offsets:1,1,12,14
+L new L/15016/head
+bounds:230,613,80,62
+offsets:1,1,82,64
+L new L/15016/leg_l
+bounds:1524,599,22,18
+offsets:1,1,24,20
+rotate:90
+L new L/15016/leg_r
+bounds:1524,599,22,18
+offsets:1,1,24,20
+rotate:90
+L new L/15016/tail
+bounds:2005,1199,26,14
+offsets:1,1,28,16
+L new L/15016/weapons
+bounds:387,1769,174,70
+L new L/15016/wing1
+bounds:681,676,42,42
+L new L/15016/wing2
+bounds:234,873,36,8
+L new L/15016/wing3
+bounds:1706,1027,26,22
+rotate:90
+L new L/15018/arm_l
+bounds:887,159,20,32
+offsets:1,1,22,34
+L new L/15018/arm_r
+bounds:1019,333,20,32
+offsets:1,1,22,34
+rotate:90
+L new L/15018/body
+bounds:1646,637,40,40
+offsets:1,1,42,42
+L new L/15018/eye
+bounds:1801,1229,12,11
+offsets:0,0,12,12
+rotate:90
+L new L/15018/head
+bounds:1683,1573,80,54
+offsets:1,1,82,56
+rotate:90
+L new L/15018/leg_l
+bounds:1794,679,22,18
+offsets:1,1,24,20
+rotate:90
+L new L/15018/leg_r
+bounds:1794,679,22,18
+offsets:1,1,24,20
+rotate:90
+L new L/15018/tail
+bounds:1898,1132,26,14
+offsets:1,1,28,16
+rotate:90
+L new L/15018/weapons
+bounds:637,1098,120,46
+offsets:1,1,122,48
+L new L/15018/weapons0
+bounds:1214,1160,120,44
+offsets:1,3,122,48
+rotate:90
+L new L/15018/weapons1
+bounds:943,894,68,32
+L new L/15018/weapons2
+bounds:1517,1268,64,12
+L new L/15018/wing1
+bounds:1564,1027,42,42
+L new L/15018/wing2
+bounds:1011,957,35,8
+rotate:90
+L new L/15018/wing3
+bounds:1703,967,24,20
+L new L/15019/arm_l
+bounds:1240,594,22,28
+offsets:1,1,24,30
+L new L/15019/arm_r
+bounds:1240,594,22,28
+offsets:1,1,24,30
+L new L/15019/body
+bounds:550,117,42,42
+L new L/15019/eye
+bounds:1962,1069,14,14
+offsets:1,1,16,16
+L new L/15019/hair
+bounds:1516,1354,80,14
+L new L/15019/hand_r
+bounds:1215,351,14,10
+rotate:90
+L new L/15019/head
+bounds:645,340,60,38
+offsets:1,1,62,40
+rotate:90
+L new L/15019/horn
+bounds:1683,1655,94,44
+offsets:1,1,96,46
+rotate:90
+L new L/15019/leg_l
+bounds:1895,1202,24,18
+offsets:1,1,26,20
+rotate:90
+L new L/15019/leg_r
+bounds:1895,1202,24,18
+offsets:1,1,26,20
+rotate:90
+L new L/15019/mouth
+bounds:1055,202,32,22
+L new L/15019/shoulder
+bounds:759,21,26,24
+offsets:1,1,28,26
+rotate:90
+L new L/15019/skillfx
+bounds:1202,1282,84,51
+rotate:90
+L new L/15019/tail
+bounds:594,117,42,24
+rotate:90
+L new L/15019/weapons_1
+bounds:264,2,106,26
+rotate:90
+L new L/15019/weapons_2
+bounds:1583,1280,72,18
+rotate:90
+L new L/15019/weapons_acc
+bounds:1726,1067,8,36
+L new L/15019/wing
+bounds:1544,603,40,30
+offsets:1,1,42,32
+L new L/15020/arm_l1
+bounds:947,200,24,32
+offsets:1,1,26,34
+L new L/15020/arm_r
+bounds:1123,571,24,32
+offsets:1,1,26,34
+L new L/15020/body
+bounds:1506,1027,56,42
+L new L/15020/eye
+bounds:1167,210,6,10
+offsets:1,1,8,12
+rotate:90
+L new L/15020/hair_d
+bounds:1554,1071,30,50
+offsets:1,1,32,52
+L new L/15020/hair_d_1
+bounds:1608,1027,42,42
+L new L/15020/hair_d_2
+bounds:1732,1893,50,44
+L new L/15020/hair_u_1
+bounds:1259,761,16,44
+L new L/15020/hair_u_2
+bounds:1765,1433,40,54
+offsets:1,1,42,56
+rotate:90
+L new L/15020/hair_u_3
+bounds:1712,1843,48,70
+rotate:90
+L new L/15020/head
+bounds:440,740,66,70
+L new L/15020/leg_l
+bounds:1896,1078,22,18
+offsets:1,1,24,20
+rotate:90
+L new L/15020/leg_r
+bounds:1896,1078,22,18
+offsets:1,1,24,20
+rotate:90
+L new L/15020/mouth
+bounds:319,422,16,14
+rotate:90
+L new L/15020/note_1
+bounds:1722,1161,22,12
+offsets:1,1,24,14
+L new L/15020/note_2
+bounds:1900,1160,12,22
+offsets:1,1,14,24
+L new L/15020/note_3
+bounds:1735,915,18,27
+rotate:90
+L new L/15020/ribbon
+bounds:1736,1051,28,20
+offsets:1,1,30,22
+L new L/15020/tail
+bounds:1698,1105,34,24
+rotate:90
+L new L/15020/weapons
+bounds:758,1462,152,50
+offsets:1,1,154,52
+rotate:90
+L new L/15020/wing
+bounds:1494,765,34,48
+offsets:1,1,36,50
+rotate:90
+L new L/15024/arm_l
+bounds:1019,355,28,34
+offsets:1,1,30,36
+L new L/15024/arm_r
+bounds:1019,355,28,34
+offsets:1,1,30,36
+L new L/15024/body
+bounds:1559,981,44,42
+offsets:1,1,46,44
+rotate:90
+L new L/15024/eye
+bounds:643,3,12,14
+offsets:1,1,14,16
+rotate:90
+L new L/15024/hair
+bounds:848,975,26,50
+rotate:90
+L new L/15024/hair_r
+bounds:591,3,26,50
+L new L/15024/head
+bounds:1395,1353,82,76
+offsets:1,1,84,78
+rotate:90
+L new L/15024/horn_fx
+bounds:1731,1249,30,56
+offsets:1,1,32,58
+L new L/15024/leg_l
+bounds:1738,679,24,22
+offsets:1,1,26,24
+L new L/15024/leg_r
+bounds:1738,679,24,22
+offsets:1,1,26,24
+L new L/15024/mouth_inner
+bounds:312,668,24,10
+L new L/15024/mouth_lower
+bounds:810,1463,22,8
+offsets:1,1,24,10
+rotate:90
+L new L/15024/mouth_upper
+bounds:336,332,22,8
+offsets:1,1,24,10
+rotate:90
+L new L/15024/tail
+bounds:1544,677,38,28
+L new L/15024/weapons
+bounds:1499,1622,112,42
+offsets:1,1,114,44
+L new L/15024/wing
+bounds:1502,863,56,40
+rotate:90
+L new L/15025/arm_l
+bounds:908,123,22,32
+offsets:1,1,24,34
+rotate:90
+L new L/15025/arm_r
+bounds:942,122,22,32
+offsets:1,1,24,34
+rotate:90
+L new L/15025/body
+bounds:1688,637,42,40
+offsets:1,1,44,42
+L new L/15025/bowfx
+bounds:930,1483,50,140
+offsets:0,5,50,150
+L new L/15025/eye
+bounds:1173,254,14,10
+offsets:1,1,16,12
+L new L/15025/head
+bounds:1504,801,60,38
+offsets:1,1,62,40
+rotate:90
+L new L/L scientist/head
+bounds:1504,801,60,38
+offsets:1,1,62,40
+rotate:90
+L new L/15025/horn
+bounds:1613,1582,68,82
+L new L/15025/horn_acc
+bounds:1087,824,64,46
+L new L/15025/leg_l
+bounds:1416,600,24,22
+offsets:1,1,26,24
+rotate:90
+L new L/15025/leg_r
+bounds:1416,600,24,22
+offsets:1,1,26,24
+rotate:90
+L new L/15025/mouth
+bounds:1390,684,46,32
+L new L/15025/tail
+bounds:1880,1040,26,14
+offsets:1,1,28,16
+L new L/15025/weapons_1
+bounds:228,883,44,134
+L new L/15025/weapons_2
+bounds:408,741,130,30
+offsets:1,1,132,32
+rotate:90
+L new L/15025/wing
+bounds:1741,1307,48,32
+offsets:1,1,50,34
+rotate:90
+L new L/15026/arm_l
+bounds:737,45,20,32
+offsets:1,1,22,34
+L new L/15026/arm_r
+bounds:1766,1091,20,32
+offsets:1,1,22,34
+L new L/15026/body
+bounds:846,656,40,40
+offsets:1,1,42,42
+L new L/15026/eye
+bounds:1718,564,13,13
+offsets:0,1,14,14
+L new L/15026/head
+bounds:243,422,74,54
+offsets:1,1,76,56
+L new L/15026/leg_l
+bounds:1125,258,22,18
+offsets:1,1,24,20
+L new L/15026/leg_r
+bounds:1125,258,22,18
+offsets:1,1,24,20
+L new L/15026/shield
+bounds:490,2,52,50
+offsets:1,1,54,52
+L new L/15026/tail
+bounds:1174,322,26,14
+offsets:1,1,28,16
+rotate:90
+L new L/15026/weapons
+bounds:1473,1427,120,40
+rotate:90
+L new L/15026/wing1
+bounds:855,423,40,36
+rotate:90
+L new L/15026/wing2
+bounds:1915,1222,34,10
+rotate:90
+L new L/15026/wing3
+bounds:1470,602,24,20
+rotate:90
+L new L/15028/arm_l
+bounds:1764,1027,20,28
+offsets:1,1,22,30
+rotate:90
+L new L/15028/arm_r
+bounds:1764,1027,20,28
+offsets:1,1,22,30
+rotate:90
+L new L/15028/body
+bounds:1153,824,54,44
+L new L/15028/body1
+bounds:556,225,16,6
+offsets:1,1,18,8
+rotate:90
+L new L/15028/eye
+bounds:1583,1268,18,10
+offsets:1,1,20,12
+L new L/15028/hair
+bounds:1881,1338,32,74
+rotate:90
+L new L/15028/head
+bounds:538,55,60,38
+offsets:1,1,62,40
+rotate:90
+L new L/15028/horn
+bounds:820,1307,116,72
+L new L/15028/leg_l
+bounds:1149,258,22,18
+offsets:1,1,24,20
+L new L/15028/leg_r
+bounds:1149,258,22,18
+offsets:1,1,24,20
+L new L/15028/mouth
+bounds:1603,981,44,32
+offsets:1,1,46,34
+rotate:90
+L new L/15028/shoulder
+bounds:1664,1071,32,40
+rotate:90
+L new L/15028/tail
+bounds:1167,368,34,26
+rotate:90
+L new L/15028/weapons
+bounds:1907,1551,58,46
+offsets:1,1,60,48
+L new L/15028/weapons1
+bounds:590,536,68,56
+rotate:90
+L new L/15028/weapons1_1
+bounds:1736,1231,16,25
+rotate:90
+L new L/15028/wing
+bounds:1710,737,26,24
+rotate:90
+L new L/15028/wing1
+bounds:1666,1141,42,30
+L new L/15029/arm_l
+bounds:1163,446,20,34
+offsets:1,1,22,36
+L new L/15029/arm_r
+bounds:1226,481,20,34
+offsets:1,1,22,36
+L new L/15029/body
+bounds:899,381,40,40
+offsets:1,1,42,42
+L new L/15029/eye
+bounds:1062,108,10,12
+offsets:0,1,10,14
+rotate:90
+L new L/15029/head
+bounds:501,399,80,62
+offsets:1,1,82,64
+L new L/15029/leg_l
+bounds:1229,319,22,18
+offsets:1,1,24,20
+L new L/15029/leg_r
+bounds:1229,319,22,18
+offsets:1,1,24,20
+L new L/15029/tail
+bounds:1173,294,26,14
+offsets:1,1,28,16
+rotate:90
+L new L/15029/weapons_1
+bounds:1264,1068,96,56
+offsets:1,1,98,58
+rotate:90
+L new L/15029/weapons_2
+bounds:947,170,28,24
+offsets:1,1,30,26
+rotate:90
+L new L/15029/wing1
+bounds:893,423,42,42
+L new L/15029/wing2
+bounds:831,187,41,8
+rotate:90
+L new L/15029/wing3
+bounds:1762,863,26,22
+L new L/15030/arm_l
+bounds:1763,979,16,28
+offsets:1,1,18,30
+rotate:90
+L new L/15030/arm_r
+bounds:1758,609,16,28
+offsets:1,1,18,30
+rotate:90
+L new L/15030/body
+bounds:809,464,46,42
+offsets:1,1,48,44
+rotate:90
+L new L/15030/body_u
+bounds:909,205,34,36
+rotate:90
+L new L/15030/buff_fx
+bounds:1515,1454,84,96
+offsets:2,2,88,100
+L new L/15030/eye
+bounds:1956,1009,6,16
+offsets:1,1,8,18
+L new L/15030/hair_d
+bounds:564,161,28,46
+rotate:90
+L new L/15030/head
+bounds:501,339,80,58
+offsets:1,1,82,60
+L new L/15030/horn_acc1
+bounds:1686,679,56,26
+rotate:90
+L new L/15030/horn_acc2
+bounds:2021,1305,48,25
+offsets:1,1,50,27
+rotate:90
+L new L/15030/horn_acc3
+bounds:1652,1027,42,32
+offsets:1,1,44,34
+rotate:90
+L new L/15030/leg_l
+bounds:1836,1075,24,18
+offsets:1,1,26,20
+rotate:90
+L new L/15030/leg_r
+bounds:1836,1075,24,18
+offsets:1,1,26,20
+rotate:90
+L new L/15030/mouth
+bounds:1170,98,10,6
+offsets:1,1,12,8
+rotate:90
+L new L/15030/shield
+bounds:1764,1359,72,54
+offsets:1,1,74,56
+rotate:90
+L new L/15030/shieldfx
+bounds:2,238,180,142
+offsets:1,1,182,144
+rotate:90
+L new L/15030/shoulder_l
+bounds:759,49,32,22
+offsets:1,1,34,24
+rotate:90
+L new L/15030/shoulder_r
+bounds:1856,1045,24,22
+offsets:1,1,26,24
+rotate:90
+L new L/15030/tail
+bounds:1173,266,26,14
+offsets:1,1,28,16
+rotate:90
+L new L/15038/tail
+bounds:1173,266,26,14
+offsets:1,1,28,16
+rotate:90
+L new L/15030/weapons
+bounds:274,873,144,48
+rotate:90
+L new L/15030/wingb
+bounds:841,193,34,36
+L new L/15030/wingf
+bounds:1089,199,26,32
+rotate:90
+L new L/15032/arm_l
+bounds:1226,445,20,34
+offsets:1,1,22,36
+L new L/15032/arm_r
+bounds:1244,522,20,34
+offsets:1,1,22,36
+L new L/15032/body
+bounds:745,191,40,40
+offsets:1,1,42,42
+L new L/15032/eye
+bounds:971,1625,12,8
+offsets:1,1,14,10
+rotate:90
+L new L/15032/head
+bounds:691,870,76,54
+offsets:1,1,78,56
+L new L/15032/leg_l
+bounds:1978,1073,22,18
+offsets:1,1,24,20
+L new L/15032/leg_r
+bounds:1978,1073,22,18
+offsets:1,1,24,20
+L new L/15032/tail
+bounds:1187,351,26,14
+offsets:1,1,28,16
+L new L/15032/weaponhead_01
+bounds:750,117,28,32
+offsets:1,1,30,34
+L new L/15032/weaponhead_02
+bounds:1636,1071,30,26
+offsets:1,1,32,28
+rotate:90
+L new L/15032/weaponhead_03
+bounds:1719,1213,22,14
+offsets:1,1,24,16
+rotate:90
+L new L/15032/weaponhead_c
+bounds:1186,479,36,38
+offsets:1,1,38,40
+rotate:90
+L new L/15032/weaponhead_r
+bounds:1820,1355,59,46
+offsets:1,1,61,48
+L new L/15032/weapons
+bounds:1304,1389,10,148
+offsets:1,1,12,150
+L new L/15032/wing01
+bounds:1304,628,42,42
+L new L/15032/wing02
+bounds:975,326,42,8
+L new L/15032/wing03
+bounds:1830,1183,26,22
+rotate:90
+L new L/15036/arm_l
+bounds:1782,1161,16,28
+offsets:1,1,18,30
+rotate:90
+L new L/15036/arm_r
+bounds:1782,1161,16,28
+offsets:1,1,18,30
+rotate:90
+L new L/15036/body
+bounds:977,388,40,40
+offsets:1,1,42,42
+L new L/15036/earring_l
+bounds:1962,1055,14,12
+offsets:1,1,16,14
+L new L/15036/earring_r
+bounds:1962,1055,14,12
+offsets:1,1,16,14
+L new L/15036/eye
+bounds:1054,673,14,6
+offsets:1,1,16,8
+L new L/15036/eyebrow
+bounds:446,1408,18,6
+offsets:1,1,20,8
+rotate:90
+L new L/15036/fx_heart
+bounds:1942,1113,24,22
+L new L/15036/hair_1
+bounds:312,614,92,52
+L new L/15036/hair_2
+bounds:583,339,60,48
+L new L/15036/hair_3
+bounds:835,868,56,52
+rotate:90
+L new L/15036/head
+bounds:1545,919,60,38
+offsets:1,1,62,40
+rotate:90
+L new L/15036/leg_l
+bounds:1364,598,28,20
+rotate:90
+L new L/15036/leg_r
+bounds:1364,598,28,20
+rotate:90
+L new L/15036/mouth
+bounds:1865,965,16,10
+offsets:1,1,18,12
+rotate:90
+L new L/15036/tail
+bounds:1686,1027,42,18
+rotate:90
+L new L/15036/weapon
+bounds:300,205,26,120
+offsets:1,1,28,122
+L new L/15036/weaponacc1
+bounds:877,193,30,34
+offsets:1,1,32,36
+L new L/15036/weaponacc2
+bounds:592,606,76,54
+rotate:90
+L new L/15036/weaponribbon
+bounds:1870,1136,26,22
+offsets:1,1,28,24
+L new L/15036/wing
+bounds:846,121,24,28
+offsets:1,1,26,30
+L new L/15036/wing1
+bounds:812,121,32,28
+L new L/15037/arm_l
+bounds:1788,617,16,28
+offsets:4,4,24,36
+L new L/15037/arm_r
+bounds:1802,649,16,28
+offsets:4,4,24,36
+L new L/15037/body
+bounds:1324,818,62,44
+offsets:3,1,68,46
+L new L/15037/body_3
+bounds:1726,1055,8,10
+offsets:1,1,10,12
+L new L/15037/body_4
+bounds:1096,107,10,12
+offsets:1,1,12,14
+rotate:90
+L new L/15037/eye
+bounds:1877,968,14,14
+offsets:1,1,16,16
+L new L/15037/head
+bounds:942,730,62,42
+offsets:4,4,70,50
+L new L/15037/mouth
+bounds:1227,361,24,10
+L new L/15037/tail
+bounds:1135,150,26,14
+offsets:4,4,34,22
+rotate:90
+L new L/15037/teeth
+bounds:1396,1056,22,6
+offsets:1,1,24,8
+L new L/15037/wing
+bounds:1934,1305,31,21
+offsets:2,2,36,26
+rotate:90
+L new L/15038/arm_l
+bounds:1806,619,16,28
+offsets:1,1,18,30
+L new L/15038/arm_r
+bounds:1806,619,16,28
+offsets:1,1,18,30
+L new L/15038/body
+bounds:1637,981,44,42
+offsets:1,1,46,44
+rotate:90
+L new L/15038/eye
+bounds:1957,1356,14,8
+offsets:1,3,16,12
+rotate:90
+L new L/15038/head
+bounds:1134,719,60,42
+offsets:1,1,62,44
+L new L/15038/horn
+bounds:1376,932,76,52
+offsets:1,1,78,54
+rotate:90
+L new L/15038/leg_l
+bounds:1908,1024,22,18
+offsets:1,1,24,20
+rotate:90
+L new L/15038/leg_r
+bounds:1908,1024,22,18
+offsets:1,1,24,20
+rotate:90
+L new L/15038/mustache1
+bounds:1817,1211,28,20
+offsets:1,1,30,22
+L new L/15038/mustache2
+bounds:984,614,20,18
+offsets:1,1,22,20
+L new L/15038/mustache3
+bounds:1253,358,24,18
+offsets:1,1,26,20
+L new L/15038/nose
+bounds:832,656,12,12
+offsets:1,1,14,14
+L new L/15038/pupil
+bounds:563,1769,10,10
+offsets:3,1,16,12
+L new L/15038/rudolph/bell
+bounds:1125,302,22,22
+offsets:1,1,24,24
+L new L/15038/rudolph/body
+bounds:1343,1399,138,50
+rotate:90
+L new L/15038/rudolph/bolt
+bounds:1799,1211,16,16
+offsets:1,1,18,18
+L new L/15038/rudolph/head
+bounds:1516,1370,82,82
+offsets:1,1,84,84
+L new L/15038/rudolph/head_f
+bounds:1347,755,39,30
+L new L/15038/rudolph/leg_l
+bounds:1053,330,32,34
+offsets:1,1,34,36
+rotate:90
+L new L/15038/rudolph/leg_r
+bounds:1053,330,32,34
+offsets:1,1,34,36
+rotate:90
+L new L/15038/rudolph/tail
+bounds:1115,145,18,30
+offsets:1,1,20,32
+L new L/15038/weapon
+bounds:1185,407,38,36
+offsets:1,1,40,38
+L new L/15038/wing
+bounds:1729,981,32,14
+offsets:1,1,34,16
+L new L/15038/wing_u
+bounds:1322,1010,46,46
+offsets:1,1,48,48
+L new L/15039/arm_l
+bounds:1225,409,24,34
+offsets:1,1,26,36
+L new L/15039/arm_r
+bounds:1227,373,24,34
+offsets:1,1,26,36
+L new L/15039/body
+bounds:997,569,40,40
+offsets:1,1,42,48
+L new L/15039/bodyb
+bounds:1002,527,40,36
+offsets:1,11,42,48
+rotate:90
+L new L/15039/bodyf
+bounds:1045,444,40,36
+offsets:1,11,42,48
+rotate:90
+L new L/15039/eye
+bounds:1877,926,14,8
+offsets:1,1,16,10
+L new L/15039/fxhead_u
+bounds:1006,725,62,38
+offsets:1,1,64,40
+L new L/15039/head
+bounds:512,606,78,72
+offsets:1,1,80,74
+L new L/15039/head_u
+bounds:1070,721,62,38
+offsets:1,1,64,40
+L new L/15039/leg_l
+bounds:1865,1208,28,18
+offsets:1,1,30,20
+L new L/15039/leg_r
+bounds:1865,1208,28,18
+offsets:1,1,30,20
+L new L/15039/tail
+bounds:1570,1124,24,14
+offsets:3,7,28,22
+rotate:90
+L new L/15039/tailb
+bounds:1138,122,26,14
+offsets:1,1,28,22
+rotate:90
+L new L/15039/tailf
+bounds:1151,156,26,14
+offsets:1,1,28,22
+rotate:90
+L new L/15039/weapon
+bounds:718,975,128,26
+offsets:1,1,130,28
+L new L/15039/weaponfx
+bounds:1128,105,10,10
+offsets:2,2,14,14
+L new L/15039/wing
+bounds:1248,486,34,24
+offsets:1,1,36,26
+rotate:90
+L new L/15039/wingfx
+bounds:99,1225,20,8
+offsets:2,2,24,12
+rotate:90
+L new L/15040/arm_l
+bounds:1812,1161,20,28
+rotate:90
+L new L/15040/arm_r
+bounds:1814,1075,20,28
+L new L/15040/body
+bounds:888,731,48,52
+rotate:90
+L new L/15040/eye
+bounds:1378,864,16,8
+rotate:90
+L new L/15040/fx_stick0
+bounds:575,1769,125,115
+offsets:6,3,134,121
+L new L/15040/fx_stick00
+bounds:1430,916,67,50
+offsets:13,0,80,50
+L new L/15040/fx_stick01
+bounds:1927,1243,53,28
+offsets:7,0,60,28
+rotate:90
+L new L/15040/fx_stick02
+bounds:588,846,80,28
+offsets:4,0,84,28
+rotate:90
+L new L/15040/fx_stick03
+bounds:982,1483,105,28
+offsets:11,0,117,28
+L new L/15040/fx_stick04
+bounds:1312,1282,105,28
+offsets:6,0,117,28
+rotate:90
+L new L/15040/fx_stick05
+bounds:520,970,102,28
+offsets:0,0,106,28
+L new L/15040/fx_stick06
+bounds:1503,1275,76,12
+offsets:0,7,105,27
+rotate:90
+L new L/15040/fx_stick07
+bounds:1763,1243,49,12
+offsets:0,0,59,12
+L new L/15040/hair
+bounds:1710,1161,50,10
+rotate:90
+L new L/15040/head1
+bounds:316,1221,112,86
+rotate:90
+L new L/15040/leg_l
+bounds:1125,278,22,22
+L new L/15040/leg_r
+bounds:1125,278,22,22
+L new L/15040/mouth
+bounds:1809,1664,18,6
+rotate:90
+L new L/15040/tail
+bounds:659,2,32,18
+L new L/15040/weapon
+bounds:1335,1156,124,28
+rotate:90
+L new L/15040/wing
+bounds:1730,1027,32,22
+L new L/15041/arm_l
+bounds:1816,1045,20,28
+L new L/15041/arm_r
+bounds:1915,1199,20,28
+rotate:90
+L new L/15041/body
+bounds:1324,864,62,52
+rotate:90
+L new L/15041/bridal veil
+bounds:405,439,76,94
+rotate:90
+L new L/15041/ear ring_l
+bounds:1978,1055,16,22
+rotate:90
+L new L/15041/ear ring_r
+bounds:1978,1055,16,22
+rotate:90
+L new L/15041/eye
+bounds:1893,968,14,14
+L new L/15041/hair_dw_l
+bounds:798,616,32,48
+L new L/15041/hair_dw_r
+bounds:717,185,26,46
+L new L/15041/hair_up
+bounds:1586,617,58,22
+L new L/15041/head
+bounds:558,273,70,64
+L new L/15041/mouth
+bounds:1572,587,12,14
+L new L/15041/tail
+bounds:1701,915,32,18
+L new L/15041/weapon
+bounds:1556,1843,154,54
+offsets:4,2,158,56
+L new L/15041/weapon_acc
+bounds:1211,325,16,24
+L new L/15041/wing
+bounds:1729,957,32,22
+L new L/15042/arm_l
+bounds:1945,1199,20,28
+offsets:1,1,22,30
+rotate:90
+L new L/15042/arm_r
+bounds:1945,1199,20,28
+offsets:1,1,22,30
+rotate:90
+L new L/15042/body
+bounds:1049,402,38,40
+offsets:1,1,40,42
+L new L/15042/body_dw
+bounds:1681,981,44,20
+rotate:90
+L new L/15042/eye
+bounds:1832,577,14,8
+offsets:1,1,16,10
+L new L/15042/hair
+bounds:751,263,32,42
+rotate:90
+L new L/15042/hair_back
+bounds:1729,1655,8,4
+offsets:1,1,10,6
+L new L/15042/hair_dw
+bounds:1492,683,36,50
+rotate:90
+L new L/15042/head
+bounds:1585,919,60,38
+offsets:1,1,62,40
+rotate:90
+L new L/15042/horn
+bounds:1601,1442,78,38
+offsets:1,1,80,40
+L new L/15042/horn_up
+bounds:1378,882,48,50
+rotate:90
+L new L/15042/lamp
+bounds:888,691,38,52
+offsets:1,1,40,54
+rotate:90
+L new L/15042/leg_l
+bounds:1122,234,22,22
+offsets:1,1,24,24
+L new L/15042/leg_r
+bounds:1122,234,22,22
+offsets:1,1,24,24
+L new L/15042/mouth
+bounds:831,179,8,6
+offsets:1,1,10,8
+L new L/15042/weapon
+bounds:1397,1643,100,34
+offsets:1,1,102,36
+L new L/15042/wing
+bounds:973,184,34,32
+offsets:1,1,36,34
+L new L/15042/wing1
+bounds:664,48,33,32
+L new L/15042/wing2
+bounds:973,148,32,34
+L new L/15042/wing3
+bounds:1264,595,32,30
+L new L/15042/wing4
+bounds:976,116,31,30
+L new L/15043/arm_l
+bounds:1025,261,26,34
+offsets:1,1,28,36
+L new L/15043/arm_r
+bounds:1248,450,24,34
+offsets:1,1,26,36
+L new L/15043/arrow
+bounds:988,634,54,16
+offsets:1,1,56,18
+rotate:90
+L new L/15043/body
+bounds:787,190,42,38
+offsets:1,1,44,40
+L new L/15043/body_back
+bounds:1760,735,30,20
+rotate:90
+L new L/15043/eye
+bounds:2033,965,10,6
+rotate:90
+L new L/15043/head
+bounds:1586,857,60,38
+offsets:1,1,62,40
+rotate:90
+L new L/15043/horn
+bounds:406,120,66,52
+offsets:1,1,68,54
+L new L/15043/leg_l
+bounds:1253,338,24,18
+offsets:1,1,26,20
+L new L/15043/leg_r
+bounds:1253,338,24,18
+offsets:1,1,26,20
+L new L/15043/muffler
+bounds:1992,1001,12,22
+rotate:90
+L new L/15043/muffler_back
+bounds:1167,404,40,16
+rotate:90
+L new L/15043/tail
+bounds:387,1753,28,14
+offsets:1,1,30,16
+L new L/15043/weapon
+bounds:1681,1479,82,92
+L new L/15044/arm_l
+bounds:1734,889,24,28
+offsets:1,1,26,30
+rotate:90
+L new L/15044/arm_r
+bounds:1734,889,24,28
+offsets:1,1,26,30
+rotate:90
+L new L/15044/body
+bounds:673,616,58,48
+rotate:90
+L new L/15044/earring
+bounds:1893,934,12,14
+offsets:1,1,14,16
+L new L/15044/earringfx
+bounds:1764,887,24,26
+offsets:0,3,25,32
+L new L/15044/eye
+bounds:506,971,12,16
+L new L/15044/hair
+bounds:1603,1247,72,54
+L new L/15044/hair_dw
+bounds:882,617,36,46
+rotate:90
+L new L/15044/head
+bounds:1586,795,60,38
+offsets:1,1,62,40
+rotate:90
+L new L/15044/horn
+bounds:1544,857,60,40
+offsets:1,1,62,42
+rotate:90
+L new L/15044/leg_l
+bounds:2024,1045,22,18
+offsets:1,1,24,20
+L new L/15044/leg_r
+bounds:2024,1045,22,18
+offsets:1,1,24,20
+L new L/15044/mouth
+bounds:1322,1156,10,8
+offsets:1,1,12,10
+L new L/15044/tail
+bounds:1842,1161,26,20
+offsets:1,1,28,22
+L new L/15044/weapon
+bounds:99,1019,70,150
+offsets:1,1,72,152
+rotate:90
+L new L/15044/weaponfx
+bounds:516,1101,100,119
+offsets:0,0,100,120
+L new L/15044/wing
+bounds:909,171,32,36
+offsets:1,1,34,38
+rotate:90
+L new L/15044/wing01
+bounds:1677,1249,52,56
+offsets:1,1,54,58
+L new L/15044/wing01_fx
+bounds:1967,1630,76,79
+offsets:5,4,85,87
+rotate:90
+L new L/15044/wing02
+bounds:1134,673,61,44
+offsets:1,1,63,46
+L new L/15044/wing02_fx
+bounds:1612,1666,83,69
+offsets:4,3,92,76
+rotate:90
+L new L/15045/arm_l
+bounds:1736,703,22,28
+offsets:1,1,24,30
+L new L/15045/arm_r
+bounds:1736,703,22,28
+offsets:1,1,24,30
+L new L/15045/bird tail
+bounds:1893,922,10,12
+offsets:1,1,12,14
+rotate:90
+L new L/15045/bird wing
+bounds:2017,977,12,12
+offsets:1,1,14,14
+L new L/15045/body
+bounds:1006,635,46,44
+offsets:1,1,48,46
+L new L/15045/eye
+bounds:1939,969,14,12
+rotate:90
+L new L/15045/flower
+bounds:1764,679,28,22
+offsets:1,1,30,24
+L new L/15045/hair_back
+bounds:1386,656,26,50
+rotate:90
+L new L/15045/hair_up
+bounds:1049,364,36,38
+rotate:90
+L new L/15045/head
+bounds:1328,715,60,38
+offsets:1,1,62,40
+L new L/15045/horn
+bounds:440,812,106,66
+rotate:90
+L new L/15045/leg_l
+bounds:1253,318,24,18
+offsets:1,1,26,20
+L new L/15045/leg_r
+bounds:1253,318,24,18
+offsets:1,1,26,20
+L new L/15045/mouth
+bounds:1556,1900,28,14
+rotate:90
+L new L/15045/tail
+bounds:1729,935,32,20
+offsets:1,1,34,22
+L new L/15045/weapon
+bounds:319,440,76,84
+offsets:1,1,78,86
+rotate:90
+L new L/15045/wing
+bounds:1195,367,38,30
+offsets:1,1,40,32
+rotate:90
+L new L/15046/arm_l
+bounds:2005,1215,18,28
+offsets:1,1,20,30
+L new L/15046/body
+bounds:1102,629,42,44
+offsets:1,1,44,46
+rotate:90
+L new L/15046/eye
+bounds:1877,952,14,14
+offsets:1,1,16,16
+L new L/15046/eye_fx
+bounds:801,1769,5,2
+offsets:3,3,11,8
+L new L/15046/hair1
+bounds:685,344,56,52
+rotate:90
+L new L/15046/hair2
+bounds:909,147,36,22
+L new L/15046/hair3
+bounds:632,59,16,30
+rotate:90
+L new L/15046/hair4
+bounds:1364,584,12,22
+rotate:90
+L new L/15046/head1
+bounds:942,690,62,38
+offsets:13,5,82,54
+L new L/15046/leg_l
+bounds:1794,1007,24,20
+offsets:1,1,26,22
+rotate:90
+L new L/15046/leg_r
+bounds:1794,1007,24,20
+offsets:1,1,26,22
+rotate:90
+L new L/15046/mouth
+bounds:795,331,12,6
+offsets:1,1,14,8
+L new L/15046/tail
+bounds:1735,1213,26,16
+offsets:1,1,28,18
+L new L/15046/weapon_01
+bounds:1492,647,34,50
+offsets:1,1,36,52
+rotate:90
+L new L/15046/weapon_01_fx
+bounds:707,149,34,36
+rotate:90
+L new L/15046/weapon_02
+bounds:2031,977,12,8
+offsets:1,1,14,10
+rotate:90
+L new L/15046/weapon_03
+bounds:1806,609,16,8
+offsets:1,1,18,10
+L new L/15046/weapon_03_fx
+bounds:1826,777,16,8
+offsets:1,1,18,10
+rotate:90
+L new L/15046/weapon_04
+bounds:1150,326,22,22
+offsets:1,1,24,24
+L new L/15046/weapon_04_fx
+bounds:1149,302,22,22
+offsets:1,1,24,24
+L new L/15046/weapon_05
+bounds:1089,365,36,36
+L new L/15046/weapon_05_fx
+bounds:1089,329,34,34
+offsets:1,1,36,36
+L new L/15046/wing
+bounds:1700,891,32,22
+offsets:1,1,34,24
+L new L/15047/arm_l
+bounds:1884,1184,16,28
+offsets:1,1,18,30
+rotate:90
+L new L/15047/arm_r
+bounds:1884,1184,16,28
+offsets:1,1,18,30
+rotate:90
+L new L/15047/body
+bounds:855,381,42,40
+offsets:1,1,44,42
+L new L/15047/eye
+bounds:1820,649,6,14
+offsets:1,1,8,16
+rotate:90
+L new L/15047/head
+bounds:774,740,60,56
+offsets:1,1,62,58
+rotate:90
+L new L/15047/jewel_l
+bounds:1110,117,26,26
+offsets:3,3,32,32
+L new L/15047/leg_l
+bounds:2024,1025,22,18
+offsets:1,1,24,20
+L new L/15047/leg_l_fx
+bounds:1992,1015,22,18
+offsets:1,1,24,20
+L new L/15047/leg_r
+bounds:1416,580,22,18
+offsets:1,1,24,20
+L new L/15047/leg_r_fx
+bounds:1599,567,22,18
+offsets:1,1,24,20
+L new L/15047/mouth
+bounds:1792,1179,30,10
+offsets:1,1,32,12
+rotate:90
+L new L/15047/tail
+bounds:1154,128,26,14
+offsets:1,1,28,16
+rotate:90
+L new L/15047/weapon
+bounds:474,54,61,62
+rotate:90
+L new L/15047/weapon_l
+bounds:1006,681,42,62
+offsets:1,1,44,64
+rotate:90
+L new L/15047/weapon_l_fx
+bounds:889,901,52,72
+offsets:1,0,54,72
+L new L/15047/weapon_r
+bounds:643,402,32,62
+offsets:1,1,34,64
+L new L/15047/weapon_r_2
+bounds:1603,1213,32,62
+offsets:1,1,34,64
+rotate:90
+L new L/15047/weapon_r_3
+bounds:1013,884,42,72
+rotate:90
+L new L/15047/weapon_r_fx
+bounds:1430,774,32,62
+offsets:1,1,34,64
+rotate:90
+L new L/15047/wing
+bounds:1975,1199,28,20
+offsets:1,1,30,22
+L new L/15048/arm_l
+bounds:1914,1181,16,28
+offsets:1,1,18,30
+rotate:90
+L new L/15048/arm_r
+bounds:1914,1181,16,28
+offsets:1,1,18,30
+rotate:90
+L new L/15048/body
+bounds:1082,529,38,40
+offsets:1,1,40,42
+L new L/15048/body_fx
+bounds:1089,403,36,40
+offsets:3,2,42,44
+L new L/15048/eye
+bounds:1936,1077,10,24
+offsets:1,1,12,26
+rotate:90
+L new L/15048/eye_fx
+bounds:1667,1237,8,8
+L new L/15048/face_fx
+bounds:339,668,72,67
+offsets:2,2,76,72
+rotate:90
+L new L/15048/head
+bounds:1197,671,60,46
+offsets:1,1,62,48
+L new L/15048/leg_l
+bounds:1623,567,22,18
+offsets:1,1,24,20
+L new L/15048/leg_r
+bounds:1623,567,22,18
+offsets:1,1,24,20
+L new L/15048/mouth
+bounds:1724,1105,34,8
+offsets:1,1,36,10
+rotate:90
+L new L/15048/mouth_fx
+bounds:1229,339,22,20
+offsets:1,1,24,22
+L new L/15048/tail
+bounds:1962,1085,26,14
+offsets:1,1,28,16
+rotate:90
+L new L/15048/weapon
+bounds:296,87,30,116
+offsets:1,1,32,118
+L new L/15048/weapon_fx1
+bounds:368,54,36,44
+offsets:2,2,40,49
+L new L/15048/weapon_fx2
+bounds:1492,721,42,50
+offsets:2,2,46,55
+rotate:90
+L new L/15048/weapon_fx3
+bounds:434,2,54,50
+offsets:3,2,60,55
+L new L/15049/15049
+bounds:1087,872,64,64
+L new L/15049/arm_l
+bounds:1944,1181,16,28
+offsets:1,1,18,30
+rotate:90
+L new L/15049/arm_r
+bounds:1944,1181,16,28
+offsets:1,1,18,30
+rotate:90
+L new L/15049/body
+bounds:1082,487,38,40
+offsets:1,1,40,42
+L new L/15049/body_fx
+bounds:1824,609,16,18
+offsets:2,2,20,22
+rotate:90
+L new L/15049/eye
+bounds:1165,184,10,12
+offsets:1,1,12,14
+rotate:90
+L new L/15049/head
+bounds:1625,919,60,34
+offsets:1,1,62,58
+rotate:90
+L new L/15049/head_fx
+bounds:1492,623,50,22
+offsets:1,1,52,24
+L new L/15049/head_fx2
+bounds:619,6,50,22
+offsets:1,1,52,24
+rotate:90
+L new L/15049/leg_l
+bounds:1647,567,22,18
+offsets:1,1,24,20
+L new L/15049/leg_r
+bounds:1647,567,22,18
+offsets:1,1,24,20
+L new L/15049/mouth
+bounds:761,339,46,20
+L new L/15049/tail
+bounds:1928,1039,26,14
+offsets:1,1,28,16
+L new L/15049/weapon_fx
+bounds:1710,765,32,18
+offsets:1,1,34,20
+rotate:90
+L new L/15049/weapon_re
+bounds:1765,1475,96,54
+offsets:1,1,98,56
+rotate:90
+L new L/15049/weapon_re_fx2
+bounds:2025,1217,28,18
+offsets:0,0,30,18
+rotate:90
+L new L/15049/weapon_re_fx3
+bounds:1298,595,10,30
+L new L/15049/wing
+bounds:1974,1177,28,20
+offsets:1,1,30,22
+L new L/15050/arm_l
+bounds:1836,1131,16,28
+offsets:1,1,18,30
+L new L/15050/arm_r
+bounds:1836,1101,16,28
+offsets:1,1,18,30
+L new L/15050/body
+bounds:1083,445,38,40
+offsets:1,1,40,42
+L new L/15050/eye
+bounds:1167,156,10,10
+offsets:1,1,12,12
+L new L/15050/eye_fx
+bounds:1876,888,10,10
+offsets:1,1,12,12
+L new L/15050/hair
+bounds:1871,984,26,18
+L new L/15050/head
+bounds:1626,857,60,38
+offsets:1,1,62,40
+rotate:90
+L new L/15050/lamp_l
+bounds:1165,196,12,12
+offsets:1,1,14,14
+L new L/15050/lamp_l_1
+bounds:1170,142,12,12
+offsets:1,1,14,14
+L new L/15050/lamp_r
+bounds:1170,128,12,12
+offsets:1,1,14,14
+L new L/15050/leg_l
+bounds:1733,561,22,18
+offsets:1,1,24,20
+L new L/15050/leg_r
+bounds:1733,561,22,18
+offsets:1,1,24,20
+L new L/15050/mouth
+bounds:1598,1584,36,12
+offsets:1,1,38,14
+rotate:90
+L new L/15050/mouth1
+bounds:817,152,36,12
+offsets:1,1,38,14
+rotate:90
+L new L/15050/mouth2
+bounds:1763,1229,36,12
+offsets:1,1,38,14
+L new L/15050/mouth3
+bounds:872,123,36,12
+offsets:1,1,38,14
+rotate:90
+L new L/15050/shield_re
+bounds:1506,1071,46,56
+offsets:1,1,48,58
+L new L/15050/shield_re_fx
+bounds:809,330,30,44
+rotate:90
+L new L/15050/tail
+bounds:1928,1023,26,14
+offsets:1,1,28,16
+L new L/15050/weapon_re
+bounds:1515,1751,134,38
+offsets:1,1,136,40
+L new L/15050/weapon_re_fx
+bounds:586,766,78,34
+rotate:90
+L new L/15050/wing
+bounds:2004,1177,28,20
+offsets:1,1,30,22
+L new L/15051/15051_airplane
+bounds:406,608,104,56
+offsets:1,1,106,58
+L new L/15051/15051_arm_l
+bounds:1838,1045,16,28
+offsets:1,1,18,30
+L new L/15051/15051_arm_r
+bounds:1854,1101,16,28
+offsets:1,1,18,30
+L new L/15051/15051_artillery_2
+bounds:740,5,36,14
+offsets:1,1,38,16
+L new L/15051/15051_artillery_3
+bounds:1872,1108,22,26
+offsets:1,1,24,28
+L new L/15051/15051_artillery_5
+bounds:1793,969,12,22
+offsets:1,1,14,24
+rotate:90
+L new L/15051/15051_body
+bounds:903,329,40,28
+offsets:1,1,42,30
+L new L/15051/15051_eggbeater_l
+bounds:1956,1027,26,6
+offsets:1,1,28,8
+rotate:90
+L new L/15051/15051_eggbeater_m
+bounds:699,149,6,6
+offsets:1,1,8,8
+L new L/15051/15051_eggbeater_r
+bounds:2016,1027,26,6
+offsets:1,1,28,8
+rotate:90
+L new L/15051/15051_eyebrow
+bounds:1862,841,10,6
+offsets:1,1,12,8
+L new L/15051/15051_eyes_01
+bounds:1184,142,12,12
+L new L/15051/15051_eyes_02
+bounds:402,240,10,2
+offsets:1,1,12,4
+rotate:90
+L new L/15051/15051_eyes_03
+bounds:1874,848,10,10
+offsets:1,1,12,12
+L new L/15051/15051_hat_01
+bounds:1110,105,10,16
+offsets:1,1,12,18
+rotate:90
+L new L/15051/15051_hat_2
+bounds:1730,767,18,32
+L new L/15051/15051_hat_3
+bounds:1957,1323,62,30
+offsets:1,1,64,32
+L new L/15051/15051_head
+bounds:1626,795,60,38
+offsets:1,1,62,40
+rotate:90
+L new L/15051/15051_missile_l
+bounds:1515,1843,38,14
+offsets:1,1,40,16
+L new L/15051/15051_missile_r
+bounds:1009,244,38,14
+offsets:1,1,40,16
+rotate:90
+L new L/15051/15051_mouth_01
+bounds:1722,1175,36,12
+rotate:90
+L new L/15051/15051_mouth_02
+bounds:2040,1832,34,6
+offsets:1,1,36,8
+rotate:90
+L new L/15051/15051_muffler
+bounds:1760,703,20,30
+L new L/15051/15051_steering wheel_1
+bounds:826,670,36,18
+offsets:1,1,38,20
+rotate:90
+L new L/15051/15051_steering wheel_2
+bounds:640,1602,8,10
+offsets:1,1,10,12
+L new L/15051/15051_wings_l
+bounds:1164,482,42,20
+offsets:1,1,44,22
+rotate:90
+L new L/15051/15051_wings_r
+bounds:975,336,42,20
+offsets:1,2,44,24
+L new L/15052/15052_Cheek
+bounds:380,1829,10,4
+offsets:1,1,12,6
+rotate:90
+L new L/15052/15052_arm_l
+bounds:1856,1071,18,28
+offsets:1,1,20,30
+L new L/15052/15052_arm_r
+bounds:1876,1078,18,28
+offsets:1,1,20,30
+L new L/15052/15052_arrow
+bounds:94,812,138,66
+offsets:1,1,140,68
+L new L/15052/15052_body
+bounds:1054,631,46,40
+offsets:1,1,48,42
+L new L/15052/15052_bow_string
+bounds:1881,1556,24,126
+L new L/15052/15052_ear
+bounds:1863,927,16,12
+offsets:1,1,18,14
+rotate:90
+L new L/15052/15052_eye
+bounds:1184,128,12,12
+offsets:1,1,14,14
+L new L/15052/15052_eye_close
+bounds:1002,519,12,6
+offsets:1,1,14,8
+L new L/15052/15052_eye_smile
+bounds:1178,98,12,6
+offsets:1,1,14,8
+rotate:90
+L new L/15052/15052_eyebrow
+bounds:580,536,8,4
+offsets:1,1,10,6
+L new L/15052/15052_hair
+bounds:406,54,64,66
+rotate:90
+L new L/15052/15052_hair_b_l
+bounds:1602,1143,28,62
+offsets:1,1,30,64
+rotate:90
+L new L/15052/15052_hair_b_r
+bounds:1804,1183,24,26
+offsets:1,1,26,28
+L new L/15052/15052_hair_r
+bounds:1909,970,16,12
+offsets:1,1,18,14
+L new L/15052/15052_head
+bounds:1602,1173,60,38
+offsets:1,1,62,40
+L new L/15052/15052_horn_b
+bounds:368,100,36,56
+L new L/15052/15052_horn_f
+bounds:1694,579,36,56
+L new L/15052/15052_leaf_01
+bounds:622,1601,11,16
+offsets:1,1,13,18
+rotate:90
+L new L/15052/15052_leaf_02
+bounds:1486,1625,11,16
+offsets:1,1,13,18
+L new L/15052/15052_leaf_03
+bounds:612,164,11,16
+offsets:1,1,13,18
+L new L/15052/15052_leaf_04
+bounds:1951,989,11,16
+offsets:1,1,13,18
+L new L/15052/15052_leaf_05
+bounds:872,161,13,16
+offsets:1,1,15,18
+L new L/15052/15052_leg_l
+bounds:1757,561,22,18
+offsets:1,1,24,20
+L new L/15052/15052_leg_r
+bounds:1781,561,22,18
+offsets:1,1,24,20
+L new L/15052/15052_light_1
+bounds:641,1428,15,15
+offsets:1,1,17,17
+L new L/15052/15052_mouth
+bounds:1863,919,12,6
+offsets:1,1,14,8
+L new L/15052/15052_mouth_1
+bounds:1715,1751,12,2
+offsets:1,1,14,4
+L new L/15052/15052_tail
+bounds:1968,1115,26,20
+offsets:1,1,28,22
+L new L/15052/15052_weapon
+bounds:84,613,62,144
+rotate:90
+L new L/15052/15052_wing
+bounds:620,117,24,40
+offsets:1,1,26,42
+L new L/15053/arm_ef_l_15053
+bounds:1013,829,53,72
+offsets:4,4,62,82
+rotate:90
+L new L/15053/arm_l_15053
+bounds:975,568,20,44
+L new L/15053/arm_r_15053
+bounds:1816,1027,16,28
+offsets:1,1,18,30
+rotate:90
+L new L/15053/bandage_1_15053
+bounds:1009,204,38,14
+rotate:90
+L new L/15053/bandage_2_15053
+bounds:1810,1133,24,26
+offsets:1,1,26,28
+L new L/15053/body_15053
+bounds:976,474,38,42
+offsets:1,1,40,44
+L new L/15053/cloak horn_l_15053
+bounds:2024,1109,22,24
+offsets:1,1,24,26
+L new L/15053/cloak horn_r_15053
+bounds:1817,967,14,22
+offsets:1,1,16,24
+rotate:90
+L new L/15053/cloak_1_15053
+bounds:1646,587,46,48
+L new L/15053/cloak_2_15053
+bounds:1961,1221,22,42
+rotate:90
+L new L/15053/dagger_1_15053
+bounds:736,113,34,12
+offsets:1,3,36,16
+rotate:90
+L new L/15053/dagger_2_15053
+bounds:1586,587,58,28
+offsets:1,1,60,30
+L new L/15053/dagger_ef_15053
+bounds:1957,1279,58,28
+offsets:1,1,60,30
+L new L/15053/dagger_ef_b_15053
+bounds:1324,928,80,50
+offsets:1,1,84,52
+rotate:90
+L new L/15053/eyes_1_15053
+bounds:1984,987,14,6
+offsets:1,1,16,8
+rotate:90
+L new L/15053/eyes_2_15053
+bounds:346,232,14,6
+offsets:1,1,16,8
+L new L/15053/head_15053
+bounds:578,55,60,38
+offsets:1,1,62,40
+rotate:90
+L new L/15053/hood_15053
+bounds:1499,981,58,44
+offsets:1,1,60,46
+L new L/15053/horn_l_15053
+bounds:1348,628,36,42
+offsets:1,1,38,44
+L new L/15053/horn_r_15053
+bounds:909,285,36,42
+offsets:1,1,38,44
+L new L/15053/leg_l_15053
+bounds:1928,1055,22,20
+offsets:1,1,24,22
+L new L/15053/leg_r_15053
+bounds:1978,1093,22,20
+offsets:1,1,24,22
+L new L/15053/masiaf_skill_head_01
+bounds:366,1335,70,86
+offsets:1,1,72,88
+rotate:90
+L new L/15053/masiaf_skill_head_02
+bounds:744,1212,74,102
+offsets:1,1,76,104
+L new L/15053/masiaf_skill_head_03
+bounds:1729,1661,78,92
+offsets:1,1,80,94
+L new L/15053/masiaf_skill_head_04
+bounds:1739,1573,76,86
+offsets:1,1,78,88
+L new L/15053/masiaf_skill_head_05
+bounds:926,1381,92,100
+offsets:1,1,94,102
+L new L/15053/masiaf_skill_head_06
+bounds:1020,1371,92,110
+offsets:1,1,94,112
+L new L/15053/mask_15053
+bounds:1584,721,60,32
+offsets:1,1,62,34
+L new L/15053/skeleton_15053
+bounds:1979,971,14,12
+offsets:1,1,16,14
+rotate:90
+L new L/15053/tail_15053
+bounds:795,296,44,32
+L new L/15053/wings_15053
+bounds:888,655,34,48
+rotate:90
+L new L/15054/15054_anchor
+bounds:330,1085,94,134
+offsets:1,1,96,136
+L new L/15054/15054_arm_l
+bounds:1076,119,24,32
+offsets:1,1,26,34
+rotate:90
+L new L/15054/15054_arm_r
+bounds:755,83,26,32
+offsets:1,1,28,34
+L new L/15054/15054_body
+bounds:761,464,46,46
+offsets:1,1,48,48
+L new L/15054/15054_body light
+bounds:820,1212,4,2
+offsets:1,1,6,4
+L new L/15054/15054_chain_1
+bounds:607,928,20,8
+offsets:1,1,22,10
+rotate:90
+L new L/15054/15054_chain_2
+bounds:2002,1091,22,20
+offsets:1,1,24,22
+rotate:90
+L new L/15054/15054_eyes
+bounds:630,271,66,30
+offsets:1,1,68,32
+rotate:90
+L new L/15054/15054_head
+bounds:1544,737,60,38
+offsets:1,1,62,40
+rotate:90
+L new L/15054/15054_leg_l
+bounds:1841,965,22,16
+offsets:1,1,24,18
+L new L/15054/15054_leg_r
+bounds:1841,965,22,16
+offsets:1,1,24,18
+L new L/15054/15054_mask
+bounds:887,279,48,20
+offsets:1,1,50,22
+rotate:90
+L new L/15054/15054_mask light
+bounds:1952,1055,20,8
+offsets:1,1,22,10
+rotate:90
+L new L/15054/15054_oxygen tank_1
+bounds:1821,1403,58,58
+offsets:1,1,60,60
+L new L/15054/15054_oxygen tank_2
+bounds:745,151,32,38
+L new L/15054/15054_sigh_1
+bounds:2024,1087,22,20
+offsets:1,1,24,22
+L new L/15054/15054_sigh_2
+bounds:171,1481,6,6
+offsets:1,1,8,8
+L new L/15054/15054_sigh_3
+bounds:1877,936,14,14
+offsets:1,1,16,16
+L new L/15054/15054_tail
+bounds:1700,863,28,26
+offsets:1,1,30,28
+L new L/15054/eyes light
+bounds:1804,731,18,18
+offsets:1,1,20,20
+L new L/15054/h15054_ead mask
+bounds:1865,1228,48,28
+offsets:1,1,50,30
+L new L/15055/15055_arm_l
+bounds:1846,1027,16,28
+offsets:1,1,18,30
+rotate:90
+L new L/15055/15055_arm_r
+bounds:1846,1027,16,28
+offsets:1,1,18,30
+rotate:90
+L new L/15055/15055_back hair
+bounds:1430,862,70,52
+L new L/15055/15055_bangs_1
+bounds:1016,481,44,22
+rotate:90
+L new L/15055/15055_bangs_2
+bounds:973,290,34,34
+L new L/15055/15055_bangs_3
+bounds:1974,1159,16,28
+rotate:90
+L new L/15055/15055_body
+bounds:1146,526,38,40
+offsets:1,1,40,42
+L new L/15055/15055_closed eyes
+bounds:1186,100,10,12
+offsets:1,1,12,14
+L new L/15055/15055_crown
+bounds:643,466,64,32
+offsets:1,1,66,34
+rotate:90
+L new L/15055/15055_dress
+bounds:364,2,68,50
+L new L/15055/15055_ear
+bounds:2002,1055,20,14
+offsets:1,1,22,16
+L new L/15055/15055_earring
+bounds:1862,877,10,12
+offsets:1,1,12,14
+L new L/15055/15055_eyes
+bounds:1862,863,10,12
+offsets:1,1,12,14
+L new L/15055/15055_glitter_1
+bounds:832,616,48,38
+L new L/15055/15055_glitter_2
+bounds:1646,679,52,38
+rotate:90
+L new L/15055/15055_hair
+bounds:853,465,48,36
+offsets:1,1,50,38
+rotate:90
+L new L/15055/15055_half closed eyes_1
+bounds:1862,849,10,12
+offsets:1,1,12,14
+L new L/15055/15055_half closed eyes_2
+bounds:1877,914,10,12
+offsets:1,1,12,14
+rotate:90
+L new L/15055/15055_head
+bounds:1584,755,60,38
+offsets:1,1,62,40
+L new L/15055/15055_leg_l
+bounds:1805,561,22,18
+offsets:1,1,24,20
+L new L/15055/15055_leg_r
+bounds:1791,949,22,18
+offsets:1,1,24,20
+L new L/15055/15055_mouth1
+bounds:1872,1339,14,6
+offsets:1,1,16,8
+rotate:90
+L new L/15055/15055_mouth2
+bounds:900,976,14,6
+offsets:1,1,16,8
+L new L/15055/15055_mouth3
+bounds:1154,98,14,10
+offsets:1,1,16,12
+L new L/15055/15055_tail
+bounds:1928,1007,26,14
+offsets:1,1,28,16
+L new L/15055/15055_weapon1
+bounds:1021,1001,14,92
+offsets:1,1,16,94
+rotate:90
+L new L/15055/15055_weapon1_1
+bounds:927,994,14,92
+offsets:1,1,16,94
+rotate:90
+L new L/15055/15055_weapon2
+bounds:832,740,54,54
+offsets:1,1,56,56
+L new L/15055/15055_weapon2_1
+bounds:508,848,78,78
+offsets:4,4,86,86
+L new L/15055/15055_weapon2_ef_01
+bounds:820,1381,104,104
+L new L/15055/15055_wings
+bounds:785,18,32,24
+offsets:1,1,34,26
+rotate:90
+L new L/15056/15056_arm_l
+bounds:1734,1105,24,30
+offsets:1,1,26,32
+rotate:90
+L new L/15056/15056_arm_r
+bounds:1700,831,24,30
+offsets:1,1,26,32
+L new L/15056/15056_body
+bounds:843,565,40,49
+offsets:0,5,40,54
+L new L/15056/15056_cloak
+bounds:677,433,58,48
+rotate:90
+L new L/15056/15056_closed eyes
+bounds:1207,1651,10,2
+offsets:1,1,12,4
+rotate:90
+L new L/15056/15056_eyes
+bounds:1860,829,10,10
+offsets:1,1,12,12
+L new L/15056/15056_eyes_1
+bounds:1874,840,10,6
+offsets:1,1,12,8
+L new L/15056/15056_head
+bounds:1259,673,64,46
+offsets:1,1,66,48
+L new L/15056/15056_leg_l
+bounds:1815,947,22,18
+offsets:1,1,24,20
+L new L/15056/15056_leg_r
+bounds:1815,947,22,18
+offsets:1,1,24,20
+L new L/15056/15056_mouth
+bounds:1805,1755,8,2
+offsets:1,1,10,4
+rotate:90
+L new L/15056/15056_muffler_01
+bounds:1009,284,40,12
+rotate:90
+L new L/15056/15056_muffler_02
+bounds:1893,950,12,16
+L new L/15056/15056_shield
+bounds:1070,673,46,62
+offsets:1,1,48,64
+rotate:90
+L new L/15056/15056_shield_ef01
+bounds:109,1224,60,76
+L new L/15056/15056_shield_ef02
+bounds:454,1336,90,105
+offsets:1,1,92,107
+rotate:90
+L new L/15056/15056_shield_ef03
+bounds:744,1146,64,80
+rotate:90
+L new L/15056/15056_tail
+bounds:1964,1019,26,14
+offsets:1,1,28,16
+L new L/15056/15056_weapons
+bounds:1395,1437,110,76
+offsets:1,1,112,78
+rotate:90
+L new L/15056/15056_wings
+bounds:1081,571,40,32
+L new L/15057/15057_arm_l
+bounds:1700,799,24,30
+offsets:1,1,26,32
+L new L/15057/15057_arm_r
+bounds:1730,863,24,30
+offsets:1,1,26,32
+rotate:90
+L new L/15057/15057_body
+bounds:1123,446,38,40
+offsets:1,1,40,42
+L new L/15057/15057_body_light
+bounds:1996,1115,20,26
+offsets:1,1,22,28
+rotate:90
+L new L/15057/15057_cloak
+bounds:1153,870,66,48
+rotate:90
+L new L/15057/15057_eyes_light
+bounds:1891,914,12,6
+offsets:1,1,14,8
+L new L/15057/15057_head
+bounds:292,3,82,70
+offsets:1,1,84,72
+rotate:90
+L new L/15057/15057_kara_l
+bounds:1788,807,30,10
+offsets:1,1,32,12
+rotate:90
+L new L/15057/15057_kara_r
+bounds:2034,1135,24,12
+offsets:1,1,26,14
+rotate:90
+L new L/15057/15057_leg_l
+bounds:1839,945,22,18
+offsets:1,1,24,20
+L new L/15057/15057_leg_r
+bounds:1839,945,22,18
+offsets:1,1,24,20
+L new L/15057/15057_tail
+bounds:1123,206,26,18
+offsets:1,1,28,20
+rotate:90
+L new L/15057/15057_weapon_01
+bounds:146,266,100,152
+offsets:1,1,102,154
+L new L/15057/15057_weapon_02
+bounds:2009,973,6,14
+offsets:1,1,8,16
+L new L/15057/15057_weapon_03
+bounds:1791,933,14,22
+offsets:1,1,16,24
+rotate:90
+L new L/15057/15057_weapon_04
+bounds:1836,809,14,20
+offsets:1,1,16,22
+rotate:90
+L new L/15057/15057_wing
+bounds:1726,835,28,26
+offsets:1,1,30,28
+L new L/15057/15057_wing_1
+bounds:1189,253,10,8
+offsets:1,1,12,10
+rotate:90
+L new L/15057/15057_wing_2
+bounds:1201,293,10,8
+offsets:1,1,12,10
+L new L/15057/15057_wing_3
+bounds:1189,305,10,10
+offsets:1,1,12,12
+L new L/15058/15058_arm_l
+bounds:2004,1159,16,28
+offsets:1,1,18,30
+rotate:90
+L new L/15058/15058_arm_l_01
+bounds:1964,1035,24,18
+offsets:1,1,26,20
+L new L/15058/15058_arm_r
+bounds:886,123,20,34
+offsets:1,1,22,36
+L new L/15058/15058_body
+bounds:1127,404,38,40
+offsets:1,1,40,42
+L new L/15058/15058_cloak
+bounds:1677,1307,62,48
+L new L/15058/15058_ear
+bounds:1847,1211,20,16
+offsets:1,1,22,18
+rotate:90
+L new L/15058/15058_evil
+bounds:1190,317,12,6
+offsets:1,1,14,8
+L new L/15058/15058_eyebrow
+bounds:1790,913,22,18
+offsets:1,1,24,20
+L new L/15058/15058_eyes
+bounds:1829,557,14,6
+offsets:1,1,16,8
+L new L/15058/15058_eyes_1
+bounds:1258,755,14,4
+offsets:1,1,16,6
+L new L/15058/15058_hair_01
+bounds:1666,859,58,32
+offsets:1,1,60,34
+rotate:90
+L new L/15058/15058_hair_02
+bounds:1872,830,8,12
+offsets:1,1,10,14
+rotate:90
+L new L/15058/15058_hair_03_1
+bounds:927,976,16,14
+offsets:1,1,18,16
+rotate:90
+L new L/15058/15058_hair_03_2
+bounds:1758,653,28,24
+L new L/15058/15058_hair_04
+bounds:1762,1179,28,30
+offsets:1,1,30,32
+L new L/15058/15058_head
+bounds:1646,733,60,38
+offsets:1,1,62,40
+rotate:90
+L new L/15058/15058_kara_l
+bounds:2034,1189,26,12
+offsets:1,1,28,14
+rotate:90
+L new L/15058/15058_kara_r
+bounds:2017,967,14,8
+offsets:1,1,16,10
+L new L/15058/15058_leg_l
+bounds:1790,893,22,18
+offsets:1,1,24,20
+L new L/15058/15058_leg_r
+bounds:1790,893,22,18
+offsets:1,1,26,20
+L new L/15058/15058_mouth01
+bounds:1750,801,32,10
+offsets:1,1,34,12
+rotate:90
+L new L/15058/15058_mouth02
+bounds:1768,767,32,4
+offsets:1,1,34,6
+L new L/15058/15058_mouth03
+bounds:171,1489,32,4
+offsets:1,1,34,6
+rotate:90
+L new L/15058/15058_tail
+bounds:1964,1003,26,14
+offsets:1,1,28,16
+L new L/15058/15058_teeth_light
+bounds:1963,971,14,14
+offsets:1,1,16,16
+L new L/15058/15058_weapon
+bounds:681,720,72,30
+offsets:1,1,74,32
+rotate:90
+L new L/15058/15058_wing_00
+bounds:1167,218,10,14
+offsets:1,1,12,16
+L new L/15058/15058_wing_01
+bounds:1734,1131,30,28
+offsets:1,1,32,30
+L new L/15058/15058_wing_02
+bounds:1053,296,32,34
+offsets:1,1,34,36
+rotate:90
+L new L/15058/15058_wing_03
+bounds:779,154,36,34
+offsets:1,1,38,36
+L new L/15059/15059_arm_l_1
+bounds:1914,1159,20,28
+offsets:1,1,22,30
+rotate:90
+L new L/15059/15059_arm_l_2
+bounds:1944,1159,20,28
+offsets:1,1,22,30
+rotate:90
+L new L/15059/15059_arm_r
+bounds:1914,1137,20,28
+offsets:1,1,22,30
+rotate:90
+L new L/15059/15059_bangs
+bounds:2017,1247,56,26
+offsets:1,1,58,28
+rotate:90
+L new L/15059/15059_bead
+bounds:1804,711,18,18
+offsets:1,1,20,20
+L new L/15059/15059_bead_1
+bounds:973,254,34,34
+offsets:1,1,36,36
+L new L/15059/15059_bead_2
+bounds:1899,984,18,18
+offsets:1,1,20,20
+L new L/15059/15059_bead_ef_01
+bounds:943,774,62,62
+offsets:3,3,68,68
+L new L/15059/15059_bead_ef_02
+bounds:1007,765,62,62
+offsets:3,3,68,68
+L new L/15059/15059_bead_ef_03
+bounds:1415,1189,82,82
+offsets:3,3,88,88
+L new L/15059/15059_bead_ef_04
+bounds:156,2,106,106
+offsets:3,3,112,112
+L new L/15059/15059_bear
+bounds:1666,799,32,58
+offsets:1,1,34,60
+L new L/15059/15059_bear arms
+bounds:1706,1055,48,18
+offsets:1,1,50,20
+rotate:90
+L new L/15059/15059_body
+bounds:977,430,38,42
+offsets:1,1,40,44
+L new L/15059/15059_ear
+bounds:2016,991,24,12
+offsets:1,1,26,14
+L new L/15059/15059_eyebrow
+bounds:322,1085,6,4
+offsets:1,1,8,6
+L new L/15059/15059_eyes
+bounds:1176,112,14,6
+offsets:1,1,16,8
+rotate:90
+L new L/15059/15059_eyes-1
+bounds:2042,983,14,4
+offsets:1,1,16,6
+rotate:90
+L new L/15059/15059_eyes-2
+bounds:621,1098,14,2
+offsets:1,1,16,4
+L new L/15059/15059_hair
+bounds:688,284,58,46
+offsets:1,1,60,48
+rotate:90
+L new L/15059/15059_horn
+bounds:1322,1058,96,46
+offsets:1,1,98,48
+rotate:90
+L new L/15059/15059_leg_l
+bounds:1790,873,22,18
+offsets:1,1,24,20
+L new L/15059/15059_leg_r
+bounds:1790,873,22,18
+offsets:1,1,24,20
+L new L/15059/15059_mouth
+bounds:1584,681,60,38
+offsets:1,1,62,40
+L new L/15059/15059_side hair
+bounds:146,238,8,26
+L new L/15059/15059_tail
+bounds:1784,581,26,14
+offsets:1,1,28,16
+rotate:90
+L new L/15059/15059_weapon
+bounds:1515,1791,50,132
+offsets:1,1,52,134
+rotate:90
+L new L/15059/15059_weapon_reaf
+bounds:1993,973,14,14
+offsets:1,1,16,16
+L new L/15059/15059_wing
+bounds:1736,1073,28,30
+offsets:1,1,30,32
+L new L/15060/15060_arm_l
+bounds:780,120,30,32
+offsets:1,1,32,34
+L new L/15060/15060_arm_r
+bounds:1042,120,28,32
+offsets:1,1,30,34
+rotate:90
+L new L/15060/15060_body
+bounds:1194,629,40,44
+offsets:1,1,42,46
+rotate:90
+L new L/15060/15060_eyes
+bounds:1836,793,20,14
+offsets:1,1,22,16
+L new L/15060/15060_head
+bounds:1881,1471,84,78
+offsets:1,1,86,80
+L new L/15060/15060_leg_l
+bounds:1790,853,22,18
+offsets:1,1,24,20
+L new L/15060/15060_leg_r
+bounds:1790,853,22,18
+offsets:1,1,24,20
+L new L/15060/15060_tail
+bounds:1896,1102,28,16
+offsets:1,1,30,18
+rotate:90
+L new L/15060/15060_weapon
+bounds:426,1083,136,88
+offsets:1,1,138,90
+rotate:90
+L new L/15060/15060_weapon_1
+bounds:2,57,179,130
+offsets:4,6,189,141
+rotate:90
+L new L/15060/15060_wing
+bounds:659,22,38,24
+offsets:1,1,40,26
+L new L/15061/15061_arm_l
+bounds:1782,735,20,30
+offsets:1,1,22,32
+L new L/15061/15061_arm_r
+bounds:1782,703,20,30
+offsets:1,1,22,32
+L new L/15061/15061_body
+bounds:774,666,50,40
+offsets:1,1,52,42
+L new L/15061/15061_eyes_01
+bounds:1836,777,14,20
+offsets:1,1,16,22
+rotate:90
+L new L/15061/15061_eyes_02
+bounds:1820,657,14,20
+offsets:1,1,16,22
+L new L/15061/15061_eyes_03
+bounds:1824,627,14,20
+offsets:1,1,16,22
+L new L/15061/15061_eyes_04
+bounds:1832,587,14,20
+offsets:1,1,16,22
+L new L/15061/15061_eyes_05
+bounds:1919,984,14,20
+offsets:1,1,16,22
+L new L/15061/15061_hair
+bounds:887,229,20,48
+L new L/15061/15061_hair_back
+bounds:665,157,40,26
+L new L/15061/15061_head
+bounds:401,369,80,68
+offsets:1,1,82,70
+L new L/15061/15061_leg_l
+bounds:1149,278,22,22
+offsets:1,1,24,24
+L new L/15061/15061_leg_r
+bounds:1146,234,22,22
+offsets:1,1,24,24
+L new L/15061/15061_mouth_01
+bounds:1953,971,16,8
+offsets:1,1,18,10
+rotate:90
+L new L/15061/15061_mouth_02
+bounds:1166,110,16,8
+offsets:1,1,18,10
+rotate:90
+L new L/15061/15061_mouth_03
+bounds:1154,110,16,10
+offsets:1,1,18,12
+rotate:90
+L new L/15061/15061_tail
+bounds:1800,581,26,14
+offsets:1,1,28,16
+rotate:90
+L new L/15061/15061_weapon
+bounds:919,1625,146,50
+offsets:1,1,148,52
+rotate:90
+L new L/15061/15061_wing
+bounds:1714,703,32,20
+offsets:1,1,34,22
+rotate:90
+L new L/15062/15062_arm_l
+bounds:1251,414,24,34
+offsets:1,1,26,36
+L new L/15062/15062_arm_r
+bounds:736,402,22,34
+offsets:1,1,24,36
+L new L/15062/15062_back_hair
+bounds:1422,1037,66,82
+rotate:90
+L new L/15062/15062_body
+bounds:1196,719,60,44
+L new L/15062/15062_eyebrow_01
+bounds:1884,1202,8,4
+offsets:1,1,10,6
+L new L/15062/15062_eyebrow_02
+bounds:916,976,6,6
+offsets:1,1,8,8
+L new L/15062/15062_eyes_01_01
+bounds:1199,281,8,10
+offsets:1,1,10,12
+L new L/15062/15062_eyes_01_02
+bounds:750,666,8,8
+offsets:1,1,10,10
+L new L/15062/15062_eyes_01_03
+bounds:1904,1833,8,6
+offsets:1,1,10,8
+rotate:90
+L new L/15062/15062_eyes_01_04
+bounds:1499,1027,8,4
+offsets:1,1,10,6
+rotate:90
+L new L/15062/15062_eyes_01_05
+bounds:1189,293,10,10
+offsets:1,1,12,12
+L new L/15062/15062_hair
+bounds:1209,807,66,18
+offsets:1,1,68,20
+L new L/15062/15062_hair_l_1
+bounds:1810,1105,24,26
+L new L/15062/15062_hair_l_2
+bounds:1763,1211,16,34
+offsets:1,1,18,36
+rotate:90
+L new L/15062/15062_hair_r_1
+bounds:1990,1035,18,24
+rotate:90
+L new L/15062/15062_head
+bounds:1872,1298,60,38
+offsets:1,1,62,40
+L new L/15062/15062_leg_l
+bounds:1815,927,22,18
+offsets:1,1,24,20
+L new L/15062/15062_leg_r
+bounds:1815,927,22,18
+offsets:1,1,24,20
+L new L/15062/15062_mouth_0
+bounds:1876,900,10,12
+offsets:1,1,12,14
+L new L/15062/15062_mouth_01
+bounds:1712,1893,18,4
+offsets:1,1,20,6
+L new L/15062/15062_mouth_02
+bounds:739,344,18,4
+offsets:1,1,20,6
+L new L/15062/15062_star
+bounds:1386,626,28,50
+offsets:1,1,30,52
+rotate:90
+L new L/15062/15062_tail
+bounds:1880,1056,26,20
+offsets:1,1,28,22
+L new L/15062/15062_weapon
+bounds:943,838,54,68
+offsets:1,1,56,70
+rotate:90
+L new L/15062/15062_weapon_ef
+bounds:1211,1539,110,122
+offsets:3,3,116,128
+L new L/15062/15062_weapon_ef _f
+bounds:1926,1868,66,120
+offsets:2,2,70,124
+rotate:90
+L new L/15062/15062_weapon_f
+bounds:1680,1357,14,68
+offsets:2,1,18,70
+rotate:90
+L new L/15062/15062_wing
+bounds:1736,1179,32,24
+offsets:1,1,34,26
+rotate:90
+L new L/L archer/arm_l
+bounds:1788,1129,20,30
+offsets:1,1,22,32
+L new L/L archer/arm_r
+bounds:1788,1097,20,30
+offsets:1,1,22,32
+L new L/L archer/body
+bounds:846,515,48,40
+offsets:1,1,50,42
+rotate:90
+L new L/L archer/eye
+bounds:1179,220,14,8
+offsets:1,1,16,10
+rotate:90
+L new L/L archer/head
+bounds:402,295,74,72
+offsets:1,1,76,74
+L new L/L archer/head_fx
+bounds:1006,611,22,46
+rotate:90
+L new L/L archer/leg_l
+bounds:1814,907,22,18
+offsets:1,1,24,20
+L new L/L archer/leg_r
+bounds:1814,907,22,18
+offsets:1,1,24,20
+L new L/L archer/mouth
+bounds:1167,168,14,10
+offsets:1,1,16,12
+rotate:90
+L new L/L archer/tail
+bounds:1726,801,32,22
+offsets:1,1,34,24
+rotate:90
+L new L/L archer/weapon_fx
+bounds:973,218,34,34
+L new L/L archer/weapons
+bounds:1784,1843,36,126
+rotate:90
+L new L/L archer/weapons 0
+bounds:483,351,16,86
+offsets:1,1,18,88
+L new L/L archer/wing
+bounds:1586,1071,30,48
+offsets:1,1,32,50
+rotate:90
+L new L/L astronaut/arm_l
+bounds:1916,1083,18,28
+offsets:1,1,20,30
+L new L/L astronaut/arm_r
+bounds:1764,915,24,30
+offsets:1,1,26,32
+L new L/L astronaut/body
+bounds:941,380,44,34
+offsets:1,1,46,36
+rotate:90
+L new L/L astronaut/eye
+bounds:1829,565,10,16
+offsets:1,1,12,18
+rotate:90
+L new L/L astronaut/fire01
+bounds:1179,204,10,14
+offsets:1,1,12,16
+L new L/L astronaut/fire02
+bounds:1179,188,10,14
+offsets:1,1,12,16
+L new L/L astronaut/fire03
+bounds:1179,172,10,14
+offsets:1,1,12,16
+L new L/L astronaut/fx_weapon01
+bounds:736,284,58,13
+offsets:1,2,60,17
+rotate:90
+L new L/L astronaut/fx_weapon02
+bounds:688,267,58,15
+offsets:1,2,60,18
+L new L/L astronaut/fx_weapon03
+bounds:723,616,58,13
+offsets:1,2,60,17
+rotate:90
+L new L/L astronaut/fx_weapon04
+bounds:618,58,57,12
+offsets:2,2,60,15
+rotate:90
+L new L/L astronaut/fx_weapon05
+bounds:612,182,59,11
+offsets:1,1,61,14
+rotate:90
+L new L/L astronaut/fx_weapon06
+bounds:563,1781,58,10
+offsets:1,3,60,15
+rotate:90
+L new L/L astronaut/fx_weapon07
+bounds:761,666,57,11
+offsets:1,2,59,15
+rotate:90
+L new L/L astronaut/fx_weapon08
+bounds:738,616,58,10
+offsets:1,1,60,12
+rotate:90
+L new L/L astronaut/fx_weapon09
+bounds:1677,1237,57,10
+offsets:1,1,59,13
+L new L/L astronaut/head
+bounds:624,937,92,62
+offsets:1,1,94,64
+L new L/L astronaut/head_up
+bounds:1343,1353,50,44
+offsets:1,1,52,46
+L new L/L astronaut/leg_l
+bounds:1814,887,22,18
+offsets:1,1,24,20
+L new L/L astronaut/leg_r
+bounds:1814,887,22,18
+offsets:1,1,24,20
+L new L/L astronaut/mouth
+bounds:478,339,20,10
+offsets:1,1,22,12
+L new L/L astronaut/tail
+bounds:1914,1113,26,22
+offsets:1,1,28,24
+L new L/L astronaut/tubel
+bounds:1936,1089,24,22
+L new L/L astronaut/tuber
+bounds:783,86,32,26
+rotate:90
+L new L/L astronaut/weapon_c
+bounds:727,438,56,32
+rotate:90
+L new L/L astronaut/weapon_light
+bounds:930,645,8,6
+offsets:1,1,10,8
+rotate:90
+L new L/L astronaut/weapon_lower
+bounds:550,161,62,12
+offsets:1,1,64,14
+rotate:90
+L new L/L astronaut/weapon_upper
+bounds:1957,1309,62,12
+offsets:1,1,64,14
+L new L/L astronaut/weapons
+bounds:1763,1257,48,48
+offsets:1,1,50,50
+L new L/L astronaut/wing
+bounds:841,293,44,34
+offsets:1,1,46,36
+L new L/L azrael/arm_l
+bounds:1701,935,26,30
+L new L/L azrael/arm_r
+bounds:1701,935,26,30
+L new L/L azrael/body
+bounds:929,568,44,44
+L new L/L azrael/body_u
+bounds:1800,815,10,22
+L new L/L azrael/eye
+bounds:2002,1071,18,20
+offsets:1,1,20,22
+rotate:90
+L new L/L azrael/head
+bounds:1865,1258,60,38
+offsets:1,1,62,40
+L new L/L azrael/horn
+bounds:1260,1166,114,54
+rotate:90
+L new L/L azrael/horn_acc
+bounds:646,117,14,40
+L new L/L azrael/horn_d
+bounds:841,261,30,44
+rotate:90
+L new L/L azrael/horn_df
+bounds:1664,1173,38,44
+rotate:90
+L new L/L azrael/leg_l
+bounds:1814,867,22,18
+offsets:1,1,24,20
+L new L/L azrael/leg_r
+bounds:1814,867,22,18
+offsets:1,1,24,20
+L new L/L azrael/mouth
+bounds:2042,999,24,4
+offsets:1,1,26,6
+rotate:90
+L new L/L azrael/tail
+bounds:1816,581,26,14
+offsets:1,1,28,16
+rotate:90
+L new L/L azrael/weapons
+bounds:1438,692,32,52
+offsets:1,1,34,54
+rotate:90
+L new L/L azrael/wing
+bounds:1009,182,36,20
+L new L/L dark night/arm_l
+bounds:1043,150,26,34
+offsets:1,1,28,36
+rotate:90
+L new L/L dark night/arm_r
+bounds:1756,839,22,32
+offsets:1,1,24,34
+rotate:90
+L new L/L dark night/body
+bounds:1193,557,40,38
+offsets:1,1,42,40
+L new L/L dark night/eye
+bounds:1189,279,12,8
+offsets:1,1,14,10
+rotate:90
+L new L/L dark night/head
+bounds:508,766,80,76
+offsets:1,1,82,78
+rotate:90
+L new L/L dark night/leg_l
+bounds:2016,1005,24,18
+offsets:1,1,26,20
+L new L/L dark night/leg_r
+bounds:2016,1005,24,18
+offsets:1,1,26,20
+L new L/L dark night/tail
+bounds:1854,1131,28,14
+offsets:1,1,30,16
+rotate:90
+L new L/L dark night/weapon
+bounds:1202,1368,50,152
+offsets:1,1,52,156
+L new L/L dark night/weapon_fx
+bounds:1254,1387,48,150
+L new L/L dark night/wing
+bounds:976,518,48,24
+offsets:1,1,50,26
+rotate:90
+L new L/L dragonknight/arm_l
+bounds:1732,647,24,30
+offsets:1,1,26,32
+L new L/L dragonknight/arm_r
+bounds:1732,615,24,30
+offsets:1,1,26,32
+L new L/L dragonknight/body
+bounds:757,564,50,42
+offsets:1,1,52,44
+rotate:90
+L new L/L dragonknight/eye
+bounds:1042,108,18,10
+offsets:1,1,20,12
+L new L/L dragonknight/eye_fx
+bounds:783,52,32,26
+offsets:1,0,34,26
+rotate:90
+L new L/L dragonknight/face
+bounds:1054,606,46,23
+L new L/L dragonknight/hair_01
+bounds:699,21,38,22
+L new L/L dragonknight/hair_02
+bounds:1102,605,46,22
+L new L/L dragonknight/hair_fx
+bounds:2034,1161,26,12
+offsets:1,1,28,14
+rotate:90
+L new L/L dragonknight/head_lower
+bounds:1881,1372,84,31
+L new L/L dragonknight/head_upper
+bounds:478,269,78,68
+L new L/L dragonknight/headacc
+bounds:1076,107,10,18
+rotate:90
+L new L/L dragonknight/horn
+bounds:478,225,76,42
+L new L/L dragonknight/leg_r
+bounds:1143,210,22,22
+offsets:1,1,24,24
+L new L/L dragonknight/tail
+bounds:625,159,38,26
+L new L/L dragonknight/weaponacc
+bounds:1310,582,24,14
+L new L/L dragonknight/weapons
+bounds:744,1316,144,74
+offsets:1,1,146,76
+rotate:90
+L new L/L dragonknight/wing
+bounds:625,187,38,54
+L new L/L heart/arm_l
+bounds:1854,1184,22,28
+offsets:1,1,24,30
+rotate:90
+L new L/L heart/arm_r
+bounds:1870,1160,22,28
+offsets:1,1,24,30
+rotate:90
+L new L/L heart/body
+bounds:938,644,48,44
+offsets:1,1,50,46
+L new L/L heart/body_heart
+bounds:1906,1006,20,16
+L new L/L heart/eye
+bounds:1189,265,8,12
+offsets:1,1,10,14
+L new L/L heart/hair_l
+bounds:1209,827,48,66
+offsets:1,1,50,68
+rotate:90
+L new L/L heart/head
+bounds:1203,877,72,52
+offsets:1,1,74,54
+L new L/L heart/head_jewel
+bounds:1184,114,12,12
+offsets:0,2,12,16
+L new L/L heart/leg_l
+bounds:1839,925,22,18
+offsets:1,1,24,20
+L new L/L heart/leg_r
+bounds:1839,925,22,18
+offsets:1,1,24,20
+L new L/L heart/mouth
+bounds:1179,156,14,10
+offsets:1,1,16,12
+rotate:90
+L new L/L heart/tail
+bounds:1876,1022,28,16
+L new L/L heart/weapons
+bounds:269,479,38,132
+offsets:1,1,40,134
+L new L/L heart/weapons2
+bounds:309,479,8,132
+L new L/L heart/weapons_heart
+bounds:1123,178,26,18
+rotate:90
+L new L/L heart/wing
+bounds:749,233,28,44
+offsets:1,1,30,46
+rotate:90
+L new L/L jason/arm_l
+bounds:1944,1137,20,28
+offsets:1,1,22,30
+rotate:90
+L new L/L jason/arm_r
+bounds:1944,1137,20,28
+offsets:1,1,22,30
+rotate:90
+L new L/L jason/body
+bounds:1040,528,40,40
+offsets:1,1,42,42
+L new L/L jason/head
+bounds:1204,931,80,58
+rotate:90
+L new L/L jason/leg_l
+bounds:1838,905,22,18
+offsets:1,1,24,20
+L new L/L jason/leg_r
+bounds:1838,885,22,18
+offsets:1,1,24,20
+L new L/L jason/mask
+bounds:722,798,70,44
+rotate:90
+L new L/L jason/mask_fx
+bounds:1009,117,31,31
+offsets:0,2,31,33
+L new L/L jason/tail
+bounds:1763,947,30,26
+rotate:90
+L new L/L jason/weapons_1
+bounds:328,231,94,16
+offsets:1,1,96,18
+rotate:90
+L new L/L jason/weapons_2
+bounds:1021,957,92,42
+offsets:1,1,94,44
+L new L/L jason/weapons_acc
+bounds:643,17,14,40
+L new L/L jason/weapons_acc1
+bounds:1187,1775,6,18
+rotate:90
+L new L/L jason/weapons_acc2
+bounds:1964,987,14,18
+rotate:90
+L new L/L jason/wing
+bounds:1039,570,40,34
+L new L/L joker/arm_l
+bounds:1908,1048,18,28
+offsets:1,1,20,30
+L new L/L joker/arm_r
+bounds:1908,1048,18,28
+offsets:1,1,20,30
+L new L/L joker/body
+bounds:1040,486,40,40
+offsets:1,1,42,42
+L new L/L joker/eye
+bounds:1692,565,12,24
+offsets:1,1,14,26
+rotate:90
+L new L/L joker/head
+bounds:496,542,92,62
+L new L/L joker/headacc_l
+bounds:632,77,30,38
+L new L/L joker/headacc_r
+bounds:1792,1065,20,30
+offsets:1,1,22,32
+L new L/L joker/leg_l
+bounds:1838,865,22,18
+offsets:1,1,24,20
+L new L/L joker/leg_r
+bounds:1838,865,22,18
+offsets:1,1,24,20
+L new L/L joker/lip
+bounds:926,1483,2,2
+L new L/L joker/mouth
+bounds:530,1587,30,12
+offsets:1,1,32,14
+L new L/L joker/neck
+bounds:841,179,44,12
+L new L/L joker/tail
+bounds:1253,378,34,24
+rotate:90
+L new L/L joker/weapons
+bounds:888,517,40,48
+L new L/L joker/wing
+bounds:1089,295,32,34
+rotate:90
+L new L/L maid/arm_l
+bounds:1794,1033,20,30
+offsets:1,1,22,32
+L new L/L maid/arm_r
+bounds:1492,601,20,30
+offsets:1,1,22,32
+rotate:90
+L new L/L maid/body
+bounds:801,564,50,40
+offsets:1,1,52,42
+rotate:90
+L new L/L maid/eye
+bounds:1204,315,8,12
+offsets:1,1,10,14
+rotate:90
+L new L/L maid/hair_l
+bounds:366,158,38,80
+offsets:1,1,40,82
+L new L/L maid/hair_r
+bounds:584,684,34,80
+offsets:1,1,36,82
+L new L/L maid/head
+bounds:1881,1405,84,64
+offsets:1,1,86,66
+L new L/L maid/head_acc
+bounds:1792,775,8,30
+L new L/L maid/leg_l
+bounds:1814,847,22,18
+offsets:1,1,24,20
+L new L/L maid/leg_r
+bounds:1838,845,22,18
+offsets:1,1,24,20
+L new L/L maid/mouth
+bounds:1201,303,10,10
+offsets:1,1,12,12
+L new L/L maid/tail
+bounds:1336,584,26,14
+offsets:1,1,28,16
+L new L/L maid/weapons
+bounds:1912,1832,34,126
+offsets:1,1,36,128
+rotate:90
+L new L/L maid/wing
+bounds:1703,989,36,24
+offsets:1,1,38,26
+rotate:90
+L new L/L mecanic/arm_l
+bounds:1876,1004,16,28
+offsets:1,1,18,30
+rotate:90
+L new L/L mecanic/arm_r
+bounds:1127,351,16,28
+offsets:1,1,18,30
+rotate:90
+L new L/L mecanic/body
+bounds:761,361,44,40
+offsets:1,1,46,42
+L new L/L mecanic/eye
+bounds:1874,874,10,12
+offsets:1,1,12,14
+L new L/L mecanic/eye1
+bounds:1199,269,10,6
+rotate:90
+L new L/L mecanic/hair
+bounds:328,135,36,94
+L new L/L mecanic/head
+bounds:474,169,74,54
+offsets:1,1,76,56
+L new L/L mecanic/leg_l
+bounds:1812,827,22,18
+offsets:1,1,24,20
+L new L/L mecanic/leg_r
+bounds:1836,825,22,18
+offsets:1,1,24,20
+L new L/L mecanic/mouth
+bounds:1788,609,16,6
+offsets:1,1,18,8
+L new L/L mecanic/mouth1
+bounds:1804,703,16,6
+offsets:1,1,18,8
+L new L/L mecanic/weapons
+bounds:1957,1245,32,58
+offsets:1,1,34,60
+rotate:90
+L new L/L mecanic/weapons_u
+bounds:667,233,32,58
+offsets:1,1,34,60
+rotate:90
+L new L/L mecanic/wing
+bounds:795,260,44,34
+offsets:1,1,46,36
+L new L/L one eyed/arm_l
+bounds:1974,1137,20,28
+offsets:1,1,22,30
+rotate:90
+L new L/L one eyed/arm_r
+bounds:2004,1137,20,28
+offsets:1,1,22,30
+rotate:90
+L new L/L one eyed/body
+bounds:1148,629,42,44
+offsets:1,1,44,46
+rotate:90
+L new L/L one eyed/eye
+bounds:1088,227,32,32
+offsets:1,1,34,34
+L new L/L one eyed/hair
+bounds:583,389,58,72
+L new L/L one eyed/head
+bounds:1430,808,72,52
+offsets:1,1,74,54
+L new L/L one eyed/leaf
+bounds:691,927,20,8
+offsets:1,1,22,10
+L new L/L one eyed/leg_l
+bounds:2024,1065,22,20
+offsets:1,1,24,22
+L new L/L one eyed/leg_r
+bounds:2024,1065,22,20
+offsets:1,1,24,22
+L new L/L one eyed/mouth
+bounds:1992,989,20,10
+offsets:1,1,22,12
+L new L/L one eyed/tail
+bounds:1793,983,24,22
+offsets:1,1,26,24
+L new L/L one eyed/teleport
+bounds:832,796,54,70
+L new L/L one eyed/teleport2
+bounds:1264,931,77,58
+offsets:0,0,78,58
+rotate:90
+L new L/L one eyed/weapons
+bounds:620,684,80,30
+offsets:1,1,82,32
+rotate:90
+L new L/L one eyed/wing
+bounds:807,362,34,46
+rotate:90
+L new L/L scientist/Layer 4
+bounds:1422,1013,22,6
+offsets:1,1,24,8
+rotate:90
+L new L/L scientist/arm_l
+bounds:1736,733,22,32
+L new L/L scientist/body
+bounds:937,426,38,46
+offsets:1,1,40,48
+L new L/L scientist/eye
+bounds:1862,905,12,12
+offsets:1,1,14,14
+L new L/L scientist/eye1
+bounds:1125,326,23,23
+offsets:2,1,26,26
+L new L/L scientist/glass
+bounds:1914,1869,40,10
+offsets:1,1,42,12
+rotate:90
+L new L/L scientist/hair
+bounds:248,110,104,46
+rotate:90
+L new L/L scientist/hair_l01
+bounds:1047,178,36,22
+L new L/L scientist/hair_r01
+bounds:1758,627,28,24
+L new L/L scientist/hair_r02
+bounds:1750,767,32,16
+rotate:90
+L new L/L scientist/hair_up1
+bounds:1729,997,30,28
+offsets:1,1,32,30
+L new L/L scientist/hair_up2
+bounds:1143,184,24,20
+rotate:90
+L new L/L scientist/hair_up3
+bounds:1756,581,26,26
+L new L/L scientist/head copy
+bounds:1586,1103,60,38
+offsets:1,1,62,40
+L new L/L scientist/leg_l
+bounds:1812,815,22,10
+offsets:1,1,24,12
+L new L/L scientist/leg_r
+bounds:1812,815,22,10
+offsets:1,1,24,12
+L new L/L scientist/mouth
+bounds:1814,679,22,10
+offsets:1,1,24,12
+rotate:90
+L new L/L scientist/tail
+bounds:1023,297,34,28
+rotate:90
+L new L/L scientist/tie
+bounds:1746,1161,16,34
+rotate:90
+L new L/L scientist/weapons
+bounds:1438,658,32,52
+offsets:1,1,34,54
+rotate:90
+L new L/L scientist/weapons_throw
+bounds:930,522,44,44
+L new L/L scientist/weapons_up
+bounds:1388,584,26,14
+L new L/L scientist/wing
+bounds:977,358,40,28
+L new L/L tankhead/arm_l
+bounds:1816,1007,18,28
+offsets:1,1,20,30
+rotate:90
+L new L/L tankhead/arm_r
+bounds:1846,1007,18,28
+offsets:1,1,20,30
+rotate:90
+L new L/L tankhead/block_01
+bounds:1053,262,32,34
+offsets:1,1,34,36
+rotate:90
+L new L/L tankhead/block_02
+bounds:885,567,48,42
+offsets:1,1,50,44
+rotate:90
+L new L/L tankhead/block_03
+bounds:1089,261,32,34
+offsets:1,1,34,36
+rotate:90
+L new L/L tankhead/body
+bounds:1388,814,66,40
+offsets:1,1,68,42
+rotate:90
+L new L/L tankhead/caterpillar
+bounds:1277,755,68,30
+offsets:1,1,70,32
+L new L/L tankhead/caterpillar1
+bounds:795,230,44,28
+offsets:1,1,46,30
+L new L/L tankhead/caterpillar2
+bounds:841,231,44,28
+offsets:1,1,46,30
+L new L/L tankhead/caterpillar4
+bounds:945,334,44,28
+offsets:1,1,46,30
+rotate:90
+L new L/L tankhead/eye
+bounds:1819,983,24,22
+L new L/L tankhead/head
+bounds:1195,765,62,40
+L new L/L tankhead/leg_l
+bounds:1802,795,22,18
+offsets:1,1,24,20
+L new L/L tankhead/leg_r
+bounds:1802,795,22,18
+offsets:1,1,24,20
+L new L/L tankhead/mouth
+bounds:1766,1125,34,20
+rotate:90
+L new L/L tankhead/tail
+bounds:1544,587,26,14
+offsets:1,1,28,16
+L new L/L tankhead/weapons_d
+bounds:1122,488,40,36
+L new L/L tankhead/weapons_f
+bounds:1845,983,22,24
+rotate:90
+L new L/L tankhead/weapons_m
+bounds:761,436,56,26
+L new L/L tankhead/weapons_u
+bounds:909,241,42,36
+rotate:90
+L new L/L tankhead/wing
+bounds:1667,1213,50,22
+L new L/L wihte skull/arm_l
+bounds:1732,581,22,32
+offsets:1,1,24,34
+L new L/L wihte skull/arm_r
+bounds:1648,1105,48,34
+offsets:1,1,50,36
+L new L/L wihte skull/body
+bounds:751,297,42,40
+offsets:1,1,44,42
+L new L/L wihte skull/eye
+bounds:1874,860,10,12
+offsets:1,1,12,14
+L new L/L wihte skull/head
+bounds:932,1072,86,64
+offsets:1,1,88,66
+L new L/L wihte skull/leg_l
+bounds:1440,582,24,18
+offsets:1,1,26,20
+L new L/L wihte skull/leg_r
+bounds:1466,582,24,18
+offsets:1,1,26,20
+L new L/L wihte skull/tail
+bounds:1228,517,38,14
+offsets:1,1,40,16
+rotate:90
+L new L/L wihte skull/weapons1
+bounds:2012,1710,34,120
+offsets:1,1,36,122
+L new L/L wihte skull/weapons1_fx
+bounds:1554,1123,14,64
+L new L/L wihte skull/weapons2
+bounds:1499,1214,52,52
+offsets:1,1,54,54
+L new L/L wihte skull/wing
+bounds:1820,1307,50,46
+offsets:1,1,52,48
+L new L/L witch/arm_l
+bounds:1310,598,24,28
+offsets:1,1,26,30
+L new L/L witch/arm_r
+bounds:1310,598,24,28
+offsets:1,1,26,30
+L new L/L witch/body
+bounds:1544,799,56,40
+rotate:90
+L new L/L witch/cauldron
+bounds:637,1225,108,105
+offsets:0,0,109,105
+rotate:90
+L new L/L witch/earrings_l
+bounds:1170,236,16,16
+offsets:1,1,18,18
+L new L/L witch/earrings_r
+bounds:1170,236,16,16
+offsets:1,1,18,18
+L new L/L witch/eye
+bounds:1935,985,14,20
+offsets:1,1,16,22
+L new L/L witch/eye_fx
+bounds:1761,997,30,28
+offsets:1,1,32,30
+L new L/L witch/fx01
+bounds:1681,1442,82,35
+offsets:2,2,86,38
+L new L/L witch/hair_l01
+bounds:723,556,32,58
+L new L/L witch/hair_l02
+bounds:1438,628,28,52
+rotate:90
+L new L/L witch/hair_l03
+bounds:947,284,24,48
+L new L/L witch/hair_r01
+bounds:724,496,32,58
+L new L/L witch/hair_r02
+bounds:930,614,28,52
+rotate:90
+L new L/L witch/hair_r03
+bounds:947,234,24,48
+L new L/L witch/hat_skull
+bounds:1085,177,20,36
+rotate:90
+L new L/L witch/hat_skull_eye
+bounds:1143,178,6,4
+L new L/L witch/head
+bounds:1661,919,60,38
+offsets:1,1,62,40
+rotate:90
+L new L/L witch/horn
+bounds:658,1335,126,84
+rotate:90
+L new L/L witch/leg_l
+bounds:1802,775,22,18
+offsets:1,1,24,20
+L new L/L witch/leg_r
+bounds:1802,775,22,18
+offsets:1,1,24,20
+L new L/L witch/mouth
+bounds:1888,902,12,10
+offsets:1,1,14,12
+L new L/L witch/skull
+bounds:1862,891,12,12
+offsets:1,1,14,14
+L new L/L witch/tail
+bounds:1543,571,26,14
+offsets:1,1,28,16
+L new L/L witch/weapon_up
+bounds:1788,647,12,30
+offsets:1,1,14,32
+L new L/L witch/weapons
+bounds:99,420,142,52
+offsets:1,1,144,54
+L new L/L witch/wing
+bounds:1438,726,52,46
+L new L/L_lancer/arm_l
+bounds:699,80,30,38
+offsets:1,1,32,40
+rotate:90
+L new L/L_lancer/arm_r
+bounds:1007,150,30,34
+offsets:1,1,32,36
+rotate:90
+L new L/L_lancer/body
+bounds:750,616,48,46
+offsets:1,1,50,48
+rotate:90
+L new L/L_lancer/body_u
+bounds:778,2,36,14
+L new L/L_lancer/eye
+bounds:1790,839,12,18
+rotate:90
+L new L/L_lancer/hair
+bounds:1336,600,26,26
+L new L/L_lancer/head
+bounds:248,1091,128,80
+rotate:90
+L new L/L_lancer/leg_l
+bounds:1492,581,24,18
+offsets:1,1,26,20
+L new L/L_lancer/leg_r
+bounds:1492,581,24,18
+offsets:1,1,26,20
+L new L/L_lancer/mouth
+bounds:1188,239,12,8
+offsets:1,1,14,10
+rotate:90
+L new L/L_lancer/shield
+bounds:1390,718,46,54
+offsets:1,1,48,56
+L new L/L_lancer/tail
+bounds:1571,571,26,14
+offsets:1,1,28,16
+L new L/L_lancer/weapons
+bounds:189,1753,196,72
+offsets:1,1,198,74
+L new L/L_lancer/wing
+bounds:1054,226,34,32
+offsets:1,1,36,34
+rotate:90
+L new L/L_vampire/arm_l
+bounds:1157,350,16,28
+offsets:1,1,18,30
+rotate:90
+L new L/L_vampire/arm_r
+bounds:1157,350,16,28
+offsets:1,1,18,30
+rotate:90
+L new L/L_vampire/body
+bounds:1186,517,38,40
+offsets:1,1,40,42
+rotate:90
+L new L/L_vampire/eye
+bounds:1199,257,6,10
+offsets:1,1,8,12
+L new L/L_vampire/head
+bounds:1415,1273,86,78
+offsets:3,1,90,80
+L new L/L_vampire/head_acc
+bounds:1762,807,24,30
+L new L/L_vampire/leg_l
+bounds:1804,751,22,18
+offsets:1,1,24,20
+rotate:90
+L new L/L_vampire/leg_r
+bounds:1804,751,22,18
+offsets:1,1,24,20
+rotate:90
+L new L/L_vampire/mouth
+bounds:1863,945,18,12
+offsets:1,1,20,14
+rotate:90
+L new L/L_vampire/tail
+bounds:1499,1751,27,14
+offsets:0,1,28,16
+rotate:90
+L new L/L_vampire/weapons
+bounds:774,708,70,30
+offsets:1,1,72,32
+L new L/L_vampire/wing
+bounds:1768,773,22,32
+L new L/L_vampire/wing_1
+bounds:758,512,42,50
+offsets:1,1,44,52
+L new L/L_vampire/wing_2
+bounds:1553,1214,48,52
+arrow_ur_01
+bounds:1518,578,19,23
+offsets:1,2,22,27
+rotate:90
+arrow_ur_012
+bounds:1079,145,30,34
+offsets:2,3,33,40
+rotate:90
+arrow_ur_02
+bounds:739,350,20,50
+offsets:1,2,23,53
+arrow_ur_03
+bounds:1686,737,22,60
+offsets:2,3,26,64
+arrow_ur_04
+bounds:662,274,24,64
+offsets:1,3,27,69
+arrow_ur_05
+bounds:713,721,27,71
+offsets:1,2,30,74
+arrow_ur_06
+bounds:690,794,30,72
+offsets:1,2,33,75
+arrow_ur_07
+bounds:742,725,30,71
+offsets:2,2,34,75
+arrow_ur_08
+bounds:1258,721,32,68
+offsets:1,1,35,71
+rotate:90
+arrow_ur_09
+bounds:1570,1150,30,62
+offsets:1,0,33,64
+arrow_ur_10
+bounds:760,403,31,48
+offsets:1,1,33,51
+rotate:90
+arrow_ur_11
+bounds:855,329,32,46
+offsets:1,2,34,50
+rotate:90
+arrowfx_01
+bounds:180,1571,117,180
+offsets:5,3,125,187
+arrowfx_02
+bounds:2,1754,185,292
+offsets:3,5,191,301
+arrowfx_03
+bounds:380,1891,155,249
+offsets:3,5,162,258
+rotate:90
+arrowfx_04
+bounds:2,420,95,190
+offsets:3,7,101,202
+bat_body
+bounds:134,57,7,10
+rotate:90
+bat_wing_r
+bounds:1140,104,16,12
+offsets:0,0,16,14
+rotate:90
+bg_fx
+bounds:1019,1876,171,170
+offsets:2,0,174,172
+bg_lightning
+bounds:405,517,89,89
+disappear1
+bounds:1277,868,61,45
+offsets:2,2,66,50
+rotate:90
+disappear10
+bounds:1349,787,29,37
+offsets:2,2,33,41
+rotate:90
+disappear2
+bounds:580,463,71,61
+offsets:1,2,74,65
+rotate:90
+disappear3
+bounds:1134,763,59,59
+offsets:2,2,63,64
+disappear4
+bounds:618,868,71,67
+offsets:1,2,74,71
+disappear5
+bounds:622,794,72,66
+offsets:2,2,76,70
+rotate:90
+disappear6
+bounds:1342,1282,71,69
+offsets:1,3,74,74
+disappear7
+bounds:1071,761,61,61
+offsets:2,2,65,65
+disappear8
+bounds:1205,1013,60,57
+offsets:2,2,64,61
+rotate:90
+disappear9
+bounds:1586,641,38,58
+offsets:2,2,42,62
+rotate:90
+ef_15061_00
+bounds:1397,1679,100,99
+offsets:1,1,102,101
+ef_15061_01_01
+bounds:1499,1189,23,62
+offsets:1,1,25,64
+rotate:90
+ef_15061_02_01
+bounds:648,590,23,85
+offsets:1,1,25,87
+effect04
+bounds:1392,1549,92,92
+offsets:0,0,93,92
+effect05
+bounds:1020,1077,95,93
+effect06
+bounds:621,1001,95,95
+effect07
+bounds:1117,1075,94,92
+explosion01
+bounds:346,240,54,26
+offsets:2,2,58,29
+explosion02
+bounds:759,1097,125,47
+offsets:1,1,128,50
+explosion03
+bounds:1363,1859,191,69
+offsets:2,1,195,71
+explosion04
+bounds:2,612,201,80
+offsets:2,2,205,84
+rotate:90
+explosion05
+bounds:2,815,210,90
+offsets:2,2,214,94
+rotate:90
+explosion06
+bounds:2,1027,218,95
+offsets:2,2,222,99
+rotate:90
+fire01
+bounds:1370,1010,44,50
+offsets:1,1,46,53
+rotate:90
+fire02
+bounds:1775,1307,43,50
+offsets:2,1,47,53
+fire03
+bounds:1260,627,42,44
+offsets:2,1,46,47
+fire04
+bounds:886,1097,44,47
+offsets:2,1,48,49
+fire05
+bounds:1277,818,45,48
+offsets:2,1,49,51
+fire06
+bounds:1813,1259,46,50
+offsets:1,1,48,53
+rotate:90
+fire07
+bounds:564,191,46,50
+offsets:1,1,49,53
+fire08
+bounds:665,185,46,50
+offsets:2,1,50,53
+rotate:90
+firefx_01
+bounds:1363,1930,116,207
+offsets:3,3,128,214
+rotate:90
+firefx_02
+bounds:299,1571,117,180
+offsets:3,3,123,192
+firefx_03
+bounds:631,1903,143,199
+offsets:3,3,149,209
+rotate:90
+firefx_04
+bounds:189,1827,189,219
+offsets:7,2,199,236
+firefx_05
+bounds:2,1523,176,229
+offsets:3,3,183,243
+firefxsu_01
+bounds:234,812,59,103
+offsets:1,2,64,107
+rotate:90
+firefxsu_02
+bounds:1021,1017,58,90
+offsets:2,2,62,96
+rotate:90
+firefxsu_03
+bounds:408,666,72,101
+offsets:1,1,75,105
+rotate:90
+firefxsu_04
+bounds:820,1216,89,115
+offsets:1,1,92,122
+rotate:90
+firefxsu_05
+bounds:1117,1169,95,110
+offsets:3,1,100,118
+flame01
+bounds:1085,938,25,17
+offsets:1,1,27,19
+flame02
+bounds:1011,928,72,27
+offsets:1,1,74,29
+flame03
+bounds:1115,976,87,39
+offsets:1,1,89,41
+flame04
+bounds:1365,1181,99,48
+offsets:1,1,101,50
+rotate:90
+flame05
+bounds:1821,1463,110,58
+offsets:1,1,112,60
+rotate:90
+flame06
+bounds:1907,1599,107,58
+offsets:1,1,109,60
+rotate:90
+flame07
+bounds:1904,1770,106,60
+offsets:1,1,108,62
+flame08
+bounds:322,1027,102,56
+offsets:1,1,104,58
+flame09
+bounds:1255,1282,103,55
+offsets:1,1,105,57
+rotate:90
+fog01
+bounds:404,1221,109,112
+fx02
+bounds:248,327,93,68
+offsets:1,2,96,71
+rotate:90
+fx_darksun
+bounds:1192,1877,169,169
+fx_darksun_02
+bounds:339,742,67,129
+offsets:1,3,69,136
+fx_explosion01
+bounds:279,680,130,58
+offsets:1,1,132,60
+rotate:90
+fx_explosion02
+bounds:1187,1783,147,72
+offsets:1,1,149,74
+fx_explosion03
+bounds:622,1614,153,87
+offsets:1,1,155,89
+rotate:90
+fx_explosion04
+bounds:530,1601,166,90
+offsets:1,1,168,92
+rotate:90
+fx_explosion05
+bounds:562,1445,154,87
+offsets:1,1,156,89
+rotate:90
+fx_explosion06
+bounds:711,1616,151,95
+offsets:1,1,153,97
+rotate:90
+fx_fog01
+bounds:821,926,47,66
+offsets:1,1,49,68
+rotate:90
+fx_fog02
+bounds:324,920,95,105
+offsets:1,1,97,107
+fx_fog03
+bounds:515,1222,120,112
+offsets:1,1,122,114
+fx_fog04
+bounds:99,474,137,121
+offsets:1,1,139,123
+rotate:90
+fx_fog05
+bounds:171,1221,143,113
+offsets:1,1,145,115
+fx_fog06
+bounds:808,1625,146,109
+offsets:1,1,148,111
+rotate:90
+fx_fog07
+bounds:651,1463,149,105
+offsets:1,1,151,107
+rotate:90
+fx_fog08
+bounds:801,1773,151,104
+offsets:1,1,153,106
+fx_hit01
+bounds:662,120,35,35
+offsets:1,1,37,37
+fx_hit02
+bounds:251,1019,70,69
+offsets:1,1,72,71
+rotate:90
+fx_hit03
+bounds:943,928,66,64
+offsets:2,3,70,70
+fx_hit04
+bounds:562,1428,15,77
+offsets:0,1,15,81
+rotate:90
+fx_hit05
+bounds:855,363,16,50
+offsets:0,2,16,53
+rotate:90
+fx_knife01
+bounds:1967,1485,65,79
+offsets:2,3,68,83
+rotate:90
+fx_knife02
+bounds:1907,1708,60,103
+offsets:1,4,62,108
+rotate:90
+fx_knife03
+bounds:109,1302,60,219
+offsets:1,2,63,222
+fx_knife04
+bounds:248,216,50,109
+offsets:1,2,52,115
+fx_lightning2_01
+bounds:1081,1774,104,100
+offsets:2,3,110,106
+fx_lightning2_02
+bounds:1082,1644,123,128
+offsets:2,4,127,134
+fx_lightning2_03
+bounds:94,880,132,137
+offsets:2,4,136,142
+fx_lightning2_04
+bounds:84,677,129,133
+offsets:2,2,134,137
+fx_lightning2_05
+bounds:1207,1663,126,118
+offsets:2,2,130,123
+fx_lightning2_06
+bounds:768,802,62,64
+offsets:4,4,68,70
+fx_scythe01
+bounds:1190,325,19,24
+offsets:3,1,23,27
+fx_scythe02
+bounds:1784,1881,128,28
+offsets:3,1,133,31
+fx_scythe03
+bounds:897,1006,89,28
+offsets:3,1,94,32
+rotate:90
+fx_scythe04
+bounds:1277,787,70,29
+offsets:3,1,75,31
+fx_scythe05
+bounds:677,402,57,29
+offsets:3,1,62,31
+fx_scythe06
+bounds:558,243,60,28
+offsets:3,2,65,32
+fx_scythe07
+bounds:622,766,57,26
+offsets:3,2,62,30
+fx_shoot2_01
+bounds:677,493,45,60
+offsets:1,1,47,62
+fx_shoot2_02
+bounds:421,920,67,83
+offsets:1,1,69,85
+rotate:90
+fx_shoot2_03
+bounds:1967,1552,79,76
+offsets:1,1,81,78
+fx_shoot2_04
+bounds:511,680,84,71
+offsets:1,1,86,73
+rotate:90
+fx_shoot2_05
+bounds:1680,1373,82,67
+offsets:1,1,84,69
+fx_shoot2_06
+bounds:1967,1420,79,63
+offsets:1,1,81,65
+fx_shoot2_07
+bounds:674,555,47,59
+offsets:1,1,49,61
+fx_shoot2_08
+bounds:544,2,45,51
+offsets:1,1,47,53
+fx_shoot2_09
+bounds:1197,597,30,41
+offsets:1,1,32,43
+rotate:90
+fx_shoot_01
+bounds:1325,672,59,41
+offsets:1,3,62,46
+fx_shoot_02
+bounds:1323,1539,122,67
+offsets:2,2,126,72
+rotate:90
+fx_shoot_03
+bounds:637,1146,105,77
+offsets:3,1,110,81
+fx_shoot_04
+bounds:1809,1684,89,79
+offsets:1,2,92,82
+fx_shot2_01
+bounds:1089,1484,36,23
+offsets:1,1,38,25
+rotate:90
+fx_shot2_02
+bounds:954,1773,125,101
+offsets:1,1,127,103
+fx_shot2_03
+bounds:971,1639,132,109
+offsets:1,1,134,111
+rotate:90
+fx_shot2_04
+bounds:446,1428,157,114
+offsets:1,1,159,116
+rotate:90
+fx_spark01
+bounds:1127,369,33,38
+offsets:1,1,35,40
+rotate:90
+fx_spark02
+bounds:664,82,33,36
+offsets:1,1,35,38
+fx_spark03
+bounds:725,676,43,34
+offsets:1,1,45,36
+rotate:90
+fx_spark04
+bounds:810,398,43,26
+offsets:1,1,45,28
+fx_spark05
+bounds:1017,436,43,26
+offsets:1,1,45,28
+rotate:90
+fx_spark06
+bounds:1185,445,39,32
+offsets:1,1,41,34
+fx_spark07
+bounds:1122,526,43,22
+offsets:1,1,45,24
+rotate:90
+fx_spark08
+bounds:699,45,33,36
+offsets:1,1,35,38
+rotate:90
+fx_stone_01
+bounds:1506,1129,46,58
+offsets:1,0,48,58
+fx_stone_02
+bounds:1603,1303,72,60
+offsets:0,0,73,60
+fx_stone_03
+bounds:1025,222,27,37
+offsets:1,0,28,37
+fx_stone_04
+bounds:1115,938,87,36
+offsets:6,1,94,39
+fx_stone_p
+bounds:801,1879,29,22
+offsets:0,1,30,24
+fx_t01
+bounds:699,112,35,35
+offsets:1,1,37,37
+head/eye/eye002/eye
+bounds:1888,890,12,10
+offsets:1,1,14,12
+head/eye/eye065/eye
+bounds:810,426,8,6
+offsets:1,1,10,8
+rotate:90
+head/eye/eye066/eye
+bounds:146,58,8,6
+offsets:1,1,10,8
+head/mouth/mouth001/mouth
+bounds:1826,795,18,8
+offsets:1,1,20,10
+rotate:90
+knight_fx_glow
+bounds:98,2,53,53
+offsets:2,2,57,57
+knight_fx_glowd
+bounds:1430,968,67,67
+offsets:3,3,73,73
+knight_fx_glowl
+bounds:1422,1105,82,82
+offsets:2,2,86,86
+knight_fx_glows
+bounds:1671,566,19,19
+offsets:2,2,23,23
+knight_fx_light
+bounds:1572,1899,38,158
+rotate:90
+lamp
+bounds:1149,568,30,42
+offsets:1,1,32,44
+rotate:90
+lamp_fx
+bounds:1089,1522,120,120
+offsets:4,4,128,128
+lightfx01
+bounds:1019,391,43,28
+offsets:3,2,48,33
+rotate:90
+lightfx010
+bounds:1572,1939,210,107
+offsets:2,2,214,111
+lightfx02
+bounds:1651,1751,90,62
+offsets:3,3,95,68
+rotate:90
+lightfx03
+bounds:2,1247,274,105
+offsets:3,4,281,112
+rotate:90
+lightfx04
+bounds:810,1487,136,118
+offsets:3,3,142,124
+rotate:90
+lightfx05
+bounds:702,1769,115,97
+offsets:3,3,121,103
+rotate:90
+lightfx06
+bounds:215,677,133,62
+offsets:2,3,137,67
+rotate:90
+lightfx07
+bounds:366,1407,162,78
+offsets:2,2,166,81
+rotate:90
+lightfx08
+bounds:180,1481,184,88
+offsets:2,1,187,91
+lightfx09
+bounds:1784,1943,209,103
+offsets:2,2,213,106
+razer
+bounds:318,327,93,16
+rotate:90
+razerbeam01
+bounds:693,2,17,17
+offsets:1,1,19,19
+razerbeam02
+bounds:134,66,170,20
+offsets:1,1,172,22
+rotate:90
+razerbeam03
+bounds:1192,1857,169,18
+offsets:1,1,171,20
+razerbeam04
+bounds:631,1886,167,15
+offsets:1,1,169,17
+razerbeam05
+bounds:618,1102,118,17
+offsets:1,1,120,19
+rotate:90
+razerbeam06
+bounds:1316,1166,114,17
+offsets:1,1,116,19
+rotate:90
+shield_00
+bounds:1600,1365,78,75
+offsets:1,1,80,77
+shield_01
+bounds:1114,1400,120,86
+offsets:2,2,123,89
+rotate:90
+shield_02
+bounds:1116,1281,117,84
+offsets:2,2,121,87
+rotate:90
+shield_03
+bounds:1499,1666,111,83
+offsets:1,2,114,87
+shield_04
+bounds:1805,1765,97,76
+offsets:1,2,100,80
+shield_05
+bounds:1817,1575,107,62
+offsets:2,1,110,64
+rotate:90
+shield_06
+bounds:1335,1663,118,60
+offsets:2,1,122,62
+rotate:90
+shield_07
+bounds:826,1146,109,68
+offsets:2,1,112,70
+shield_08
+bounds:1486,1552,110,68
+offsets:2,2,114,71
+shield_side
+bounds:1715,1755,88,86
+offsets:1,1,90,88
+skull_arrow
+bounds:1784,1911,140,30
+offsets:3,1,145,32
+skull_face
+bounds:324,873,109,45
+offsets:1,1,111,47
+skull_face_fx
+bounds:156,110,154,90
+offsets:4,4,162,99
+rotate:90
+skull_head
+bounds:832,1879,167,185
+offsets:4,3,174,191
+rotate:90
+smoke
+bounds:1386,600,24,28
+rotate:90
+smoke2
+bounds:1440,602,24,28
+rotate:90
+storm01
+bounds:802,512,50,42
+offsets:2,2,54,46
+rotate:90
+storm02
+bounds:1517,1282,64,70
+offsets:2,2,68,74
+storm03
+bounds:1601,1482,78,98
+offsets:2,2,82,102
+storm06
+bounds:319,518,84,94
+offsets:2,2,88,98
+storm07
+bounds:927,1010,60,92
+offsets:2,2,64,96
+rotate:90
+storm08
+bounds:346,268,54,86
+offsets:2,2,58,90
+storm09
+bounds:474,117,50,74
+offsets:2,2,54,78
+rotate:90
+target_cross
+bounds:171,1336,143,143
+target_crossb
+bounds:607,950,15,18
+offsets:1,1,17,20
+target_inl
+bounds:501,463,77,77
+offsets:1,1,79,79
+target_ourl
+bounds:520,1000,99,99
+offsets:1,1,101,101
+trump_fx_1
+bounds:380,1841,48,193
+offsets:1,3,51,202
+rotate:90
+trump_fx_2
+bounds:222,478,45,133
+offsets:2,3,49,141
+trump_fx_2-1
+bounds:1316,1396,25,141
+offsets:1,3,27,148
+trump_fx_3
+bounds:933,474,41,46
+offsets:2,2,45,51
+trump_fx_3-1
+bounds:1396,1064,24,115
+offsets:2,5,27,125
+trump_fx_4
+bounds:1499,921,44,58
+offsets:2,1,47,62
+trump_fx_4-1
+bounds:1150,600,27,45
+offsets:1,2,30,51
+rotate:90
+trump_fx_b
+bounds:1370,1056,24,123
+offsets:1,8,26,139
+weapon_fx_01
+bounds:1995,1936,110,51
+offsets:3,3,115,55
+rotate:90
+weapon_fx_02
+bounds:99,1091,147,128
+offsets:3,2,152,133
+weapon_fx_03
+bounds:418,1587,110,180
+offsets:2,2,113,184
+weapon_fx_04
+bounds:1398,1780,115,77
+offsets:2,1,119,81
+weapon_fx_05
+bounds:1814,1233,24,49
+offsets:2,3,27,55
+rotate:90
+weapon_fx_06
+bounds:1235,558,34,26
+offsets:2,2,38,30
+rotate:90
+weapon_fx_07
+bounds:900,984,25,20
+offsets:2,1,29,22
+weapon_fx_08
+bounds:831,151,39,26
+offsets:2,1,44,29
+weapon_fx_09
+bounds:891,467,40,48
+offsets:3,2,46,53
+wind01
+bounds:652,677,87,27
+offsets:1,1,89,29
+rotate:90
+wind02
+bounds:506,928,99,40
+offsets:1,1,101,42
+wind03
+bounds:718,926,101,47
+offsets:1,1,103,49
+wind04
+bounds:1113,1017,90,56
+offsets:1,1,92,58
+wind05
+bounds:937,1138,81,61
+offsets:1,1,83,63
+wind06
+bounds:1967,1355,79,63
+offsets:1,1,81,65
+wind07
+bounds:336,356,82,63
+offsets:1,1,84,65
+rotate:90
+wind08
+bounds:406,174,76,66
+offsets:4,1,81,68
+rotate:90
+wind09
+bounds:888,781,53,64
+offsets:1,1,55,66
