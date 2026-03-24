@@ -1,0 +1,74 @@
+{
+    "importBase": "import",
+    "nativeBase": "native",
+    "name": "main",
+    "deps": [],
+    "uuids": [
+        "0865995ae",
+        "0f3dc2edb",
+        "20835ba4-6145-4fbc-a58a-051ce700aa3e",
+        "20835ba4-6145-4fbc-a58a-051ce700aa3e@6c48a",
+        "20835ba4-6145-4fbc-a58a-051ce700aa3e@f9941",
+        "341885f8-8844-4630-ad7e-b9d158f4fe07",
+        "483816d4-48f9-4a27-a53a-04d844a08bee",
+        "6d34ed86-aab5-4b8c-a7e4-0ec3a046109a",
+        "80411033-b8a3-4b81-96d4-930a4e999cdb",
+        "ba21476f-2866-4f81-9c4d-6e359316e448",
+        "c6134510-135c-48d7-a458-7094d54da60a",
+        "d4f275c0-7765-435a-9b18-7d390653f4e4",
+        "fd8ec536-a354-4a17-9c74-4f3883c378c8"
+    ],
+    "paths": {
+        "341885f8-8844-4630-ad7e-b9d158f4fe07": [
+            "db:/assets/scenes/GameOver",
+            "cc.SceneAsset",
+            1
+        ],
+        "6d34ed86-aab5-4b8c-a7e4-0ec3a046109a": [
+            "db:/assets/scenes/GameScene",
+            "cc.SceneAsset",
+            1
+        ],
+        "d4f275c0-7765-435a-9b18-7d390653f4e4": [
+            "db:/assets/scenes/MainMenu",
+            "cc.SceneAsset",
+            1
+        ],
+        "fd8ec536-a354-4a17-9c74-4f3883c378c8": [
+            "db:/internal/default_renderpipeline/builtin-forward",
+            "cc.RenderPipeline",
+            1
+        ],
+        "ba21476f-2866-4f81-9c4d-6e359316e448": [
+            "db:/internal/physics/default-physics-material",
+            "cc.PhysicsMaterial",
+            1
+        ]
+    },
+    "scenes": {
+        "db://assets/scenes/GameOver.scene": "341885f8-8844-4630-ad7e-b9d158f4fe07",
+        "db://assets/scenes/GameScene.scene": "6d34ed86-aab5-4b8c-a7e4-0ec3a046109a",
+        "db://assets/scenes/MainMenu.scene": "d4f275c0-7765-435a-9b18-7d390653f4e4"
+    },
+    "packs": {
+        "0f3dc2edb": [
+            "20835ba4-6145-4fbc-a58a-051ce700aa3e@f9941",
+            "341885f8-8844-4630-ad7e-b9d158f4fe07"
+        ],
+        "0865995ae": [
+            "483816d4-48f9-4a27-a53a-04d844a08bee",
+            "6d34ed86-aab5-4b8c-a7e4-0ec3a046109a",
+            "80411033-b8a3-4b81-96d4-930a4e999cdb",
+            "c6134510-135c-48d7-a458-7094d54da60a"
+        ]
+    },
+    "versions": {
+        "import": [],
+        "native": []
+    },
+    "redirect": [],
+    "debug": true,
+    "extensionMap": {},
+    "hasPreloadScript": true,
+    "dependencyRelationships": {}
+}
