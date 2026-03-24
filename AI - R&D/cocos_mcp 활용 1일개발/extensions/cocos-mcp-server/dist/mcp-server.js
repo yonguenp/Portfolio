@@ -200,6 +200,14 @@ class MCPServer {
                 res.writeHead(200);
                 res.end(JSON.stringify({ status: 'ok', tools: this.toolsList.length }));
             }
+            else if (pathname === '/reload' && req.method === 'POST') {
+                res.writeHead(200);
+                res.end(JSON.stringify({ status: 'reloading' }));
+                setTimeout(() => {
+                    try { Editor.Package.reload(Editor.Package.getPath('cocos-mcp-server')); }
+                    catch (e) { console.warn('[MCP] reload failed:', e.message); }
+                }, 200);
+            }
             else if ((pathname === null || pathname === void 0 ? void 0 : pathname.startsWith('/api/')) && req.method === 'POST') {
                 await this.handleSimpleAPIRequest(req, res, pathname);
             }

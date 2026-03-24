@@ -187,6 +187,14 @@ class ProjectTools {
                 }
             },
             {
+                name: 'query_build_status',
+                description: 'Query build task status and progress',
+                inputSchema: {
+                    type: 'object',
+                    properties: {}
+                }
+            },
+            {
                 name: 'start_preview_server',
                 description: 'Start preview server',
                 inputSchema: {
@@ -448,6 +456,8 @@ class ProjectTools {
                 return await this.openBuildPanel();
             case 'check_builder_status':
                 return await this.checkBuilderStatus();
+            case 'query_build_status':
+                return await this.queryBuildStatus(args);
             case 'start_preview_server':
                 return await this.startPreviewServer(args.port);
             case 'stop_preview_server':
@@ -498,26 +508,56 @@ class ProjectTools {
     }
     async buildProject(args) {
         return new Promise((resolve) => {
-            const buildOptions = {
-                platform: args.platform,
-                debug: args.debug !== false,
-                sourceMaps: args.debug !== false,
-                buildPath: `build/${args.platform}`
-            };
-            // Note: Builder module only supports 'open' and 'query-worker-ready'
-            // Building requires manual interaction through the build panel
-            Editor.Message.request('builder', 'open').then(() => {
-                resolve({
-                    success: true,
-                    message: `Build panel opened for ${args.platform}. Please configure and start build manually.`,
-                    data: {
-                        platform: args.platform,
-                        instruction: "Use the build panel to configure and start the build process"
-                    }
+            const platform = args.platform || 'web-desktop';
+            const isDebug  = args.debug !== false;
+            // Query scenes from asset db first, then start build
+            Editor.Message.request('asset-db', 'query-assets', { pattern: 'db://assets/**/*.scene' })
+                .then((sceneAssets) => {
+                    const scenes = (sceneAssets || []).map((a) => ({
+                        url: a.url || a.path,
+                        uuid: a.uuid,
+                    })).filter((s) => s.url && s.uuid);
+                    const taskOptions = {
+                        name: `${platform}-build`,
+                        platform,
+                        debug: isDebug,
+                        sourceMaps: isDebug,
+                        buildPath: `${Editor.Project.path}/build`,
+                        scenes,
+                        md5Cache: !isDebug,
+                    };
+                    return Editor.Message.request('builder', 'add-task', taskOptions, false);
+                })
+                .then((result) => {
+                    resolve({
+                        success: true,
+                        message: `Build task added for ${platform}. Task result: ${JSON.stringify(result)}`,
+                        data: { platform, result }
+                    });
+                })
+                .catch((err) => {
+                    // fall back: just open the panel
+                    Editor.Message.request('builder', 'open').then(() => {
+                        resolve({
+                            success: false,
+                            message: `add-task failed (${err.message}). Build panel opened — click Build manually.`,
+                            data: { platform }
+                        });
+                    }).catch((err2) => {
+                        resolve({ success: false, error: err.message + ' / ' + err2.message });
+                    });
                 });
-            }).catch((err) => {
-                resolve({ success: false, error: err.message });
-            });
+        });
+    }
+    async queryBuildStatus(args) {
+        return new Promise((resolve) => {
+            Editor.Message.request('builder', 'query-tasks-info', { type: 'build' })
+                .then((info) => {
+                    resolve({ success: true, data: info });
+                })
+                .catch((err) => {
+                    resolve({ success: false, error: err.message });
+                });
         });
     }
     async getProjectInfo() {
