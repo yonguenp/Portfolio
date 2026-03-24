@@ -1442,7 +1442,7 @@ System.register("chunks:///_virtual/TowerData.ts", ['cc'], function (exports) {
 });
 
 System.register("chunks:///_virtual/TowerManager.ts", ['./rollupPluginModLoBabelHelpers.js', 'cc', './GameManager.ts', './PathFinder.ts', './TowerData.ts', './Tower.ts'], function (exports) {
-  var _applyDecoratedDescriptor, _inheritsLoose, _initializerDefineProperty, _assertThisInitialized, _createForOfIteratorHelperLoose, cclegacy, _decorator, Prefab, Node, UITransform, Vec3, Graphics, Color, Label, instantiate, Component, GameManager, GameState, grid, GRID_W, GRID_H, gridToCanvas, SPAWN_CELL, EXIT_CELL, TILE, isPathPossible, cellKey, canvasToGrid, TOWER_CONFIGS, sellValue, upgradeCost, Tower;
+  var _applyDecoratedDescriptor, _inheritsLoose, _initializerDefineProperty, _assertThisInitialized, _createForOfIteratorHelperLoose, cclegacy, _decorator, Prefab, Node, UITransform, Vec3, Graphics, Color, Label, view, instantiate, Component, GameManager, GameState, grid, GRID_W, GRID_H, gridToCanvas, SPAWN_CELL, EXIT_CELL, TILE, isPathPossible, cellKey, canvasToGrid, TOWER_CONFIGS, sellValue, upgradeCost, Tower;
   return {
     setters: [function (module) {
       _applyDecoratedDescriptor = module.applyDecoratedDescriptor;
@@ -1460,6 +1460,7 @@ System.register("chunks:///_virtual/TowerManager.ts", ['./rollupPluginModLoBabel
       Graphics = module.Graphics;
       Color = module.Color;
       Label = module.Label;
+      view = module.view;
       instantiate = module.instantiate;
       Component = module.Component;
     }, function (module) {
@@ -2025,7 +2026,7 @@ System.register("chunks:///_virtual/TowerManager.ts", ['./rollupPluginModLoBabel
           var gm = GameManager.instance;
           var ui = e.getUILocation();
           var wx = ui.x - 640;
-          var wy = ui.y - 360;
+          var wy = ui.y - view.getFrameSize().height / 2;
           var _canvasToGrid = canvasToGrid(wx, wy),
             col = _canvasToGrid.col,
             row = _canvasToGrid.row;
