@@ -18,7 +18,7 @@
 ## AI R&D 샘플
 * [Unity MCP + Claude Code](https://github.com/yonguenp/Portfolio/tree/main/AI%20-%20R%26D/unity_mcp%20%ED%99%9C%EC%9A%A9%201%EC%9D%BC%EA%B0%9C%EB%B0%9C)
 * [Cocos Creator MCP + Claude Code](https://github.com/yonguenp/Portfolio/tree/main/AI%20-%20R%26D/cocos_mcp%20%ED%99%9C%EC%9A%A9%201%EC%9D%BC%EA%B0%9C%EB%B0%9C)
-  *[빌드 및 배포 자동화 샘플](https://yonguenp.github.io/Portfolio/AI%20-%20R%26D/cocos_mcp%20%ED%99%9C%EC%9A%A9%201%EC%9D%BC%EA%B0%9C%EB%B0%9C/build/web-desktop/)
+  * [빌드 및 배포 자동화 샘플](https://yonguenp.github.io/Portfolio/AI%20-%20R%26D/cocos_mcp%20%ED%99%9C%EC%9A%A9%201%EC%9D%BC%EA%B0%9C%EB%B0%9C/build/web-desktop/)
 
 
 
