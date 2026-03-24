@@ -25,7 +25,7 @@ export default function ArtblockStatus() {
 
         function progress(value) {  
             setValue(value);
-            per.innerHTML=value +'%';
+            per.textContent = value + '%';
             if (value <= 50) {
                 var degree = 18 * value /5;
                 console.log(degree)

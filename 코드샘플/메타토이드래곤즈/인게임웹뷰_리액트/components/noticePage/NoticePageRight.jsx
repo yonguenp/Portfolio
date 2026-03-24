@@ -1,4 +1,5 @@
 import { useState, useMemo , useEffect, useRef  } from 'react';
+import DOMPurify from 'dompurify';
 import styles from "../../styles/NoticePageRight.module.css";
 import { usePopup } from "../../context/PopupContext";
 
@@ -17,12 +18,13 @@ export default function NoticePageRight({ data , selectedIndex }) {
   }
   
   const imageUrl = `https://d1zh71njdecog6.cloudfront.net/banner/announcement/en/${data.image}`;
-console.log(imageUrl);
-   let parsedMsg = data.msg
-    .replace(/\\n/g, '\n')
-    .replace(/\^/g, ',')
-    .replace(/<color=(#[0-9a-fA-F]{6})>(.*?)<\/color>/g, '<span style="color:$1">$2</span>');
-
+  let parsedMsg = DOMPurify.sanitize(
+    data.msg
+      .replace(/\\n/g, '\n')
+      .replace(/\^/g, ',')
+      .replace(/<color=(#[0-9a-fA-F]{6})>(.*?)<\/color>/g, '<span style="color:$1">$2</span>')
+      .replace(/\n/g, '<br/>')
+  );
 
   return (
     <div className={styles.container}>
@@ -30,7 +32,7 @@ console.log(imageUrl);
         <img src={imageUrl} alt={data.title} className={styles.banner} />
         <div
           className={styles.message}
-          dangerouslySetInnerHTML={{ __html: parsedMsg.replace(/\n/g, '<br/>') }}
+          dangerouslySetInnerHTML={{ __html: parsedMsg }}
         />
       </div>
     </div>

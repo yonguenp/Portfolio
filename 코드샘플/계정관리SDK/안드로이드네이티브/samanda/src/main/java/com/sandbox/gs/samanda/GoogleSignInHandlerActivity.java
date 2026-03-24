@@ -27,7 +27,8 @@ import java.util.Map;
 public class GoogleSignInHandlerActivity extends AppCompatActivity {
     private static final String TAG = "oAuth";
     private static final int RC_SIGN_IN = 9001;
-    private static String url = "622508035915-kja1fh96a2em8s5q1c7psf2nrqk6is2u.apps.googleusercontent.com";
+    // Google OAuth Client ID는 google-services.json 또는 환경변수에서 주입받아야 합니다
+    private static String url = BuildConfig.GOOGLE_CLIENT_ID;
     private GoogleSignInClient mGoogleSignInClient;
 
     public static void onReqOAuth(final Activity current) {
@@ -90,10 +91,6 @@ public class GoogleSignInHandlerActivity extends AppCompatActivity {
     protected void onCreate(Bundle bundle) {
         super.onCreate(bundle);
 
-//        GoogleSignInOptions gso = new GoogleSignInOptions
-//                .Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-//                .requestIdToken("826055537016-5runs8gjsr2euabgc9c0405081h2apvq.apps.googleusercontent.com")
-//                .build();
         mGoogleSignInClient = getGoogleClient(this);
 
         trySignInOnCreate();

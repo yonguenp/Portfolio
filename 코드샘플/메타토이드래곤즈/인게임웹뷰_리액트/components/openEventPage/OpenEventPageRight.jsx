@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import DOMPurify from 'dompurify';
 import styles from "../../styles/OpenEventPageRight.module.css";
 import { usePopup } from "../../context/PopupContext";
 import { useDAppState } from "../../DApp/src/providers/DAppProvider";
@@ -251,7 +252,10 @@ export default function OpenEventPageRight({ data, selectedTab }) {
           data.event_desc ? (
             <>
               <div className={styles.containerRightBoxInner}>
-                <div dangerouslySetInnerHTML={{ __html: data.event_desc }} />
+                {/* XSS 방지: 서버에서 받은 HTML은 DOMPurify로 반드시 sanitize 후 렌더링해야 합니다
+                    예: import DOMPurify from 'dompurify';
+                        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(data.event_desc) }} */}
+                <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(data.event_desc) }} />
                 <br />
                 <p style={{ color: 'orange', fontSize: '12px' }}>
                   🚨 Please check the community for event details.

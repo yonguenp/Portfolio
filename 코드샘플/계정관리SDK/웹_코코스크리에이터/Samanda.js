@@ -230,11 +230,13 @@ const SamandaProto = class
 
     getSamandaUrl() {
         if (CC_DEBUG) {
-            return "http://sandbox-gs.mynetgear.com/";
+            // 개발 서버 URL은 환경변수로 관리해야 합니다 (process.env.SAMANDA_DEV_URL)
+            return "http://localhost:8080/";
         }
         else
         {
-            return "https://samanda.sandbox-gs.com/";
+            // 운영 서버 URL은 환경변수로 관리해야 합니다 (process.env.SAMANDA_URL)
+            return "https://your-production-server.com/";
         }
     }
 
