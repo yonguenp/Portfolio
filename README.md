@@ -15,6 +15,11 @@
   * [유니티 코드 샘플](https://github.com/yonguenp/Portfolio/tree/main/%EC%BD%94%EB%93%9C%EC%83%98%ED%94%8C/%EA%B3%84%EC%A0%95%EA%B4%80%EB%A6%ACSDK/%EC%9C%A0%EB%8B%88%ED%8B%B0)
   * [웹 코코스크리에이터 코드 샘플](https://github.com/yonguenp/Portfolio/tree/main/%EC%BD%94%EB%93%9C%EC%83%98%ED%94%8C/%EA%B3%84%EC%A0%95%EA%B4%80%EB%A6%ACSDK/%EC%9B%B9_%EC%BD%94%EC%BD%94%EC%8A%A4%ED%81%AC%EB%A6%AC%EC%97%90%EC%9D%B4%ED%84%B0)
 
+## AI R&D 샘플
+* [Unity MCP + Claude Code](https://github.com/yonguenp/Portfolio/tree/main/AI%20-%20R%26D/unity_mcp%20%ED%99%9C%EC%9A%A9%201%EC%9D%BC%EA%B0%9C%EB%B0%9C)
+* [Cocos Creator MCP + Claude Code](https://github.com/yonguenp/Portfolio/tree/main/AI%20-%20R%26D/cocos_mcp%20%ED%99%9C%EC%9A%A9%201%EC%9D%BC%EA%B0%9C%EB%B0%9C)
+
+
 
 ## 주요 개발 프로젝트 영상 링크
 * 메타토이드래곤즈사가
