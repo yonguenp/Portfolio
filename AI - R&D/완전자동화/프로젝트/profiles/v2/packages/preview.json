@@ -1,7 +1,7 @@
 {
   "__version__": "1.0.1",
   "general": {
-    "start_scene": "current_scene"
+    "start_scene": "a1b2c3d4-0001-4000-8001-aabbccddeef0"
   },
   "preview": {
     "current": {
