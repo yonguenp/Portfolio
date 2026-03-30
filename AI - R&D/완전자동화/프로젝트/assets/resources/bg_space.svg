@@ -1,0 +1,164 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 640" width="960" height="640">
+  <defs>
+    <radialGradient id="bgGrad" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="#0a0a2e"/>
+      <stop offset="50%" stop-color="#050518"/>
+      <stop offset="100%" stop-color="#000008"/>
+    </radialGradient>
+    <radialGradient id="nebulaA" cx="30%" cy="40%" r="40%">
+      <stop offset="0%" stop-color="#1a0a3a" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="nebulaB" cx="70%" cy="60%" r="35%">
+      <stop offset="0%" stop-color="#0a1a3a" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="nebulaC" cx="50%" cy="20%" r="30%">
+      <stop offset="0%" stop-color="#1a0a20" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="1.5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- 기본 배경 -->
+  <rect width="960" height="640" fill="url(#bgGrad)"/>
+
+  <!-- 성운 레이어 -->
+  <rect width="960" height="640" fill="url(#nebulaA)"/>
+  <rect width="960" height="640" fill="url(#nebulaB)"/>
+  <rect width="960" height="640" fill="url(#nebulaC)"/>
+
+  <!-- 은하수 띠 (대각선 방향) -->
+  <ellipse cx="480" cy="320" rx="600" ry="80" fill="#1a1050" fill-opacity="0.3" transform="rotate(-15 480 320)"/>
+  <ellipse cx="480" cy="320" rx="500" ry="50" fill="#2a1870" fill-opacity="0.2" transform="rotate(-15 480 320)"/>
+
+  <!-- 작은 별들 (배경) -->
+  <g fill="white" filter="url(#glow)">
+    <circle cx="45" cy="28" r="0.8" fill-opacity="0.6"/>
+    <circle cx="132" cy="55" r="1.0" fill-opacity="0.9"/>
+    <circle cx="78" cy="112" r="0.7" fill-opacity="0.5"/>
+    <circle cx="210" cy="32" r="1.2" fill-opacity="0.8"/>
+    <circle cx="290" cy="88" r="0.9" fill-opacity="0.7"/>
+    <circle cx="355" cy="18" r="0.8" fill-opacity="0.6"/>
+    <circle cx="415" cy="66" r="1.1" fill-opacity="0.9"/>
+    <circle cx="488" cy="42" r="0.7" fill-opacity="0.5"/>
+    <circle cx="540" cy="95" r="1.0" fill-opacity="0.8"/>
+    <circle cx="620" cy="24" r="0.9" fill-opacity="0.7"/>
+    <circle cx="680" cy="72" r="1.2" fill-opacity="0.9"/>
+    <circle cx="745" cy="38" r="0.8" fill-opacity="0.6"/>
+    <circle cx="812" cy="15" r="1.0" fill-opacity="0.8"/>
+    <circle cx="870" cy="85" r="0.7" fill-opacity="0.5"/>
+    <circle cx="920" cy="44" r="1.1" fill-opacity="0.9"/>
+    <circle cx="30" cy="160" r="0.9" fill-opacity="0.7"/>
+    <circle cx="95" cy="195" r="1.0" fill-opacity="0.8"/>
+    <circle cx="160" cy="145" r="0.8" fill-opacity="0.6"/>
+    <circle cx="225" cy="178" r="1.2" fill-opacity="0.9"/>
+    <circle cx="305" cy="155" r="0.7" fill-opacity="0.5"/>
+    <circle cx="370" cy="200" r="1.0" fill-opacity="0.8"/>
+    <circle cx="432" cy="135" r="0.9" fill-opacity="0.7"/>
+    <circle cx="510" cy="175" r="1.1" fill-opacity="0.9"/>
+    <circle cx="575" cy="148" r="0.8" fill-opacity="0.6"/>
+    <circle cx="645" cy="188" r="1.0" fill-opacity="0.8"/>
+    <circle cx="715" cy="130" r="0.7" fill-opacity="0.5"/>
+    <circle cx="780" cy="170" r="1.2" fill-opacity="0.9"/>
+    <circle cx="845" cy="155" r="0.9" fill-opacity="0.7"/>
+    <circle cx="905" cy="195" r="1.0" fill-opacity="0.8"/>
+    <circle cx="18" cy="260" r="1.0" fill-opacity="0.8"/>
+    <circle cx="88" cy="285" r="0.8" fill-opacity="0.6"/>
+    <circle cx="148" cy="240" r="1.1" fill-opacity="0.9"/>
+    <circle cx="218" cy="275" r="0.7" fill-opacity="0.5"/>
+    <circle cx="280" cy="255" r="1.0" fill-opacity="0.8"/>
+    <circle cx="345" cy="295" r="0.9" fill-opacity="0.7"/>
+    <circle cx="408" cy="238" r="0.8" fill-opacity="0.6"/>
+    <circle cx="465" cy="272" r="1.2" fill-opacity="0.9"/>
+    <circle cx="528" cy="248" r="1.0" fill-opacity="0.8"/>
+    <circle cx="592" cy="282" r="0.7" fill-opacity="0.5"/>
+    <circle cx="658" cy="255" r="1.1" fill-opacity="0.9"/>
+    <circle cx="722" cy="290" r="0.9" fill-opacity="0.7"/>
+    <circle cx="785" cy="245" r="0.8" fill-opacity="0.6"/>
+    <circle cx="848" cy="278" r="1.0" fill-opacity="0.8"/>
+    <circle cx="928" cy="260" r="0.7" fill-opacity="0.5"/>
+    <circle cx="52" cy="350" r="0.9" fill-opacity="0.7"/>
+    <circle cx="115" cy="388" r="1.0" fill-opacity="0.8"/>
+    <circle cx="175" cy="335" r="0.8" fill-opacity="0.6"/>
+    <circle cx="242" cy="368" r="1.1" fill-opacity="0.9"/>
+    <circle cx="315" cy="345" r="0.7" fill-opacity="0.5"/>
+    <circle cx="382" cy="385" r="1.0" fill-opacity="0.8"/>
+    <circle cx="448" cy="332" r="0.9" fill-opacity="0.7"/>
+    <circle cx="512" cy="370" r="0.8" fill-opacity="0.6"/>
+    <circle cx="578" cy="355" r="1.2" fill-opacity="0.9"/>
+    <circle cx="635" cy="388" r="1.0" fill-opacity="0.8"/>
+    <circle cx="698" cy="342" r="0.7" fill-opacity="0.5"/>
+    <circle cx="762" cy="375" r="1.1" fill-opacity="0.9"/>
+    <circle cx="825" cy="350" r="0.9" fill-opacity="0.7"/>
+    <circle cx="888" cy="382" r="0.8" fill-opacity="0.6"/>
+    <circle cx="940" cy="340" r="1.0" fill-opacity="0.8"/>
+    <circle cx="28" cy="445" r="0.8" fill-opacity="0.6"/>
+    <circle cx="102" cy="470" r="1.0" fill-opacity="0.8"/>
+    <circle cx="168" cy="425" r="0.9" fill-opacity="0.7"/>
+    <circle cx="235" cy="458" r="1.1" fill-opacity="0.9"/>
+    <circle cx="298" cy="435" r="0.7" fill-opacity="0.5"/>
+    <circle cx="362" cy="475" r="1.0" fill-opacity="0.8"/>
+    <circle cx="425" cy="420" r="0.8" fill-opacity="0.6"/>
+    <circle cx="492" cy="455" r="0.9" fill-opacity="0.7"/>
+    <circle cx="558" cy="438" r="1.2" fill-opacity="0.9"/>
+    <circle cx="618" cy="468" r="1.0" fill-opacity="0.8"/>
+    <circle cx="682" cy="428" r="0.7" fill-opacity="0.5"/>
+    <circle cx="748" cy="462" r="1.1" fill-opacity="0.9"/>
+    <circle cx="808" cy="440" r="0.8" fill-opacity="0.6"/>
+    <circle cx="872" cy="472" r="1.0" fill-opacity="0.8"/>
+    <circle cx="935" cy="430" r="0.9" fill-opacity="0.7"/>
+    <circle cx="65" cy="540" r="1.0" fill-opacity="0.8"/>
+    <circle cx="128" cy="565" r="0.8" fill-opacity="0.6"/>
+    <circle cx="195" cy="518" r="1.1" fill-opacity="0.9"/>
+    <circle cx="258" cy="555" r="0.7" fill-opacity="0.5"/>
+    <circle cx="322" cy="530" r="1.0" fill-opacity="0.8"/>
+    <circle cx="388" cy="568" r="0.9" fill-opacity="0.7"/>
+    <circle cx="452" cy="515" r="0.8" fill-opacity="0.6"/>
+    <circle cx="518" cy="548" r="1.2" fill-opacity="0.9"/>
+    <circle cx="582" cy="525" r="1.0" fill-opacity="0.8"/>
+    <circle cx="648" cy="558" r="0.7" fill-opacity="0.5"/>
+    <circle cx="712" cy="532" r="1.1" fill-opacity="0.9"/>
+    <circle cx="775" cy="562" r="0.9" fill-opacity="0.7"/>
+    <circle cx="838" cy="520" r="0.8" fill-opacity="0.6"/>
+    <circle cx="902" cy="548" r="1.0" fill-opacity="0.8"/>
+    <circle cx="948" cy="568" r="0.7" fill-opacity="0.5"/>
+  </g>
+
+  <!-- 밝은 별 (중간 크기) -->
+  <g fill="white" filter="url(#glow)">
+    <circle cx="155" cy="75" r="2.0" fill-opacity="1.0"/>
+    <circle cx="488" cy="115" r="1.8" fill-opacity="1.0"/>
+    <circle cx="720" cy="48" r="2.2" fill-opacity="1.0"/>
+    <circle cx="855" cy="200" r="1.9" fill-opacity="1.0"/>
+    <circle cx="310" cy="320" r="2.0" fill-opacity="1.0"/>
+    <circle cx="640" cy="310" r="1.7" fill-opacity="1.0"/>
+    <circle cx="100" cy="480" r="2.1" fill-opacity="1.0"/>
+    <circle cx="820" cy="440" r="1.8" fill-opacity="1.0"/>
+  </g>
+
+  <!-- 특별히 밝은 별 (반짝이는) -->
+  <g>
+    <circle cx="250" cy="100" r="3.0" fill="white" fill-opacity="0.9"/>
+    <line x1="250" y1="93" x2="250" y2="107" stroke="white" stroke-width="0.8" stroke-opacity="0.6"/>
+    <line x1="243" y1="100" x2="257" y2="100" stroke="white" stroke-width="0.8" stroke-opacity="0.6"/>
+    <circle cx="750" cy="200" r="2.8" fill="white" fill-opacity="0.9"/>
+    <line x1="750" y1="193" x2="750" y2="207" stroke="white" stroke-width="0.8" stroke-opacity="0.6"/>
+    <line x1="743" y1="200" x2="757" y2="200" stroke="white" stroke-width="0.8" stroke-opacity="0.6"/>
+    <circle cx="450" cy="380" r="3.2" fill="#b8ccff" fill-opacity="0.9"/>
+    <line x1="450" y1="372" x2="450" y2="388" stroke="#b8ccff" stroke-width="0.8" stroke-opacity="0.6"/>
+    <line x1="442" y1="380" x2="458" y2="380" stroke="#b8ccff" stroke-width="0.8" stroke-opacity="0.6"/>
+  </g>
+
+  <!-- 하단 어두운 그라디언트 (게임 오브젝트와의 구분) -->
+  <defs>
+    <linearGradient id="bottomFade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#050318" stop-opacity="0.5"/>
+    </linearGradient>
+  </defs>
+  <rect y="480" width="960" height="160" fill="url(#bottomFade)"/>
+</svg>

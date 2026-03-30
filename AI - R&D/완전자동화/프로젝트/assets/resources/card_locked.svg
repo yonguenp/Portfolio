@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="280" height="160" viewBox="0 0 280 160">
+  <defs>
+    <linearGradient id="lockedCardBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f0f22"/>
+      <stop offset="50%" stop-color="#080818"/>
+      <stop offset="100%" stop-color="#050510"/>
+    </linearGradient>
+    <linearGradient id="grayBorder" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3a3a5a"/>
+      <stop offset="50%" stop-color="#2a2a44"/>
+      <stop offset="100%" stop-color="#1a1a33"/>
+    </linearGradient>
+    <linearGradient id="innerGray" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#3a3a5a" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#1a1a33" stop-opacity="0.15"/>
+    </linearGradient>
+    <filter id="lockedCardGlow" x="-5%" y="-5%" width="110%" height="110%">
+      <feGaussianBlur stdDeviation="1.5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- 카드 배경 -->
+  <rect x="3" y="3" width="274" height="154" rx="10" ry="10" fill="url(#lockedCardBg)"/>
+
+  <!-- 회색 외곽 테두리 -->
+  <rect x="3" y="3" width="274" height="154" rx="10" ry="10"
+        fill="none" stroke="url(#grayBorder)" stroke-width="2"
+        filter="url(#lockedCardGlow)" opacity="0.85"/>
+
+  <!-- 내부 이중 테두리 -->
+  <rect x="8" y="8" width="264" height="144" rx="8" ry="8"
+        fill="none" stroke="url(#innerGray)" stroke-width="1" opacity="0.6"/>
+
+  <!-- 코너 장식 (어두운 회색 L자) -->
+  <g fill="#2a2a44" opacity="0.7">
+    <rect x="10" y="10" width="10" height="2"/>
+    <rect x="10" y="10" width="2" height="10"/>
+    <rect x="260" y="10" width="10" height="2"/>
+    <rect x="268" y="10" width="2" height="10"/>
+    <rect x="10" y="148" width="10" height="2"/>
+    <rect x="10" y="140" width="2" height="10"/>
+    <rect x="260" y="148" width="10" height="2"/>
+    <rect x="268" y="140" width="2" height="10"/>
+  </g>
+
+  <!-- 좌측: 물음표 + 잠금 원형 영역 -->
+  <g transform="translate(46, 80)">
+    <circle cx="0" cy="0" r="28" fill="#111122" opacity="0.8"/>
+    <circle cx="0" cy="0" r="28" fill="none" stroke="#2a2a55" stroke-width="1.5" opacity="0.6"
+            stroke-dasharray="4 3"/>
+    <!-- 물음표 -->
+    <text x="0" y="11" font-family="serif" font-size="30" font-weight="bold"
+          text-anchor="middle" fill="#3a3a66" opacity="0.85">?</text>
+  </g>
+
+  <!-- 상단 구분선 -->
+  <line x1="85" y1="30" x2="265" y2="30" stroke="#2a2a55" stroke-width="0.7" opacity="0.35"/>
+  <!-- 하단 구분선 -->
+  <line x1="85" y1="128" x2="265" y2="128" stroke="#2a2a55" stroke-width="0.7" opacity="0.35"/>
+
+  <!-- 우측: nameLabel 영역 — "???" 표시용 placeholder -->
+  <rect x="88" y="18" width="168" height="14" rx="4" fill="#2a2a44" opacity="0.35"/>
+  <text x="172" y="29" font-family="serif" font-size="11" font-weight="bold"
+        text-anchor="middle" fill="#3a3a66" opacity="0.55">???</text>
+
+  <!-- waveLabel placeholder (회색 블록) -->
+  <rect x="88" y="40" width="110" height="11" rx="3" fill="#1e1e3a" opacity="0.45"/>
+  <text x="143" y="49" font-family="sans-serif" font-size="8"
+        text-anchor="middle" fill="#2a2a55" opacity="0.35">waveLabel</text>
+
+  <!-- dateLabel placeholder (회색 블록) -->
+  <rect x="88" y="58" width="90" height="11" rx="3" fill="#1a1a33" opacity="0.40"/>
+  <text x="133" y="67" font-family="sans-serif" font-size="8"
+        text-anchor="middle" fill="#2a2a55" opacity="0.30">dateLabel</text>
+
+  <!-- 추가 정보 블록들 (내용 비공개 암시) -->
+  <rect x="88" y="76" width="150" height="9" rx="3" fill="#1a1a33" opacity="0.35"/>
+  <rect x="88" y="92" width="120" height="9" rx="3" fill="#1a1a33" opacity="0.30"/>
+  <rect x="88" y="108" width="90" height="8" rx="3" fill="#1a1a33" opacity="0.25"/>
+
+  <!-- 하단 자물쇠 아이콘 -->
+  <g transform="translate(172, 140)" opacity="0.55">
+    <rect x="-10" y="-5" width="20" height="14" rx="2" ry="2" fill="#2a2a55"/>
+    <rect x="-10" y="-5" width="20" height="14" rx="2" ry="2"
+          fill="none" stroke="#3a3a66" stroke-width="1"/>
+    <path d="M -7,-5 C -7,-15 7,-15 7,-5" fill="none"
+          stroke="#3a3a66" stroke-width="2.5" stroke-linecap="round"/>
+    <circle cx="0" cy="2" r="2.8" fill="#1a1a33"/>
+    <rect x="-1" y="2" width="2" height="4" rx="1" fill="#1a1a33"/>
+  </g>
+
+  <!-- 희미한 배경 별들 -->
+  <circle cx="35" cy="22" r="0.8" fill="#4466aa" opacity="0.2"/>
+  <circle cx="245" cy="18" r="0.7" fill="#4466aa" opacity="0.15"/>
+  <circle cx="258" cy="138" r="0.8" fill="#4466aa" opacity="0.2"/>
+  <circle cx="28" cy="140" r="0.7" fill="#4466aa" opacity="0.15"/>
+</svg>

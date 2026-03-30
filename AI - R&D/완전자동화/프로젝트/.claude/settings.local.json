@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls \"c:/Users/SANDBOX/Desktop/이직/Portfolio/AI - R&D/완전자동화/프로젝트\")",
+      "Bash(ls \"c:/Users/SANDBOX/Desktop/이직/Portfolio/AI - R&D/완전자동화/프로젝트/extensions\")",
+      "Bash(cat \"c:/Users/SANDBOX/Desktop/이직/Portfolio/AI - R&D/완전자동화/프로젝트/package.json\")",
+      "Bash(ls \"c:/Users/SANDBOX/Desktop/이직/Portfolio/AI - R&D/완전자동화/프로젝트/extensions/cocos-mcp-server\")",
+      "Bash(cat \"c:/Users/SANDBOX/Desktop/이직/Portfolio/AI - R&D/완전자동화/프로젝트/extensions/cocos-mcp-server/package.json\")",
+      "Bash(ls \"c:/Users/SANDBOX/Desktop/이직/Portfolio/AI - R&D/완전자동화/프로젝트/extensions/cocos-mcp-server/dist\")",
+      "Bash(ls \"c:/Users/SANDBOX/Desktop/이직/Portfolio/AI - R&D/완전자동화/프로젝트/.creator\")",
+      "Bash(cat \"c:/Users/SANDBOX/Desktop/이직/Portfolio/AI - R&D/완전자동화/프로젝트/extensions/cocos-mcp-server/dist/mcp-server.js\")",
+      "Bash(curl -s http://127.0.0.1:3001)",
+      "Bash(curl -s http://127.0.0.1:3001/health)",
+      "Bash(ls \"c:/Users/SANDBOX/Desktop/이직/Portfolio/AI - R&D/완전자동화/프로젝트/assets/scripts/\")",
+      "Bash(find \"c:/Users/SANDBOX/Desktop/이직/Portfolio/AI - R&D/완전자동화/프로젝트/assets\" -name \"*.scene\")"
+    ]
+  }
+}

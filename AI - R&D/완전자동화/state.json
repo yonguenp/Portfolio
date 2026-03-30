@@ -1,0 +1,23 @@
+{
+  "iteration": 4,
+  "phase": 0,
+  "phases": ["기획", "디자인", "개발", "QA"],
+  "phase_names": {
+    "0": "기획봇 - 게임 기획 및 명세",
+    "1": "디자인봇 - 디자인 리소스 제작",
+    "2": "개발봇 - Cocos Creator 게임 개발",
+    "3": "QA봇 - 테스트 및 피드백"
+  },
+  "last_updated": "2026-03-26",
+  "game_concept": "별 조각을 버킷으로 받아 별자리를 완성하는 캐주얼 모바일 아케이드 게임 (Star Sweeper) — 은하의 심연 클리어 특별 연출 + M-CBS-01/M-WP-01 전 이슈 해소",
+  "current_spec_file": "기획/spec_v5.md",
+  "current_dev_notes": "개발/dev_notes_v4.md",
+  "current_design_notes": "디자인/design_notes_v4.md",
+  "notes": [
+    "iteration 3 완료: QA 9.0/10, Major 2건",
+    "M-CBS-01: ConstellationBookScene.scene 구조적 결함 - 참조 ID 범위 초과 (긴급 수정 필요)",
+    "M-WP-01: updateWaveProgress() 호출 누락 - GameManager/ConstellationManager 연결 필요",
+    "Minor 4건: n-03(Prefab 미연결), n-04(startButton component), n-05(isUnlocked 체크), n-06(tween any 캐스팅)",
+    "빌드: CocosCreator.exe 미탐지로 자동빌드 실패, 배포/build.sh 수동 실행 필요"
+  ]
+}

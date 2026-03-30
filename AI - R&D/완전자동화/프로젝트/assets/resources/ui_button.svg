@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" width="200" height="60">
+  <defs>
+    <linearGradient id="btnGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#6644ff"/>
+      <stop offset="50%" stop-color="#4422dd"/>
+      <stop offset="100%" stop-color="#2200aa"/>
+    </linearGradient>
+    <linearGradient id="btnHighlight" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="btnBorder" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#9977ff"/>
+      <stop offset="100%" stop-color="#330099"/>
+    </linearGradient>
+    <filter id="btnGlow">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="btnShadow">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#1100aa" flood-opacity="0.6"/>
+    </filter>
+  </defs>
+
+  <!-- 버튼 그림자 -->
+  <rect x="5" y="8" width="190" height="52" rx="26" ry="26" fill="#110066" fill-opacity="0.5"/>
+
+  <!-- 버튼 본체 -->
+  <rect x="2" y="2" width="196" height="56" rx="28" ry="28"
+        fill="url(#btnGrad)" stroke="url(#btnBorder)" stroke-width="2"
+        filter="url(#btnShadow)"/>
+
+  <!-- 상단 하이라이트 -->
+  <rect x="6" y="4" width="188" height="24" rx="20" ry="20"
+        fill="url(#btnHighlight)"/>
+
+  <!-- 외부 발광 -->
+  <rect x="2" y="2" width="196" height="56" rx="28" ry="28"
+        fill="none" stroke="#8855ff" stroke-width="1" stroke-opacity="0.5"
+        filter="url(#btnGlow)"/>
+
+  <!-- 작은 별 장식 (좌) -->
+  <g transform="translate(24, 30)" filter="url(#btnGlow)">
+    <polygon points="0,-5 1.2,-1.7 4.8,-1.5 2.1,0.9 3.0,4.7 0,2.6 -3.0,4.7 -2.1,0.9 -4.8,-1.5 -1.2,-1.7"
+             fill="#ccaaff" fill-opacity="0.8"/>
+  </g>
+
+  <!-- 작은 별 장식 (우) -->
+  <g transform="translate(176, 30)" filter="url(#btnGlow)">
+    <polygon points="0,-5 1.2,-1.7 4.8,-1.5 2.1,0.9 3.0,4.7 0,2.6 -3.0,4.7 -2.1,0.9 -4.8,-1.5 -1.2,-1.7"
+             fill="#ccaaff" fill-opacity="0.8"/>
+  </g>
+</svg>

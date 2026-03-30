@@ -1,0 +1,8 @@
+{
+  "design-resolution-width": 960,
+  "design-resolution-height": 640,
+  "fit-width": false,
+  "fit-height": false,
+  "use-customized-resolution": false,
+  "start-scene": "db://assets/scenes/TitleScene.scene"
+}

@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 160" width="480" height="160">
+  <defs>
+    <linearGradient id="titleGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="30%" stop-color="#ffe866"/>
+      <stop offset="70%" stop-color="#ffc800"/>
+      <stop offset="100%" stop-color="#ff9900"/>
+    </linearGradient>
+    <linearGradient id="subtitleGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ccbbff"/>
+      <stop offset="100%" stop-color="#8866dd"/>
+    </linearGradient>
+    <filter id="titleGlow">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="starGlowTitle">
+      <feGaussianBlur stdDeviation="2.5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="textShadow">
+      <feDropShadow dx="2" dy="3" stdDeviation="3" flood-color="#220066" flood-opacity="0.8"/>
+    </filter>
+  </defs>
+
+  <!-- 배경 글로우 타원 -->
+  <ellipse cx="240" cy="80" rx="220" ry="70" fill="#1a0055" fill-opacity="0.35"/>
+
+  <!-- 장식 별들 (상단) -->
+  <g filter="url(#starGlowTitle)">
+    <!-- 큰 별 좌 -->
+    <g transform="translate(55, 30)">
+      <polygon points="0,-14 3.4,-5.2 13,-4.3 5.8,2.2 8.1,12.6 0,7 -8.1,12.6 -5.8,2.2 -13,-4.3 -3.4,-5.2"
+               fill="#ffd700"/>
+    </g>
+    <!-- 큰 별 우 -->
+    <g transform="translate(425, 30)">
+      <polygon points="0,-14 3.4,-5.2 13,-4.3 5.8,2.2 8.1,12.6 0,7 -8.1,12.6 -5.8,2.2 -13,-4.3 -3.4,-5.2"
+               fill="#ffd700"/>
+    </g>
+    <!-- 중간 별 -->
+    <g transform="translate(240, 15)">
+      <polygon points="0,-10 2.4,-3.7 9.5,-3.1 4.1,1.6 5.9,9.1 0,5 -5.9,9.1 -4.1,1.6 -9.5,-3.1 -2.4,-3.7"
+               fill="#fff2a0"/>
+    </g>
+    <!-- 작은 별들 -->
+    <g transform="translate(100, 20)">
+      <polygon points="0,-7 1.7,-2.6 6.7,-2.1 2.9,1.1 4.1,6.5 0,3.5 -4.1,6.5 -2.9,1.1 -6.7,-2.1 -1.7,-2.6"
+               fill="#ffe866"/>
+    </g>
+    <g transform="translate(380, 22)">
+      <polygon points="0,-7 1.7,-2.6 6.7,-2.1 2.9,1.1 4.1,6.5 0,3.5 -4.1,6.5 -2.9,1.1 -6.7,-2.1 -1.7,-2.6"
+               fill="#ffe866"/>
+    </g>
+    <g transform="translate(160, 12)">
+      <polygon points="0,-5 1.2,-1.8 4.8,-1.5 2.1,0.9 3.0,4.7 0,2.6 -3.0,4.7 -2.1,0.9 -4.8,-1.5 -1.2,-1.8"
+               fill="#ffffff"/>
+    </g>
+    <g transform="translate(320, 10)">
+      <polygon points="0,-5 1.2,-1.8 4.8,-1.5 2.1,0.9 3.0,4.7 0,2.6 -3.0,4.7 -2.1,0.9 -4.8,-1.5 -1.2,-1.8"
+               fill="#ffffff"/>
+    </g>
+  </g>
+
+  <!-- 메인 타이틀: STAR -->
+  <text x="240" y="82" font-family="Arial Black, Impact, sans-serif" font-size="62" font-weight="900"
+        text-anchor="middle" fill="url(#titleGrad)"
+        filter="url(#titleGlow)"
+        letter-spacing="6">STAR</text>
+
+  <!-- 메인 타이틀 외곽선 -->
+  <text x="240" y="82" font-family="Arial Black, Impact, sans-serif" font-size="62" font-weight="900"
+        text-anchor="middle" fill="none"
+        stroke="#cc8800" stroke-width="1.5"
+        letter-spacing="6">STAR</text>
+
+  <!-- 서브 타이틀: SWEEPER -->
+  <text x="240" y="128" font-family="Arial Black, Impact, sans-serif" font-size="38" font-weight="900"
+        text-anchor="middle" fill="url(#subtitleGrad)"
+        filter="url(#textShadow)"
+        letter-spacing="10">SWEEPER</text>
+
+  <!-- 서브 타이틀 외곽선 -->
+  <text x="240" y="128" font-family="Arial Black, Impact, sans-serif" font-size="38" font-weight="900"
+        text-anchor="middle" fill="none"
+        stroke="#4422aa" stroke-width="1"
+        letter-spacing="10">SWEEPER</text>
+
+  <!-- 하단 장식 선 -->
+  <line x1="60" y1="140" x2="180" y2="140" stroke="#8866dd" stroke-width="1.5" stroke-opacity="0.6"/>
+  <line x1="300" y1="140" x2="420" y2="140" stroke="#8866dd" stroke-width="1.5" stroke-opacity="0.6"/>
+  <circle cx="240" cy="140" r="3" fill="#ffd700" fill-opacity="0.8"/>
+
+  <!-- 반짝이는 작은 별 (장식 - 우측 하단) -->
+  <g filter="url(#starGlowTitle)">
+    <g transform="translate(448, 120)">
+      <polygon points="0,-8 2,-2.5 8,-2 3.5,1.5 5,7.5 0,4 -5,7.5 -3.5,1.5 -8,-2 -2,-2.5"
+               fill="#ffe866" fill-opacity="0.7"/>
+    </g>
+    <g transform="translate(32, 118)">
+      <polygon points="0,-8 2,-2.5 8,-2 3.5,1.5 5,7.5 0,4 -5,7.5 -3.5,1.5 -8,-2 -2,-2.5"
+               fill="#ffe866" fill-opacity="0.7"/>
+    </g>
+  </g>
+</svg>

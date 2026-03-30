@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80" width="120" height="80">
+  <defs>
+    <radialGradient id="bucketBody" cx="50%" cy="30%" r="65%">
+      <stop offset="0%" stop-color="#ffe066"/>
+      <stop offset="40%" stop-color="#ffc200"/>
+      <stop offset="100%" stop-color="#b87800"/>
+    </radialGradient>
+    <radialGradient id="bucketInner" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#1a1040"/>
+      <stop offset="100%" stop-color="#0a0820"/>
+    </radialGradient>
+    <linearGradient id="rimGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fff2a0"/>
+      <stop offset="50%" stop-color="#ffd700"/>
+      <stop offset="100%" stop-color="#a06000"/>
+    </linearGradient>
+    <filter id="bucketGlow">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="innerShadow">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="3" result="blur"/>
+      <feOffset dx="0" dy="2"/>
+      <feComposite in2="SourceAlpha" operator="arithmetic" k2="-1" k3="1" result="shadow"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.3 0 0 0 1 0" in="shadow"/>
+    </filter>
+  </defs>
+
+  <!-- 버킷 그림자 -->
+  <ellipse cx="60" cy="78" rx="48" ry="5" fill="#000000" fill-opacity="0.25"/>
+
+  <!-- 버킷 몸체 (사다리꼴 형태) -->
+  <path d="M 15 20 Q 12 20 12 23 L 18 70 Q 18 74 22 74 L 98 74 Q 102 74 102 70 L 108 23 Q 108 20 105 20 Z"
+        fill="url(#bucketBody)" stroke="#b87800" stroke-width="1.5"/>
+
+  <!-- 버킷 내부 (어두운 색) -->
+  <path d="M 25 28 L 31 68 Q 31 70 35 70 L 85 70 Q 89 70 89 68 L 95 28 Z"
+        fill="url(#bucketInner)"/>
+
+  <!-- 버킷 테두리 상단 (림) -->
+  <rect x="10" y="16" width="100" height="12" rx="6" ry="6"
+        fill="url(#rimGrad)" stroke="#ffd700" stroke-width="1"/>
+
+  <!-- 림 하이라이트 -->
+  <rect x="14" y="17" width="92" height="4" rx="2" ry="2"
+        fill="white" fill-opacity="0.4"/>
+
+  <!-- 버킷 몸체 하이라이트 (왼쪽) -->
+  <path d="M 22 25 L 26 65 Q 27 68 30 68 L 35 68 L 30 25 Z"
+        fill="white" fill-opacity="0.2"/>
+
+  <!-- 버킷 하단 테두리 -->
+  <path d="M 18 70 Q 18 74 22 74 L 98 74 Q 102 74 102 70 L 98 70 Q 98 72 95 72 L 25 72 Q 22 72 22 70 Z"
+        fill="#a06000"/>
+
+  <!-- 반짝이는 별 장식 (좌) -->
+  <g filter="url(#bucketGlow)" transform="translate(30, 45)">
+    <polygon points="0,-6 1.5,-2 5.7,-1.8 2.5,1 3.5,5.5 0,3 -3.5,5.5 -2.5,1 -5.7,-1.8 -1.5,-2"
+             fill="#fff2a0" fill-opacity="0.85"/>
+  </g>
+
+  <!-- 반짝이는 별 장식 (우) -->
+  <g filter="url(#bucketGlow)" transform="translate(90, 45)">
+    <polygon points="0,-5 1.2,-1.7 4.8,-1.5 2.1,0.9 3.0,4.7 0,2.6 -3.0,4.7 -2.1,0.9 -4.8,-1.5 -1.2,-1.7"
+             fill="#fff2a0" fill-opacity="0.75"/>
+  </g>
+
+  <!-- 손잡이 (아치형) -->
+  <path d="M 35 18 Q 60 -2 85 18" fill="none" stroke="#ffd700" stroke-width="3.5" stroke-linecap="round"/>
+  <path d="M 35 18 Q 60 -2 85 18" fill="none" stroke="#fff2a0" stroke-width="1.5" stroke-linecap="round" stroke-opacity="0.7"/>
+</svg>

@@ -1,0 +1,114 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="280" height="160" viewBox="0 0 280 160">
+  <defs>
+    <linearGradient id="cardBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1a1050"/>
+      <stop offset="50%" stop-color="#0d0a2e"/>
+      <stop offset="100%" stop-color="#050518"/>
+    </linearGradient>
+    <linearGradient id="goldBorder" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffe866"/>
+      <stop offset="30%" stop-color="#ffd700"/>
+      <stop offset="70%" stop-color="#ffc800"/>
+      <stop offset="100%" stop-color="#ff9900"/>
+    </linearGradient>
+    <linearGradient id="innerGold" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffe866" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#ff9900" stop-opacity="0.2"/>
+    </linearGradient>
+    <radialGradient id="cardGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#4422dd" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#050518" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="cardFrameGlow" x="-5%" y="-5%" width="110%" height="110%">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="smallGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="1.5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- 카드 배경 -->
+  <rect x="3" y="3" width="274" height="154" rx="10" ry="10" fill="url(#cardBg)"/>
+  <!-- 내부 글로우 -->
+  <ellipse cx="140" cy="80" rx="120" ry="65" fill="url(#cardGlow)"/>
+
+  <!-- 황금 외곽 테두리 -->
+  <rect x="3" y="3" width="274" height="154" rx="10" ry="10"
+        fill="none" stroke="url(#goldBorder)" stroke-width="2.5"
+        filter="url(#cardFrameGlow)" opacity="0.95"/>
+
+  <!-- 내부 이중 테두리 -->
+  <rect x="8" y="8" width="264" height="144" rx="8" ry="8"
+        fill="none" stroke="url(#innerGold)" stroke-width="1" opacity="0.7"/>
+
+  <!-- 코너 장식 별 (4곳) -->
+  <g fill="url(#goldBorder)" filter="url(#smallGlow)" opacity="0.85">
+    <!-- 좌상 -->
+    <polygon points="14,14 17,10 20,14 17,18"/>
+    <polygon points="10,18 6,21 10,24 14,21"/>
+    <!-- 우상 -->
+    <polygon points="260,14 263,10 266,14 263,18"/>
+    <polygon points="266,18 270,21 266,24 262,21"/>
+    <!-- 좌하 -->
+    <polygon points="14,146 17,142 20,146 17,150"/>
+    <polygon points="10,140 6,137 10,134 14,137"/>
+    <!-- 우하 -->
+    <polygon points="260,146 263,142 266,146 263,150"/>
+    <polygon points="266,140 270,137 266,134 262,137"/>
+  </g>
+
+  <!-- 좌측: 별 아이콘 영역 -->
+  <g transform="translate(46, 80)" filter="url(#smallGlow)">
+    <circle cx="0" cy="0" r="28" fill="#1a1050" opacity="0.6"/>
+    <circle cx="0" cy="0" r="28" fill="none" stroke="url(#goldBorder)" stroke-width="1" opacity="0.5"/>
+    <polygon points="0,-18 4.5,-7 16,-11 9,-1 18,6 7,6 9,18 0,11 -9,18 -7,6 -18,6 -9,-1 -16,-11 -4.5,-7"
+             fill="url(#goldBorder)" opacity="0.95"/>
+    <circle cx="0" cy="0" r="4" fill="#ffffff" opacity="0.9"/>
+  </g>
+
+  <!-- 상단 구분선 -->
+  <line x1="85" y1="30" x2="265" y2="30" stroke="url(#goldBorder)" stroke-width="0.7" opacity="0.45"/>
+  <!-- 하단 구분선 -->
+  <line x1="85" y1="128" x2="265" y2="128" stroke="url(#goldBorder)" stroke-width="0.7" opacity="0.45"/>
+
+  <!-- 우측: nameLabel 영역 (별자리 이름) -->
+  <!-- nameLabel placeholder (런타임에 Label 컴포넌트가 덮어씀) -->
+  <rect x="88" y="18" width="168" height="14" rx="4" fill="#ffe866" opacity="0.10"/>
+  <text x="172" y="29" font-family="sans-serif" font-size="9" font-weight="bold"
+        text-anchor="middle" fill="#ffe866" opacity="0.30">nameLabel</text>
+
+  <!-- waveLabel 영역 (Wave 클리어 정보) -->
+  <!-- waveLabel placeholder -->
+  <rect x="88" y="40" width="110" height="11" rx="3" fill="#ccbbff" opacity="0.12"/>
+  <text x="143" y="49" font-family="sans-serif" font-size="8"
+        text-anchor="middle" fill="#ccbbff" opacity="0.30">waveLabel</text>
+
+  <!-- dateLabel 영역 (완성 날짜) -->
+  <!-- dateLabel placeholder -->
+  <rect x="88" y="58" width="90" height="11" rx="3" fill="#8866dd" opacity="0.10"/>
+  <text x="133" y="67" font-family="sans-serif" font-size="8"
+        text-anchor="middle" fill="#8866dd" opacity="0.30">dateLabel</text>
+
+  <!-- 설명 텍스트 영역 (선택 표시) -->
+  <rect x="88" y="76" width="150" height="9" rx="3" fill="#6644ff" opacity="0.07"/>
+  <rect x="88" y="92" width="120" height="9" rx="3" fill="#4422dd" opacity="0.06"/>
+  <rect x="88" y="108" width="90" height="8" rx="3" fill="#4422dd" opacity="0.05"/>
+
+  <!-- 하단 완성 마크 -->
+  <g transform="translate(172, 140)" opacity="0.8">
+    <circle cx="0" cy="0" r="9" fill="none" stroke="url(#goldBorder)" stroke-width="1.3"/>
+    <circle cx="0" cy="0" r="6" fill="#ffd700" opacity="0.15"/>
+    <!-- 체크 마크 -->
+    <polyline points="-4.5,0 -1.5,4 5.5,-4" fill="none" stroke="#ffe866" stroke-width="1.8"
+              stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- 소형 배경 별들 -->
+  <circle cx="35" cy="22" r="1" fill="#b8ccff" opacity="0.4"/>
+  <circle cx="245" cy="18" r="0.8" fill="#ffffff" opacity="0.35"/>
+  <circle cx="258" cy="138" r="1" fill="#b8ccff" opacity="0.4"/>
+  <circle cx="28" cy="140" r="0.8" fill="#ffffff" opacity="0.3"/>
+  <circle cx="60" cy="140" r="0.7" fill="#ffe866" opacity="0.25"/>
+</svg>

@@ -1,0 +1,108 @@
+{
+  "version": "v1",
+  "iteration": 0,
+  "theme": "우주 / 별빛 캐주얼",
+  "description": "Star Sweeper 게임의 모바일 친화적 컬러 팔레트",
+
+  "background": {
+    "space_deep":    "#000008",
+    "space_mid":     "#050518",
+    "space_surface": "#0a0a2e",
+    "nebula_purple": "#1a0a3a",
+    "nebula_blue":   "#0a1a3a"
+  },
+
+  "stars": {
+    "red": {
+      "highlight": "#ff9090",
+      "base":      "#ff2020",
+      "shadow":    "#880000",
+      "glow":      "#ff4444",
+      "stroke":    "#cc0000"
+    },
+    "blue": {
+      "highlight": "#90c8ff",
+      "base":      "#1a7fff",
+      "shadow":    "#003a99",
+      "glow":      "#4488ff",
+      "stroke":    "#0033cc"
+    },
+    "yellow": {
+      "highlight": "#fffaaa",
+      "base":      "#ffdd00",
+      "shadow":    "#cc8800",
+      "glow":      "#ffee44",
+      "stroke":    "#cc9900"
+    },
+    "green": {
+      "highlight": "#aaffaa",
+      "base":      "#00cc44",
+      "shadow":    "#006622",
+      "glow":      "#44ff88",
+      "stroke":    "#009933"
+    },
+    "purple": {
+      "highlight": "#e8aaff",
+      "base":      "#aa22ff",
+      "shadow":    "#550088",
+      "glow":      "#cc66ff",
+      "stroke":    "#7700bb"
+    },
+    "dark": {
+      "highlight": "#444444",
+      "base":      "#111111",
+      "shadow":    "#000000",
+      "glow":      "#880000",
+      "stroke":    "#cc0000",
+      "edge_glow": "#ff2200"
+    }
+  },
+
+  "bucket": {
+    "rim_top":    "#fff2a0",
+    "rim_base":   "#ffd700",
+    "body_top":   "#ffe066",
+    "body_mid":   "#ffc200",
+    "body_bottom":"#b87800",
+    "inner_top":  "#1a1040",
+    "inner_deep": "#0a0820",
+    "stroke":     "#b87800"
+  },
+
+  "ui": {
+    "button_top":    "#6644ff",
+    "button_mid":    "#4422dd",
+    "button_bottom": "#2200aa",
+    "button_border_top":    "#9977ff",
+    "button_border_bottom": "#330099",
+    "button_glow":   "#8855ff",
+    "slot_bg":       "#1a1050",
+    "slot_border":   "#6688cc",
+    "slot_dot":      "#4466aa"
+  },
+
+  "text": {
+    "title_white":   "#ffffff",
+    "title_gold_top":"#ffe866",
+    "title_gold_mid":"#ffc800",
+    "title_gold_bot":"#ff9900",
+    "subtitle_top":  "#ccbbff",
+    "subtitle_bot":  "#8866dd",
+    "subtitle_stroke":"#4422aa"
+  },
+
+  "life_icon": {
+    "heart_white":  "#ffffff",
+    "heart_gold":   "#ffe0a0",
+    "heart_orange": "#ffa020",
+    "star_gold_top":"#ffe866",
+    "star_gold_bot":"#ffc000",
+    "stroke":       "#cc8800"
+  },
+
+  "stars_bg": {
+    "bright":   "#ffffff",
+    "mid":      "#b8ccff",
+    "dim":      "#8899cc"
+  }
+}
