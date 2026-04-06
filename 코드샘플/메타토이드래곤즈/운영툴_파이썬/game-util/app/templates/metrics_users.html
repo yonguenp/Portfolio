@@ -1,0 +1,35 @@
+{# ================== 요약 테이블 ================== #}
+<h5 class="mb-2">📋 유저 결제 요약</h5>
+
+<div class="table-responsive mb-4">
+<table id="users-revenue-table" class="table table-bordered table-sm">
+    <thead class="table-dark">
+        <tr>
+            <th>서버</th>
+            
+            <th>유저번호</th>
+            <th>닉네임</th>
+			
+            <th>결제횟수</th>			
+			<th>결제금액</th>
+            <th>마지막 활성 시간</th>
+            <th>가입일</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for r in users_revenue %}
+        <tr>
+            <td>{{ r['server'] }}</td>
+			<td>{{ r['user_no'] }}</td>
+			<td>{{ r['nick'] }}</td>
+			<td>{{ r['cnt'] }}</td>			
+			<td class="text-end" data-raw="{{ r['today_total_price'] }}">
+                {{ r['today_total_price'] | comma }}
+            </td>
+			<td>{{ r['last_active_time'] }}</td>
+			<td>{{ r['signup_at'] }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>

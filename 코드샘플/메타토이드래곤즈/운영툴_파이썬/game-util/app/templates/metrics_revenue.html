@@ -1,0 +1,54 @@
+<div class="mb-2">
+    <button class="btn btn-sm btn-outline-primary" onclick="copyTableToCSV()">
+        📋 CSV 복사
+    </button>
+</div>
+
+<div class="table-responsive">
+    <table id="metrics-table" class="table table-bordered table-sm table-striped">
+        <thead class="table-dark">
+            <tr>
+                {% for col in columns %}
+                <th>{{ col }}</th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            <tr>
+                {% for col in columns %}
+                <td data-raw="{{ row[col] }}">
+                    {{ row[col] | comma }}
+                </td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<script>
+function copyTableToCSV() {
+    const table = document.getElementById("metrics-table");
+    let csv = [];
+
+    for (let row of table.rows) {
+        let rowData = [];
+        for (let cell of row.cells) {
+            let text = cell.dataset.raw ?? cell.innerText;
+            text = String(text).replace(/"/g, '""');
+            rowData.push(`"${text}"`);
+        }
+        csv.push(rowData.join(","));
+    }
+
+    const textarea = document.createElement("textarea");
+    textarea.value = csv.join("\n");
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand("copy");
+    document.body.removeChild(textarea);
+
+    alert("✅ CSV 복사 완료");
+}
+</script>

@@ -1,0 +1,255 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="container">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3><i class="bi bi-wallet2"></i> 결제 관리</h3>
+        <div>
+            <!-- SKU 업데이트 버튼: 이전 검색 조건을 유지하도록 수정 -->
+            <a href="{{ url_for('update_sku_route', search_query=search_query, search_type=search_type, db_name=db_name, tab=active_tab) }}" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-arrow-clockwise"></i> SKU 업데이트
+            </a>
+        </div>
+    </div>
+    <hr>
+
+    <!-- 1. 검색부 -->
+    <div class="card bg-light p-3">
+        <form id="searchForm" method="post" action="{{ url_for('payment_management') }}">
+            <div class="row g-2 align-items-center">
+                <div class="col-md-2">
+                    <select class="form-select" name="db_name">
+                        <option value="mtd-game-3" {% if db_name == 'mtd-game-3' %}selected{% endif %}>DB-3 (루나)</option>
+                        <option value="mtd-game-2" {% if db_name == 'mtd-game-2' %}selected{% endif %}>DB-2 (원더)</option>
+                        <option value="mtd-game-1" {% if db_name == 'mtd-game-1' %}selected{% endif %}>DB-1 (엔젤)</option>
+                        <option value="mtd-game-0" {% if db_name == 'mtd-game-0' %}selected{% endif %}>DB-0 (QA)</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <select class="form-select" name="search_type">
+                        <option value="nickname" {% if search_type == 'nickname' %}selected{% endif %}>닉네임</option>
+                        <option value="user_id" {% if search_type == 'user_id' %}selected{% endif %}>유저번호</option>
+                        <option value="order_id" {% if search_type == 'order_id' %}selected{% endif %}>주문번호</option>
+                    </select>
+                </div>
+                <div class="col-sm-5">
+                    <input type="text" class="form-control" name="search_query" placeholder="검색어를 입력하세요..." value="{{ search_query or '' }}" required>
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-search"></i> 검색</button>
+                </div>
+            </div>
+        </form>
+    </div>
+    
+    <!-- 오류 메시지 표시 -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+            <div class="alert alert-{{ category }} alert-dismissible fade show mt-3" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+    {% if error_message %}
+    <div class="alert alert-danger mt-3">{{ error_message }}</div>
+    {% endif %}
+
+    <!-- 조회된 유저 정보 표시 영역 -->
+    {% if user_info %}
+    <div class="card mt-4">
+        <div class="card-header fw-bold">
+            <i class="bi bi-person-circle"></i> 조회된 유저 정보
+        </div>
+        <div class="card-body">
+            <p class="mb-0">
+                <strong>유저번호:</strong> {{ user_info.user_no }}
+                <span class="mx-2">|</span>
+                <strong>닉네임:</strong> {{ user_info.nick }}
+                <span class="mx-2">|</span>
+                <strong>계정 타입:</strong> {{ user_info.account_type }}
+                <span class="mx-2">|</span>
+                <strong>소속 길드:</strong> {{ user_info.guild_name }}
+            </p>
+            {% if user_info.state == 8 %}
+                <span class="badge bg-danger"><i class="bi bi-shield-slash-fill"></i> 차단된 계정</span>
+            {% else %}
+                <button type="button" class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#blockUserModal">
+                    <i class="bi bi-shield-slash"></i> 계정 차단
+                </button>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+
+    <!-- 2. 결과부 -->
+    <div class="mt-4">
+        <ul class="nav nav-tabs">
+            <li class="nav-item">
+                <a class="nav-link {% if active_tab == 'payment' %}active{% endif %} {% if not user_info %}disabled{% endif %}" href="{{ url_for('payment_management', search_query=search_query, search_type=search_type, db_name=db_name, tab='payment') }}">결제내역리스트</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if active_tab == 'mailbox' %}active{% endif %} {% if not user_info %}disabled{% endif %}" href="{{ url_for('payment_management', search_query=search_query, search_type=search_type, db_name=db_name, tab='mailbox') }}">우편함관리</a>
+            </li>
+			<li class="nav-item">
+                <a class="nav-link {% if active_tab == 'magnite' %}active{% endif %} {% if not user_info %}disabled{% endif %}" href="{{ url_for('payment_management', search_query=search_query, search_type=search_type, db_name=db_name, tab='magnite') }}">마그나이트 입출내역</a>
+            </li>
+        </ul>
+
+        <div class="tab-content">
+            <!-- 결제 내역 탭 -->
+            <div class="tab-pane fade {% if active_tab == 'payment' %}show active{% endif %} p-3 border border-top-0">
+                {% if payment_results %}
+                <table class="table table-striped table-hover table-sm text-center">
+                    <thead>
+                        <tr>
+                            <th>결제일시</th>
+                            <th>마켓</th>
+                            <th>주문번호</th>
+                            <th>상품(SKU)</th>
+                            <th>가격</th>
+                            <th>영수증 상태</th>
+                            <th>아이템 지급</th>
+                            <th>우편함</th>
+                            <th>우편조회</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in payment_results %}
+                        <!-- [수정] 주문번호 검색 시 하이라이트 적용 -->
+                        <tr class="{% if search_type == 'order_id' and item.order_id == searched_order_id %}table-warning{% endif %}">
+                            <td>{{ item.register_time }}</td>
+                            <td>{{ item.market }}</td>
+                            <td>{{ item.order_id }}</td>
+                            <td>{{ item.sku }}</td>
+                            <td>₩{{ "{:,.0f}".format(item.price) }}</td>
+                            <td><span class="badge bg-success">{{ item.receipt_status }}</span></td>
+                            <td><span class="badge bg-success">{{ item.grant_status }}</span></td>
+                            <td><span class="badge bg-primary">{{ item.mail_status }}</span></td>
+                            <td>
+                                <button class="btn btn-info btn-sm" {% if not item.mail_button_enabled %}disabled{% endif %}>조회</button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% elif search_query %}
+                 <div class="alert alert-warning mt-3" role="alert">
+                    '{{ search_query }}'에 대한 검색 결과가 없습니다.
+                </div>
+                {% else %}
+                 <div class="alert alert-info mt-3" role="alert">
+                    검색을 시작하려면 위에서 검색 조건을 입력하세요.
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- 우편함 관리 탭 -->
+            <div class="tab-pane fade {% if active_tab == 'mailbox' %}show active{% endif %} p-3 border border-top-0">
+                {% if mailbox_results %}
+                <table class="table table-striped table-hover table-sm">
+                     <thead>
+                        <tr>
+                            <th>생성일시</th>
+                            <th>수령일시</th>
+                            <th>수령상태</th>
+                            <th>삭제여부</th>
+                            <th>태그</th>
+                            <th>삭제</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for mail in mailbox_results %}
+                        <tr class="{% if highlight_time and mail.send_at_obj and mail.send_at_obj > highlight_time %}table-info{% endif %}">
+                            <td>{{ mail.send_at_str }}</td>
+                            <td>{{ mail.received_at }}</td>
+                            <td><span class="badge {% if mail.receive_status == '완료' %}bg-success{% else %}bg-secondary{% endif %}">{{ mail.receive_status }}</span></td>
+                            <td>{{ mail.delete_status }}</td>
+                            <td>{{ mail.mail_tag }}</td>
+							<td>{{ mail.mail_items }}</td>
+							<td>
+								<form method="post"
+									  action="{{ url_for('delete_mailbox') }}"
+									  onsubmit="return confirm('정말 삭제하시겠습니까?');"
+									  style="display:inline;">
+									<input type="hidden" name="idx_no" value="{{ mail.idx_no }}">
+									<input type="hidden" name="db_name" value="{{ db_name }}">
+									<input type="hidden" name="search_query" value="{{ search_query }}">
+									<input type="hidden" name="search_type" value="{{ search_type }}">
+									<input type="hidden" name="tab" value="mailbox">
+
+									<button type="submit"
+											class="btn btn-danger btn-sm"
+											{% if mail.is_receive_val == 1 %}disabled{% endif %}>
+										삭제
+									</button>
+								</form>
+							</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% elif search_query and user_info %}
+                <div class="alert alert-info mt-3" role="alert">
+                    해당 유저의 우편함 내역이 없습니다.
+                </div>
+                {% endif %}
+            </div>
+			
+			<!-- 마그나이트 탭 -->
+            <div class="tab-pane fade {% if active_tab == 'magnite' %}show active{% endif %} p-3 border border-top-0">
+                {% if magnite_results %}
+                <table class="table table-striped table-hover table-sm">
+                     <thead>
+                        <tr>
+							{% for key in magnite_results['key'] %}
+                            <th>{{ key }}</th>
+							{% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for val in magnite_results['val'] %}
+                        <tr>
+							{% for value in val %}
+                            <td>{{ value }}</td>
+							{% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="alert alert-info mt-3" role="alert">
+                    해당 유저의 입출 내역이 없습니다.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if user_info %}
+<!-- Block User Confirmation Modal -->
+<div class="modal fade" id="blockUserModal" tabindex="-1" aria-labelledby="blockUserModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="blockUserModalLabel">계정 차단 확인</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        정말로 <strong>{{ user_info.nick }} ({{ user_info.user_no }})</strong> 계정을 차단하시겠습니까? <br>
+        <strong class="text-danger">이 작업은 되돌릴 수 없습니다.</strong>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">아니요</button>
+        <a href="{{ url_for('block_user', user_no=user_info.user_no, db_name=db_name, search_query=search_query, search_type=search_type, tab=active_tab) }}" class="btn btn-danger">예, 차단합니다</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+

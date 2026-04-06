@@ -1,0 +1,128 @@
+{# ================== 요약 테이블 ================== #}
+<h5 class="mb-2">💎 마그나이트 요약</h5>
+
+<div class="table-responsive mb-4">
+<table id="magnite-summary-table" class="table table-bordered table-sm">
+    <thead class="table-dark">
+        <tr>
+            <th>Server</th>
+            
+            <th>Station Mint</th>
+            <th>Station Burn</th>
+            <th>Station Diff</th>
+			
+			<th>In-Game Mint</th>
+            <th>In-Game Burn</th>
+            <th>In-Game Diff</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for r in magnite_summary %}
+        <tr>
+            <td>{{ r['server'] }}</td>
+
+            <td class="text-end" data-raw="{{ r['station_mint'] }}">
+                {{ r['station_mint'] | comma }}
+            </td>
+
+            <td class="text-end" data-raw="{{ r['station_burn'] }}">
+                {{ r['station_burn'] | comma }}
+            </td>
+
+            <td class="text-end fw-bold
+                {% if r['station_diff'] < 0 %}text-danger{% else %}text-success{% endif %}"
+                data-raw="{{ r['station_diff'] }}">
+                {{ r['station_diff'] | comma }}
+            </td>
+			
+			<td class="text-end" data-raw="{{ r['in_game_mint'] }}">
+                {{ r['in_game_mint'] | comma }}
+            </td>
+
+            <td class="text-end" data-raw="{{ r['in_game_burn'] }}">
+                {{ r['in_game_burn'] | comma }}
+            </td>
+
+            <td class="text-end fw-bold
+                {% if r['in_game_diff'] < 0 %}text-danger{% else %}text-success{% endif %}"
+                data-raw="{{ r['in_game_diff'] }}">
+                {{ r['in_game_diff'] | comma }}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+
+<div class="mb-3">
+    <button class="btn btn-sm btn-outline-primary"
+            onclick="copyTableToCSV('magnite-summary-table')">
+        📋 요약 CSV 복사
+    </button>
+</div>
+
+{# ================== 상세 테이블 ================== #}
+<h5 class="mt-4 mb-2">📄 마그나이트 상세 로그</h5>
+
+<div class="table-responsive" style="max-height:500px;">
+<table id="magnite-detail-table" class="table table-sm table-striped table-bordered">
+    <thead class="table-secondary sticky-top">
+        <tr>
+            <th>Server</th>
+            <th>Time</th>
+            <th>Order Type</th>
+            <th>Amount</th>
+            <th>Description</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for r in magnite_detail %}
+        <tr>
+            <td>{{ r['server'] }}</td>
+            <td>{{ r['registed_at'] }}</td>
+            <td>{{ r['order_type'] }}</td>
+            <td class="text-end" data-raw="{{ r['order_amount'] }}">
+                {{ r['order_amount'] | comma }}
+            </td>
+            <td>{{ r['order_desc'] }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+
+<div class="mt-2">
+    <button class="btn btn-sm btn-outline-secondary"
+            onclick="copyTableToCSV('magnite-detail-table')">
+        📋 상세 CSV 복사
+    </button>
+</div>
+
+{# ================== CSV 복사 스크립트 ================== #}
+<script>
+function copyTableToCSV(tableId) {
+    const table = document.getElementById(tableId);
+    let csv = [];
+
+    for (let row of table.rows) {
+        let rowData = [];
+        for (let cell of row.cells) {
+            let text = cell.dataset.raw ?? cell.innerText;
+            text = String(text).replace(/"/g, '""');
+            rowData.push(`"${text}"`);
+        }
+        csv.push(rowData.join(","));
+    }
+
+    const textarea = document.createElement("textarea");
+    textarea.value = csv.join("\n");
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand("copy");
+    document.body.removeChild(textarea);
+
+    alert("✅ CSV가 클립보드에 복사되었습니다!");
+}
+</script>

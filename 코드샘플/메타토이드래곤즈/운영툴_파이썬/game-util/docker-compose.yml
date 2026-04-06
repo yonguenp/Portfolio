@@ -1,0 +1,25 @@
+services:
+  app:
+    build: ./app
+    restart: always
+    ports:
+      # 호스트의 55000번 포트와 컨테이너의 55000번 포트를 연결합니다.
+      - "55000:55000"
+    environment:
+      # --- DB 접속 정보 환경 변수 추가 ---
+      DB_USER: '보안'
+      DB_PASS: '보안'
+      DB_PORT: '보안'
+      # 읽기 전용(Read Replica) DB 호스트
+      DB_HOST_RO: '보안'
+      # 쓰기용(Master) DB 호스트 - 지금은 사용하지 않지만 추후를 위해 추가
+      DB_HOST_RW: '보안'
+      # Google 인증 파일 경로를 환경변수로 지정
+      GOOGLE_APPLICATION_CREDENTIALS: '보안'
+    volumes:
+      # 로컬의 credentials.json 파일을 컨테이너 내부로 마운트 (읽기 전용)
+      - ./google:/app/google:ro
+      # SKU 데이터를 저장할 data 폴더를 마운트하여 영속성 유지
+      - ./app/data:/app/data
+      # 호스트 서버의 assets 폴더를 컨테이너 내부의 동일한 경로로 연결
+      - 보안
