@@ -1,6 +1,6 @@
 ---
 
-# Portfolio
+# Portfolio [링크](https://github.com/yonguenp/portfolio)
 
 게임 클라이언트 개발자 박용근의 포트폴리오입니다.
 Unity, C++, Cocos2d-x 기반의 클라이언트 개발 경력 11년, 팀 리딩 및 라이브 서비스 운영 경험을 보유하고 있습니다.
