@@ -9,17 +9,17 @@ Unity, C++, Cocos2d-x 기반의 클라이언트 개발 경력 11년, 팀 리딩 
 
 ## 주요 개발 프로젝트 샘플 코드
 
-### 메타토이드래곤즈사가 (샌드박스네트워크) | 수집형 RPG | DAU 최대 10만
+### 메타토이드래곤즈사가 (샌드박스네트워크) | 수집형 RPG | DAU 최대 10만 | 서비스 중
 고정 랜덤 시드(Seed), Fixed Update, 고정 소수점 연산 기반의 결정론적 동기화 로직으로 웹 서버에서 실시간 대전 토너먼트 시스템을 구현한 프로젝트입니다.
 - [유니티 코드 샘플](https://github.com/yonguenp/Portfolio/tree/main/%EC%BD%94%EB%93%9C%EC%83%98%ED%94%8C/%EB%A9%94%ED%83%80%ED%86%A0%EC%9D%B4%EB%93%9C%EB%9E%98%EA%B3%A4%EC%A6%88/%EC%9C%A0%EB%8B%88%ED%8B%B0) — 결정론적 동기화 및 토너먼트 시스템 로직
 - [웹 리액트 코드 샘플](https://github.com/yonguenp/Portfolio/tree/main/%EC%BD%94%EB%93%9C%EC%83%98%ED%94%8C/%EB%A9%94%ED%83%80%ED%86%A0%EC%9D%B4%EB%93%9C%EB%9E%98%EA%B3%A4%EC%A6%88/%EC%9D%B8%EA%B2%8C%EC%9E%84%EC%9B%B9%EB%B7%B0_%EB%A6%AC%EC%95%A1%ED%8A%B8/components) — 인게임 웹뷰 React 컴포넌트
 - [코코스크리에이터 코드 샘플](https://github.com/yonguenp/Portfolio/tree/main/%EC%BD%94%EB%93%9C%EC%83%98%ED%94%8C/%EB%A9%94%ED%83%80%ED%86%A0%EC%9D%B4%EB%93%9C%EB%9E%98%EA%B3%A4%EC%A6%88/%EC%BD%94%EC%BD%94%EC%8A%A4%ED%81%AC%EB%A6%AC%EC%97%90%EC%9D%B4%ED%84%B0/Scripts) — Cocos Creator 기반 게임 로직
 
-### 공포의 술래잡기 (샌드박스네트워크) | 실시간 PvP | DAU 최대 3만
+### 공포의 술래잡기 (샌드박스네트워크) | 실시간 PvP | DAU 최대 3만 | 서비스 종료
 C# 기반 자체 서버 연동 및 실시간 전투, 연출, 배포 시스템 전반을 설계한 프로젝트입니다. PM, 디렉터를 겸임하며 1년간 라이브 서비스를 운영했습니다.
 - [유니티 코드 샘플](https://github.com/yonguenp/Portfolio/tree/main/%EC%BD%94%EB%93%9C%EC%83%98%ED%94%8C/%EA%B3%B5%ED%8F%AC%EC%9D%98%EC%88%A0%EB%9E%98%EC%9E%A1%EA%B8%B0/%EC%9C%A0%EB%8B%88%ED%8B%B0) — 실시간 PvP 전투 및 서버 연동 로직
 
-### 양어장 고양이 (샌드박스네트워크) | FMV 장르 | DAU 최대 1만
+### 양어장 고양이 (샌드박스네트워크) | FMV 장르 | DAU 최대 1만 | 서비스 중
 Play Asset Delivery(PAD)를 활용해 2GB 이상의 고용량 영상 리소스를 외부 CDN 비용 없이 서비스한 프로젝트입니다.
 - [유니티 코드 샘플](https://github.com/yonguenp/Portfolio/tree/main/%EC%BD%94%EB%93%9C%EC%83%98%ED%94%8C/%EC%96%91%EC%96%B4%EC%9E%A5%EA%B3%A0%EC%96%91%EC%9D%B4/%EC%9C%A0%EB%8B%88%ED%8B%B0) — PAD 기반 대용량 리소스 처리 로직
 - [PHP 코드 샘플](https://github.com/yonguenp/Portfolio/tree/main/%EC%BD%94%EB%93%9C%EC%83%98%ED%94%8C/%EC%96%91%EC%96%B4%EC%9E%A5%EA%B3%A0%EC%96%91%EC%9D%B4/PHP%EC%83%98%ED%94%8C/script) — 서버 사이드 로직
@@ -48,16 +48,42 @@ Cocos Creator MCP와 Claude Code를 활용해 하루 만에 타워 디펜스 게
 
 ## 주요 개발 프로젝트 영상 링크
 
-### 메타토이드래곤즈사가
+### 메타토이드래곤즈사가 - 샌드박스 네트워크
 - [트레일러 1](https://www.youtube.com/watch?v=O6LPHZbqoA8)
 - [트레일러 2](https://www.youtube.com/watch?v=ocvZkbXv6hI)
 
-### 양어장 고양이
+### 양어장 고양이 - 샌드박스 네트워크
 - [소개 영상](https://www.youtube.com/watch?v=CUUZ9LrLLco)
 - [플레이 영상](https://www.youtube.com/watch?v=3YrTkEd3PZ4)
 
-### 공포의 술래잡기
+### 공포의 술래잡기 - 샌드박스 네트워크
 - [소개 영상](https://www.youtube.com/watch?v=I2k832B3NTU&list=PLxlA7knZ2zb6_Tdz8YZTL-bDCJlo2Fu4Y)
 - [유저 플레이 영상](https://www.youtube.com/watch?v=4zYNsM1SnWI)
+
+### 옐언니 옷입히기 - 샌드박스 네트워크
+- [트레일러](https://www.youtube.com/watch?v=rt0VsQ2QuH4)
+
+### 셀프어쿠스틱 시리즈 - 샌드박스 네트워크
+- [네일샵](https://www.youtube.com/watch?v=rJ9k5k8SLyM&list=PLxlA7knZ2zb76LeUBEk4kU579NzmgknvV)
+- [헤어샵](https://www.youtube.com/watch?v=CPqEhyBWdBg)
+- [캠핑장](https://www.youtube.com/watch?v=C1CYlrEDeR0)
+- [화장하기](https://www.youtube.com/watch?v=hGcn45izybs)
+- [아이스크림가게](https://www.youtube.com/watch?v=wM13fk0lVtA)
+- [핫도그가게](https://www.youtube.com/watch?v=0kenMfcXZGU)
+  
+### 드래곤 빌리지 - 하이브로
+- [유저플레이영상](https://www.youtube.com/watch?v=k6c1Yv_GXN0)
+
+### 지하철이야기 - 하이브로
+- [유저 플레이 영상](https://www.youtube.com/watch?v=UtUfj-K9B1U)
+
+### 드래곤 빌리지2 - 하이브로
+- [트레일러](https://www.youtube.com/watch?v=kVn0Sc6vUQw)
+
+### 드래곤 빌리지 - 하이브로
+- [유저플레이영상](https://www.youtube.com/watch?v=k6c1Yv_GXN0)
+
+### 피닉스다트 - 홍인터네셔날
+- [VSS UI리뉴얼](https://www.youtube.com/watch?v=4jQgMthDDQ8)
 
 ---
