@@ -27,7 +27,6 @@ Unity · C++ · Cocos2d-x 기반 클라이언트 개발 경력 **11년**, 팀 �
    - [Cocos Creator MCP — 타워 디펜스 1일 개발](#3-cocos-creator-mcp--claude-code--타워-디펜스-게임-1일-개발)
 3. [영상 링크](#영상-링크)
 
-
 ---
 
 ## 주요 개발 프로젝트
@@ -92,6 +91,8 @@ Unity · C++ · Cocos2d-x 기반 클라이언트 개발 경력 **11년**, 팀 �
 | **Play Asset Delivery (PAD)** | Google Play의 PAD를 활용해 2GB+ 영상 리소스를 외부 CDN 없이 안정적으로 배포, 인프라 비용 절감 |
 | **대용량 리소스 관리** | 앱 설치 후 필요 시점에 On-demand 방식으로 리소스 다운로드, 초기 앱 용량 최소화 |
 | **서버 연동** | PHP 서버 사이드 로직으로 콘텐츠 잠금/해제, 진행도 저장, 결제 연동 구현 |
+| **UGUI 커스텀 컴포넌트** |	ScrollRect 기반 동적 리스트, RectTransform 애니메이션, CutoutMask·ImageBlur 등 커스텀 UI 셰이더 컴포넌트 직접 구현
+| **Addressable Asset System** |	Unity Addressables로 리소스를 원격 관리 — 앱 재배포 없이 에셋 교체·추가 가능하며 PAD와 연동하여 On-demand 다운로드 구현
 | **다양한 콘텐츠 시스템** | 고양이 수집, 카드 도감, 요리, 미니게임, 상점, 랭킹 등 복합 콘텐츠 구조 |
 
 **코드 샘플**
