@@ -7,10 +7,10 @@ Unity · C++ · Cocos2d-x 기반 클라이언트 개발 경력 **11년**, 팀 �
 
 | | |
 |---|---|
-| **주요 기술** | Unity (C#) · Cocos Creator (TypeScript) · Cocos2d-x (C++) · React · PHP · Android (Java) |
+| **주요 기술** | Unity (C#) · Cocos Creator (TypeScript) · Cocos2d-x (C++) · React · PHP · MySQL · Android (Java) |
 | **경력** | 샌드박스네트워크 · 게임 클라이언트 개발 11년 |
-| **역할** | 클라이언트 개발 · PM · 디렉터 · SDK 설계 · 서버 연동 |
-| **연락처** | yonguenp@gmail.com |
+| **역할** | 게임 클라이언트 개발 · SDK · 서버 연동 · 웹페이지 · PHP서버 개발 · 인게임 지표 추적 |
+| **연락처** | yonguen@naver.com |
 
 ---
 
