@@ -231,9 +231,6 @@ Cocos Creator MCP와 Claude Code를 활용해 하루 만에 타워 디펜스 게
 ### 지하철이야기 - 하이브로
 - [유저 플레이 영상](https://www.youtube.com/watch?v=UtUfj-K9B1U)
 
-### 드래곤 빌리지2 - 하이브로
-- [트레일러](https://www.youtube.com/watch?v=kVn0Sc6vUQw)
-
 ### 드래곤 빌리지 - 하이브로
 - [유저플레이영상](https://www.youtube.com/watch?v=k6c1Yv_GXN0)
 
