@@ -35,8 +35,8 @@ Unity · C++ · Cocos2d-x 기반 클라이언트 개발 경력 **11년**, 팀 �
 
 > 샌드박스네트워크 | Unity · Cocos Creator · React
 
-타운에 건물을 짓고 자원을 생산·증축하며, 다양한 드래곤을 수집하고 실시간 대전 토너먼트에서 겨루는 수집형 RPG입니다.<br>
-클라이언트 리드로 참여하여 개발부터 라이브 서비스까지 프로젝트를 리딩했습니다.
+샌드박스네트워크의 자체 IP 기반 픽셀 아트 수집형 RPG입니다. 300여 종의 개성 넘치는 토이 드래곤을 수집·성장시키며, 타운 건설, 월드 탐험, 보스 레이드, PvP 아레나, 길드 시스템 등 다양한 콘텐츠를 즐길 수 있습니다.<br>
+개발팀 리드로 참여하여 개발부터 라이브 서비스까지 프로젝트를 리딩했습니다.
 초기 프로젝트는 코코스크리에이터로 웹게임으로 제작되었으나, 유니티로 컨버팅하고 서비스하였습니다.
 
 **핵심 기술 포인트**
@@ -60,8 +60,8 @@ Unity · C++ · Cocos2d-x 기반 클라이언트 개발 경력 **11년**, 팀 �
 
 > 샌드박스네트워크 | Unity · C# 자체 서버 | PM·디렉터 겸임
 
-**실시간 PvP 전투**와 **라이브 서비스 운영 전반**을 담당한 프로젝트입니다.<br>
-클라이언트 개발을 넘어 PM·디렉터를 겸임하며 **개발부터 서비스까지 리딩**했습니다.
+샌드박스 크리에이터 '총몇명'의 인기 애니메이션 시리즈(누적 조회수 1,200만)를 원작으로 한 비대칭 실시간 PvP 모바일 게임입니다. 생존자 4명과 추격자 2명이 폐쇄된 병원·학교를 배경으로 쫓고 쫓기는 서바이벌 술래잡기를 펼치며, 40종의 개성 있는 캐릭터와 각각의 고유 스킬을 제공합니다.<br>
+클라이언트 개발을 넘어 PM·디렉터를 겸임하며 **개발부터 라이브 서비스 운영까지 리딩**했습니다.
 
 **핵심 기술 포인트**
 
@@ -82,6 +82,7 @@ Unity · C++ · Cocos2d-x 기반 클라이언트 개발 경력 **11년**, 팀 �
 
 > 샌드박스네트워크 | Unity · PHP
 
+샌드박스 크리에이터 'haha ha' 채널의 세계관을 그대로 담은 시뮬레이션 모바일 게임입니다. 양어장 주인이 되어 채널에 등장하는 실제 고양이들(길막이, 삼색이, 야통이 등)과 교감하며, 양어장 운영·고양이 수집·아이템 제작 등을 즐기는 방치형 시뮬레이션입니다.<br>
 **FMV(Full Motion Video) 장르**의 모바일 게임으로, 핵심 과제는 **2GB 이상의 고용량 영상 리소스를 CDN 비용 없이 서비스**하는 것이었습니다.
 2개월 정도의 개발기간과 최소 인원으로 런칭하여 서비스 중인 프로젝트입니다.
 
@@ -204,38 +205,66 @@ Cocos Creator MCP와 Claude Code를 활용해 하루 만에 타워 디펜스 게
 ## 영상 링크
 
 ### 메타토이드래곤즈사가 - 샌드박스 네트워크
-- [트레일러 1](https://www.youtube.com/watch?v=O6LPHZbqoA8)
-- [트레일러 2](https://www.youtube.com/watch?v=ocvZkbXv6hI)
+300여 종의 토이 드래곤을 수집·성장시키며 타운 건설, 보스 레이드, PvP 아레나를 즐기는 픽셀 아트 수집형 RPG
 
-### 양어장 고양이 - 샌드박스 네트워크
-- [소개 영상](https://www.youtube.com/watch?v=CUUZ9LrLLco)
-- [플레이 영상](https://www.youtube.com/watch?v=3YrTkEd3PZ4)
-
-### 공포의 술래잡기 - 샌드박스 네트워크
-- [소개 영상](https://www.youtube.com/watch?v=I2k832B3NTU&list=PLxlA7knZ2zb6_Tdz8YZTL-bDCJlo2Fu4Y)
-- [유저 플레이 영상](https://www.youtube.com/watch?v=4zYNsM1SnWI)
-
-### 옐언니 옷입히기 - 샌드박스 네트워크
-- [트레일러](https://www.youtube.com/watch?v=rt0VsQ2QuH4)
-
-### 셀프어쿠스틱 시리즈 - 샌드박스 네트워크
-- [네일샵](https://www.youtube.com/watch?v=rJ9k5k8SLyM&list=PLxlA7knZ2zb76LeUBEk4kU579NzmgknvV)
-- [헤어샵](https://www.youtube.com/watch?v=CPqEhyBWdBg)
-- [캠핑장](https://www.youtube.com/watch?v=C1CYlrEDeR0)
-- [화장하기](https://www.youtube.com/watch?v=hGcn45izybs)
-- [아이스크림가게](https://www.youtube.com/watch?v=wM13fk0lVtA)
-- [핫도그가게](https://www.youtube.com/watch?v=0kenMfcXZGU)
-  
-### 드래곤 빌리지 - 하이브로
-- [유저플레이영상](https://www.youtube.com/watch?v=k6c1Yv_GXN0)
-
-### 지하철이야기 - 하이브로
-- [유저 플레이 영상](https://www.youtube.com/watch?v=UtUfj-K9B1U)
-
-### 드래곤 빌리지 - 하이브로
-- [유저플레이영상](https://www.youtube.com/watch?v=k6c1Yv_GXN0)
-
-### 피닉스다트 - 홍인터네셔날
-- [VSS UI리뉴얼](https://www.youtube.com/watch?v=4jQgMthDDQ8)
+[<img src="https://img.youtube.com/vi/O6LPHZbqoA8/0.jpg" width="300"/>](https://www.youtube.com/watch?v=O6LPHZbqoA8)
+[<img src="https://img.youtube.com/vi/ocvZkbXv6hI/0.jpg" width="300"/>](https://www.youtube.com/watch?v=ocvZkbXv6hI)
 
 ---
+
+### 양어장 고양이 - 샌드박스 네트워크
+크리에이터 'haha ha' 채널의 실제 고양이들과 교감하며 양어장을 운영하는 방치형 시뮬레이션 게임
+
+[<img src="https://img.youtube.com/vi/CUUZ9LrLLco/0.jpg" width="300"/>](https://www.youtube.com/watch?v=CUUZ9LrLLco)
+[<img src="https://img.youtube.com/vi/3YrTkEd3PZ4/0.jpg" width="300"/>](https://www.youtube.com/watch?v=3YrTkEd3PZ4)
+
+---
+
+### 공포의 술래잡기 - 샌드박스 네트워크
+크리에이터 '총몇명'의 인기 애니메이션 원작, 생존자 4명 vs 추격자 2명의 비대칭 실시간 PvP 모바일 게임
+
+[<img src="https://img.youtube.com/vi/I2k832B3NTU/0.jpg" width="300"/>](https://www.youtube.com/watch?v=I2k832B3NTU&list=PLxlA7knZ2zb6_Tdz8YZTL-bDCJlo2Fu4Y)
+[<img src="https://img.youtube.com/vi/4zYNsM1SnWI/0.jpg" width="300"/>](https://www.youtube.com/watch?v=4zYNsM1SnWI)
+
+---
+
+### 옐언니 옷입히기 - 샌드박스 네트워크
+크리에이터 '옐언니' IP 기반 패션 드레스업 모바일 게임
+
+[<img src="https://img.youtube.com/vi/rt0VsQ2QuH4/0.jpg" width="300"/>](https://www.youtube.com/watch?v=rt0VsQ2QuH4)
+
+---
+
+### 셀프어쿠스틱 시리즈 - 샌드박스 네트워크
+크리에이터 IP 기반 힐링 시뮬레이션 시리즈 — 네일샵, 헤어샵, 캠핑장 등 다양한 테마로 구성
+
+[<img src="https://img.youtube.com/vi/rJ9k5k8SLyM/0.jpg" width="180"/>](https://www.youtube.com/watch?v=rJ9k5k8SLyM&list=PLxlA7knZ2zb76LeUBEk4kU579NzmgknvV)
+[<img src="https://img.youtube.com/vi/CPqEhyBWdBg/0.jpg" width="180"/>](https://www.youtube.com/watch?v=CPqEhyBWdBg)
+[<img src="https://img.youtube.com/vi/C1CYlrEDeR0/0.jpg" width="180"/>](https://www.youtube.com/watch?v=C1CYlrEDeR0)
+[<img src="https://img.youtube.com/vi/hGcn45izybs/0.jpg" width="180"/>](https://www.youtube.com/watch?v=hGcn45izybs)
+[<img src="https://img.youtube.com/vi/wM13fk0lVtA/0.jpg" width="180"/>](https://www.youtube.com/watch?v=wM13fk0lVtA)
+[<img src="https://img.youtube.com/vi/0kenMfcXZGU/0.jpg" width="180"/>](https://www.youtube.com/watch?v=0kenMfcXZGU)
+
+---
+
+### 드래곤 빌리지 - 하이브로
+드래곤을 수집·합성·육성하는 모바일 RPG
+
+[<img src="https://img.youtube.com/vi/k6c1Yv_GXN0/0.jpg" width="300"/>](https://www.youtube.com/watch?v=k6c1Yv_GXN0)
+
+---
+
+### 지하철이야기 - 하이브로
+서울을 배경으로한 픽셀 타일맵 심리스 오픈월드 MMORPG 모바일 게임
+
+[<img src="https://img.youtube.com/vi/UtUfj-K9B1U/0.jpg" width="300"/>](https://www.youtube.com/watch?v=UtUfj-K9B1U)
+
+---
+
+### 피닉스다트 - 홍인터네셔날
+피닉스다트 VSS(Virtual Sport System) UI 리뉴얼 프로젝트
+
+[<img src="https://img.youtube.com/vi/4jQgMthDDQ8/0.jpg" width="300"/>](https://www.youtube.com/watch?v=4jQgMthDDQ8)
+
+---
+
