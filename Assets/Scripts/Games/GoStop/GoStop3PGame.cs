@@ -1360,16 +1360,38 @@ public partial class GoStop3PGame : MonoBehaviour
 
         if (bomb) bombCount[seat]++;
 
-        // 뻑 감지 — 2인판과 동일한 조건(matchCount==1, 선택 캡처 제외, 곧바로
-        // 뒤집을 더미패도 같은 달). ppeokCauser는 좌석 인덱스를 담는다.
+        // 2026-08-22: "뒷패가 공개되기 전에 결과가 노출되면 안 된다" 요청으로
+        // 순서를 바꿨다 — 예전엔 뻑 여부를 drawPile[0].month를 몰래 들여다봐서
+        // (화면엔 아무것도 안 보여준 채) 먼저 정하고, 그 결과에 따라 r1을
+        // 곧장 Cap으로 보내거나(뻑 아님) 필드에 묶어뒀다(뻑) — 그런데 "카드가
+        // 곧장 Cap으로 날아가는 애니메이션이 나온다"는 사실 자체가 뒷패 얼굴을
+        // 보기도 전에 "이번엔 뻑이 아니다"를 알려주는 셈이었다. 지금은 뒷패를
+        // 먼저 뽑아 **얼굴만** 공개(아직 field/captured 어디에도 안 넣는다,
+        // 더미 자리에 잠깐 보여주고 지운다)하고, 그 다음에야 뻑·일반 캡처·
+        // 쪽·따닥을 전부 판정해서 최종 위치로 옮긴다. 손패→뒷패 2단계 페이싱
+        // (SlamIn이 헷갈리지 않게 나눠 보여주는 것)은 그대로 유지한다.
+        bool willDraw = !bomb && drawPile.Count > 0;
+        HwatuCard drawn = null;
+        bool isLastDeckCard = false;
+        if (willDraw)
+        {
+            drawn = drawPile[0]; drawPile.RemoveAt(0);
+            isLastDeckCard = drawPile.Count == 0;
+            flyFrom[drawn] = drawPileArea.position;
+
+            var revealGo = HwatuUI.MakeCard(drawn, ui.ContentArea, drawPileArea.anchoredPosition, FIELD_W, FIELD_H, null, false);
+            yield return new WaitForSeconds(PLAY_STEP_DELAY);
+            Destroy(revealGo);
+        }
+
+        // 뻑 감지 — 이제 이미 공개된 drawn의 월을 직접 비교한다(2인판과 동일
+        // 조건: matchCount==1, 선택 캡처 제외, 조커는 뻑을 못 만든다).
         bool ppeokFormed = !bomb && !r1HadChoice && r1.matchCount == 1
-                           && drawPile.Count > 0 && drawPile[0].month == card.month;
+                           && drawn != null && !drawn.isJoker && drawn.month == card.month;
         if (ppeokFormed)
         {
             field.AddRange(r1.captured);
-            var stuckDeck = drawPile[0]; drawPile.RemoveAt(0);
-            field.Add(stuckDeck);
-            flyFrom[stuckDeck] = drawPileArea.position;
+            field.Add(drawn);
             ppeokCauser[card.month] = seat;
 
             int streak = ++ppeokStreak[seat];
@@ -1393,16 +1415,21 @@ public partial class GoStop3PGame : MonoBehaviour
         }
         ppeokStreak[seat] = 0;
 
+        // 국열끗(9월 열끗) 선택 팝업 — "모든 패가 Cap에 들어간 뒤"로 미룬다
+        // (요청 8번). r1/r2 어느 쪽에서 잡히든 여기 모아뒀다가 턴 맨 끝에
+        // 순서대로 묻는다.
+        var dualPiPending = new List<HwatuCard>();
+
         if (r1.captured.Count > 0)
         {
             cap.AddRange(r1.captured);
             GoStopAudio.Instance?.Capture();
-            ApplyMatchBonus(seat, r1, bomb, allowSweep: bomb || drawPile.Count == 0);
+            ApplyMatchBonus(seat, r1, bomb, allowSweep: bomb || !willDraw);
             RegisterFlyViaField(r1);
             if (seat == PLAYER_SEAT || IsRemoteSeat(seat))
             {
                 var dual = r1.captured.FirstOrDefault(c => c.dualPi);
-                if (dual != null) yield return StartCoroutine(PromptDualPiChoice(dual, seat));
+                if (dual != null) dualPiPending.Add(dual);
             }
         }
         RebuildUI();
@@ -1411,15 +1438,15 @@ public partial class GoStop3PGame : MonoBehaviour
         if (bomb)
         {
             bombCredits[seat] += 2;
+            foreach (var dual in dualPiPending)
+                yield return StartCoroutine(PromptDualPiChoice(dual, seat));
             actionBusy = false;
             onDone?.Invoke();
             yield break;
         }
 
-        if (drawPile.Count > 0)
+        if (willDraw)
         {
-            var drawn = drawPile[0]; drawPile.RemoveAt(0);
-
             if (drawn.isJoker)
             {
                 // "필드에 방금 나온 패" = 이번에 낸 손패가 매칭 안 돼 그대로
@@ -1431,8 +1458,6 @@ public partial class GoStop3PGame : MonoBehaviour
             }
             else
             {
-                flyFrom[drawn] = drawPileArea.position;
-                bool isLastDeckCard = drawPile.Count == 0;
                 var r2 = GoStopRules.Resolve(drawn, field);
                 if (r2.choiceCandidates != null)
                 {
@@ -1487,7 +1512,7 @@ public partial class GoStop3PGame : MonoBehaviour
                     if (seat == PLAYER_SEAT || IsRemoteSeat(seat))
                     {
                         var dual2 = r2.captured.FirstOrDefault(c => c.dualPi);
-                        if (dual2 != null) yield return StartCoroutine(PromptDualPiChoice(dual2, seat));
+                        if (dual2 != null) dualPiPending.Add(dual2);
                     }
                 }
             }
@@ -1495,6 +1520,10 @@ public partial class GoStop3PGame : MonoBehaviour
         }
 
         yield return new WaitForSeconds(PLAY_STEP_DELAY);
+
+        foreach (var dual in dualPiPending)
+            yield return StartCoroutine(PromptDualPiChoice(dual, seat));
+
         actionBusy = false;
         onDone?.Invoke();
     }
@@ -1533,6 +1562,7 @@ public partial class GoStop3PGame : MonoBehaviour
                     r = chosen;
                 }
             }
+            HwatuCard dualPending = null;
             if (r.captured.Count > 0)
             {
                 cap.AddRange(r.captured);
@@ -1540,11 +1570,19 @@ public partial class GoStop3PGame : MonoBehaviour
                 ApplyMatchBonus(seat, r, false, allowSweep: !isLastDeckCard);
                 RegisterFlyViaField(r);
                 if (seat == PLAYER_SEAT || IsRemoteSeat(seat))
-                {
-                    var dual = r.captured.FirstOrDefault(c => c.dualPi);
-                    if (dual != null) yield return StartCoroutine(PromptDualPiChoice(dual, seat));
-                }
+                    dualPending = r.captured.FirstOrDefault(c => c.dualPi);
             }
+
+            RebuildUI();
+            yield return new WaitForSeconds(PLAY_STEP_DELAY);
+
+            // 국열끗 선택은 모든 패가 Cap에 들어간 뒤(요청 8번).
+            if (dualPending != null)
+                yield return StartCoroutine(PromptDualPiChoice(dualPending, seat));
+
+            actionBusy = false;
+            onDone?.Invoke();
+            yield break;
         }
 
         RebuildUI();

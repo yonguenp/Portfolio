@@ -675,17 +675,37 @@ public partial class GoStopGame : MonoBehaviour
 
         int before1 = captured.Count;
 
-        // 뻑 감지 — 손패가 필드 1장과 매칭됐는데(matchCount==1), 곧바로 뒤집을
-        // 더미패도 같은 달이면 아무도 못 먹는다. r1이 이미 캡처해 버렸으니
-        // 그 2장을 필드로 되돌리고, 더미 맨 위 패까지 셋을 필드에 쌓는다.
+        // 2026-08-22: "뒷패가 공개되기 전에 결과가 노출되면 안 된다" 요청으로
+        // 순서를 바꿨다 — 예전엔 뻑 여부를 drawPile[0].month를 몰래 들여다봐서
+        // (화면엔 아무것도 안 보여준 채) 먼저 정하고, 그 결과에 따라 r1을
+        // 곧장 Cap으로 보내거나(뻑 아님) 필드에 묶어뒀다(뻑) — 그런데 "카드가
+        // 곧장 Cap으로 날아가는 애니메이션이 나온다"는 사실 자체가 뒷패 얼굴을
+        // 보기도 전에 "이번엔 뻑이 아니다"를 알려주는 셈이었다. 지금은 뒷패를
+        // 먼저 뽑아 **얼굴만** 공개(아직 field/captured 어디에도 안 넣는다,
+        // 더미 자리에 잠깐 보여주고 지운다)하고, 그 다음에야 뻑·일반 캡처·
+        // 쪽·따닥을 전부 판정해서 최종 위치로 옮긴다. 손패→뒷패 2단계 페이싱
+        // (SlamIn이 헷갈리지 않게 나눠 보여주는 것)은 그대로 유지한다.
+        bool willDraw = !bomb && drawPile.Count > 0;
+        HwatuCard drawn = null;
+        bool isLastDeckCard = false;
+        if (willDraw)
+        {
+            drawn = drawPile[0]; drawPile.RemoveAt(0);
+            isLastDeckCard = drawPile.Count == 0;
+            flyFrom[drawn] = drawPileArea.position;
+
+            var revealGo = HwatuUI.MakeCard(drawn, ui.ContentArea, drawPileArea.anchoredPosition, FIELD_W, FIELD_H, null, false);
+            yield return new WaitForSeconds(PLAY_STEP_DELAY);
+            Destroy(revealGo);
+        }
+
+        // 뻑 감지 — 이제 이미 공개된 drawn의 월을 직접 비교한다.
         bool ppeokFormed = !bomb && !r1HadChoice && r1.matchCount == 1
-                           && drawPile.Count > 0 && drawPile[0].month == card.month;
+                           && drawn != null && !drawn.isJoker && drawn.month == card.month;
         if (ppeokFormed)
         {
             field.AddRange(r1.captured);
-            var stuckDeck = drawPile[0]; drawPile.RemoveAt(0);
-            field.Add(stuckDeck);
-            flyFrom[stuckDeck] = drawPileArea.position;
+            field.Add(drawn);
             ppeokCauser[card.month] = isPlayerSide;
 
             int streak = isPlayerSide ? ++playerPpeokStreak : ++aiPpeokStreak;
@@ -724,6 +744,10 @@ public partial class GoStopGame : MonoBehaviour
         // 뻑이 아니었으면 이번에 낸 카드로 이 쪽의 연속 뻑 스트릭이 끊긴다.
         if (isPlayerSide) playerPpeokStreak = 0; else aiPpeokStreak = 0;
 
+        // 국열끗(9월 열끗) 선택 팝업 — "모든 패가 Cap에 들어간 뒤"로 미룬다.
+        // r1/r2 어느 쪽에서 잡히든 여기 모아뒀다가 턴 맨 끝에 순서대로 묻는다.
+        var dualPiPending = new List<HwatuCard>();
+
         if (r1.captured.Count > 0)
         {
             captured.AddRange(r1.captured);
@@ -735,7 +759,7 @@ public partial class GoStopGame : MonoBehaviour
             // 실제로는 싹쓸이가 아니다. 싹쓸이 인정은 (1) 폭탄 턴(이번 턴에
             // 덱을 안 넘긴다) (2) 덱이 이미 바닥나 더 뒤집을 패가 없는 경우로
             // 한정한다 — 그 외엔 r2(덱 캡처) 쪽에서 최종 상태를 다시 판정한다.
-            ApplyMatchBonus(isPlayerSide, r1, bomb, allowSweep: bomb || drawPile.Count == 0);
+            ApplyMatchBonus(isPlayerSide, r1, bomb, allowSweep: bomb || !willDraw);
             RegisterFlyViaField(r1);
             // isNetworkHost도 같이 확인 — "ai" 쪽 캡처여도 실제로는 접속한
             // 게스트라 팝업으로 직접 물어봐야 한다(AI는 팝업 없이 나중에
@@ -743,7 +767,7 @@ public partial class GoStopGame : MonoBehaviour
             if (isPlayerSide || isNetworkHost)
             {
                 var dual = r1.captured.FirstOrDefault(c => c.dualPi);
-                if (dual != null) yield return StartCoroutine(PromptDualPiChoice(dual, isPlayerSide));
+                if (dual != null) dualPiPending.Add(dual);
             }
         }
 
@@ -758,13 +782,14 @@ public partial class GoStopGame : MonoBehaviour
             // 그 대신 이후 최대 2번 "손 안 내고 덱만 넘기기"를 선택할 수 있는
             // 권리를 적립한다(강제 소모 아님 — PlayerBombSkip/AiTurnStep에서 사용).
             if (isPlayerSide) playerBombCredits += 2; else aiBombCredits += 2;
+            foreach (var dual in dualPiPending)
+                yield return StartCoroutine(PromptDualPiChoice(dual, isPlayerSide));
             onDone?.Invoke();
             yield break;
         }
 
-        if (drawPile.Count > 0)
+        if (willDraw)
         {
-            var drawn = drawPile[0]; drawPile.RemoveAt(0);
             int before2 = captured.Count;
 
             if (drawn.isJoker)
@@ -778,12 +803,6 @@ public partial class GoStopGame : MonoBehaviour
             }
             else
             {
-                flyFrom[drawn] = drawPileArea.position;
-                // 이 더미패를 뒤집고 나면 더미가 완전히 빈다 — "마지막 한 장은
-                // 반드시 남은 패와 맞게 돼 있다"는 이유로 쪽/싹쓸이는 이 마지막
-                // 장에서만 예외로 인정하지 않는다(사용자 확인 규칙). 캡처 자체는
-                // 평범하게 일어난다 — 보너스만 빠진다.
-                bool isLastDeckCard = drawPile.Count == 0;
                 var r2 = GoStopRules.Resolve(drawn, field);
                 if (r2.choiceCandidates != null)
                 {
@@ -844,7 +863,7 @@ public partial class GoStopGame : MonoBehaviour
                     if (isPlayerSide || isNetworkHost)
                     {
                         var dual2 = r2.captured.FirstOrDefault(c => c.dualPi);
-                        if (dual2 != null) yield return StartCoroutine(PromptDualPiChoice(dual2, isPlayerSide));
+                        if (dual2 != null) dualPiPending.Add(dual2);
                     }
                 }
 
@@ -863,7 +882,14 @@ public partial class GoStopGame : MonoBehaviour
         // 그 즉시 onDone을 부르면 마지막 카드가 아직 날아드는 도중에 팝업이
         // 화면을 덮어버린다 — "필드·상대패 파악이 안 된다"는 신고. 연출이
         // 끝날 시간만큼 여기서 쉬어가서 팝업은 항상 정지된 화면 위에 뜨게 한다.
+        //
+        // 국열끗 선택은 그 뒤(요청 8번 — 모든 패가 최종적으로 Cap에 들어간
+        // 다음)에 순서대로 묻는다.
         yield return new WaitForSeconds(PLAY_STEP_DELAY);
+
+        foreach (var dual in dualPiPending)
+            yield return StartCoroutine(PromptDualPiChoice(dual, isPlayerSide));
+
         onDone?.Invoke();
     }
 
@@ -905,6 +931,7 @@ public partial class GoStopGame : MonoBehaviour
                     r = chosen;
                 }
             }
+            HwatuCard dualPending = null;
             if (r.captured.Count > 0)
             {
                 captured.AddRange(r.captured);
@@ -912,17 +939,21 @@ public partial class GoStopGame : MonoBehaviour
                 ApplyMatchBonus(isPlayerSide, r, false, allowSweep: !isLastDeckCard);
                 RegisterFlyViaField(r);
                 if (isPlayerSide || isNetworkHost)
-                {
-                    var dual = r.captured.FirstOrDefault(c => c.dualPi);
-                    if (dual != null) yield return StartCoroutine(PromptDualPiChoice(dual, isPlayerSide));
-                }
+                    dualPending = r.captured.FirstOrDefault(c => c.dualPi);
             }
 
             RebuildUI(newPlayerCapturedFrom: isPlayerSide ? before : (int?)null,
                       newAiCapturedFrom: !isPlayerSide ? before : (int?)null);
+
+            // PlayFromHandSeq와 같은 이유 — 날아드는 카드 연출이 끝날 시간을 주고
+            // 나서 onDone(고/스톱 팝업 등)을 부른다. 국열끗 선택은 모든 패가
+            // Cap에 들어간 뒤로 미룬다(요청 8번).
+            yield return new WaitForSeconds(PLAY_STEP_DELAY);
+            if (dualPending != null)
+                yield return StartCoroutine(PromptDualPiChoice(dualPending, isPlayerSide));
+            onDone?.Invoke();
+            yield break;
         }
-        // PlayFromHandSeq와 같은 이유 — 날아드는 카드 연출이 끝날 시간을 주고
-        // 나서 onDone(고/스톱 팝업 등)을 부른다.
         yield return new WaitForSeconds(PLAY_STEP_DELAY);
         onDone?.Invoke();
     }
