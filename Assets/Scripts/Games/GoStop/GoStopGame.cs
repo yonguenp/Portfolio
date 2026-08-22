@@ -155,6 +155,14 @@ public partial class GoStopGame : MonoBehaviour
     bool pendingBreakdownIsPlayer;
     int pendingOtherBaseScore;
 
+    // 2026-08-22: "결과 화면에 자금 상세(시작 자금·이번 판 변동·현재 잔액)를
+    // 보여달라" 요청 — EndGame이 정산을 시작하기 직전의 잔액을 여기 담아둔다.
+    // ShowScoreDetail은 버튼을 눌러야 나중에 실행되므로(그때는 playerMoney/
+    // aiMoney가 이미 정산 후 값이라 "시작 자금"을 역산할 방법이 없다) —
+    // "현재 잔액"은 그 시점의 살아있는 playerMoney/aiMoney를 그대로 쓰면
+    // 되므로(다음 판이 시작되기 전까지는 안 바뀐다) 따로 스냅샷할 필요가 없다.
+    int pendingMoneyBeforePlayer, pendingMoneyBeforeAi;
+
     /// <summary>
     /// 이번 턴에 "어디서 날아왔는지"를 아는 카드들 — 손에서 낸 카드(핸드 슬롯
     /// 월드 좌표)와 더미에서 뒤집은 카드(더미 위치)가 여기 등록된다. RebuildUI가
@@ -1667,6 +1675,8 @@ public partial class GoStopGame : MonoBehaviour
         // 판은 "화투를 안 친 것"으로 쳐서 돈이 아예 안 오간다(실제 규칙) —
         // 승패·최고기록 표시는 그대로 하되 판돈만 스킵한다. 결판이 났으니
         // (돈이 오갔든 안 오갔든) 다음 판을 위해 배수는 리셋한다.
+        pendingMoneyBeforePlayer = playerMoney;
+        pendingMoneyBeforeAi = aiMoney;
         if (aiWon.HasValue && !loserCapturedNothing)
         {
             if (aiWon == false)
@@ -1697,7 +1707,11 @@ public partial class GoStopGame : MonoBehaviour
 
         if (loserCapturedNothing && aiWon.HasValue) sub += " · 상대가 한 장도 못 먹어 판돈 없음";
         // 오버레이 서브텍스트는 한 줄 고정이라(위 신기록 처리와 같은 이유) 이어 붙인다.
-        sub += $" · 내 머니 {playerMoney:N0}원";
+        // "이번 판 얼마를 벌었는지/잃었는지"가 최종 잔액만으론 안 보인다는 요청 —
+        // 정산 직전 스냅샷(pendingMoneyBeforePlayer) 대비 변동을 부호와 함께 보여준다.
+        int playerDelta = playerMoney - pendingMoneyBeforePlayer;
+        string deltaStr = playerDelta == 0 ? "변동 없음" : (playerDelta > 0 ? $"+{playerDelta:N0}원" : $"{playerDelta:N0}원");
+        sub += $" · 이번 판 {deltaStr} · 내 머니 {playerMoney:N0}원";
 
         ui?.SetScore(playerMoney); // 상단 HUD의 SCORE는 판점이 아니라 내 보유 머니를 보여준다(사용자 요청)
         if (aiWon.HasValue)
@@ -1751,7 +1765,16 @@ public partial class GoStopGame : MonoBehaviour
             ? $"배수: {string.Join(" · ", mult)}  =  ×{b.totalMultiplier}"
             : "배수 없음(×1)");
         foot.AppendLine($"<color=#8A6300><b>{owner} 최종 점수: {b.finalScore}점</b></color>"); // 흰 본문 위라 어두운 금색으로 — 밝은 금색(FFD966 등)은 대비가 안 나온다
-        foot.Append($"({other} 기본 점수 {pendingOtherBaseScore}점 — 정산 배수 미적용, 참고용)");
+        foot.AppendLine($"({other} 기본 점수 {pendingOtherBaseScore}점 — 정산 배수 미적용, 참고용)");
+
+        // 2026-08-22: "시작 자금 → 이번 판 변동 → 현재 잔액"을 양쪽 다 보여달라는
+        // 요청 — pendingMoneyBeforePlayer/Ai는 EndGame이 정산 직전에 캡처해둔
+        // 스냅샷이고, 현재 잔액은 그 이후로 안 바뀌었으니 살아있는 필드를 그대로 쓴다.
+        int pDelta = playerMoney - pendingMoneyBeforePlayer, aDelta = aiMoney - pendingMoneyBeforeAi;
+        string PDeltaStr(int d) => d == 0 ? "변동 없음" : (d > 0 ? $"+{d:N0}원" : $"{d:N0}원");
+        foot.AppendLine();
+        foot.AppendLine($"내 자금: {pendingMoneyBeforePlayer:N0}원 → {PDeltaStr(pDelta)} → <color=#EDBA2E><b>{playerMoney:N0}원</b></color>");
+        foot.Append($"상대 자금: {pendingMoneyBeforeAi:N0}원 → {PDeltaStr(aDelta)} → {aiMoney:N0}원");
         scoreDetailPopup.footerText.text = foot.ToString();
 
         scoreDetailPopup.Show(); // dim 활성화 + Overlay보다 위로 SetAsLastSibling까지 컴포넌트가 처리

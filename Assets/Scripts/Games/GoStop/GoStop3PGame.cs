@@ -84,6 +84,13 @@ public partial class GoStop3PGame : MonoBehaviour
     readonly int[] allInCount = new int[SEATS_MAX];
     int stakeMultiplier = 1; // 나가리마다 2배, 결판나면 1로 리셋 (Start()에서만 초기화)
 
+    // 2026-08-22: "결과 화면에 자금 상세(시작 자금·이번 판 변동·현재 잔액)를
+    // 보여달라" 요청 — EndGame이 정산을 적용하기 직전의 좌석별 잔액 스냅샷.
+    // ShowScoreDetail은 버튼을 눌러야 나중에 실행되므로 그때는 이미 정산이
+    // 끝난 money[]만 남아있다 — "시작 자금"을 보여주려면 여기 따로 남겨둬야
+    // 한다(2인판 GoStopGame.cs의 pendingMoneyBeforePlayer/Ai와 같은 이유).
+    readonly int[] pendingMoneyBefore = new int[SEATS_MAX];
+
     void SaveMoney()
     {
         for (int s = 0; s < SEATS; s++)
@@ -2198,6 +2205,7 @@ public partial class GoStop3PGame : MonoBehaviour
         pendingWinnerSeat = winnerSeat;
         pendingLoserSeats = loserSeats;
 
+        for (int s = 0; s < SEATS_MAX; s++) pendingMoneyBefore[s] = money[s];
         for (int i = 0; i < loserSeats.Count; i++)
         {
             int amount = Mathf.Min(payout.amounts[i], money[loserSeats[i]]);
@@ -2227,8 +2235,12 @@ public partial class GoStop3PGame : MonoBehaviour
 
         string title = winnerSeat == PLAYER_SEAT ? "승리!" : $"{SeatName(winnerSeat)} 승리";
         Color col = winnerSeat == PLAYER_SEAT ? new Color(.93f, .73f, .18f) : new Color(.55f, .55f, .60f);
-        string sub = dokbakIdx >= 0 ? $"{SeatName(loserSeats[dokbakIdx])} 독박 · 내 머니 {money[PLAYER_SEAT]:N0}원"
-                                     : $"내 머니 {money[PLAYER_SEAT]:N0}원";
+        // "이번 판 얼마를 벌었는지/잃었는지"가 최종 잔액만으론 안 보인다는 요청 —
+        // 정산 직전 스냅샷(pendingMoneyBefore) 대비 내 변동을 부호와 함께 보여준다.
+        int myDelta = money[PLAYER_SEAT] - pendingMoneyBefore[PLAYER_SEAT];
+        string myDeltaStr = myDelta == 0 ? "변동 없음" : (myDelta > 0 ? $"+{myDelta:N0}원" : $"{myDelta:N0}원");
+        string moneyLine = $"이번 판 {myDeltaStr} · 내 머니 {money[PLAYER_SEAT]:N0}원";
+        string sub = dokbakIdx >= 0 ? $"{SeatName(loserSeats[dokbakIdx])} 독박 · {moneyLine}" : moneyLine;
         if (refilledSeats.Count > 0)
         {
             string names = string.Join(", ", refilledSeats.Select(s => $"{SeatName(s)}(올인 {allInCount[s]}회)"));

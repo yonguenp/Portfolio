@@ -507,7 +507,24 @@ public partial class GoStop3PGame
         }
         foot.AppendLine();
         foot.AppendLine($"<color=#EDBA2E><b>{SeatName(pendingWinnerSeat)} 획득: {totalWon:N0}원</b></color>");
-        foot.Append($"내 보유 금액: {money[PLAYER_SEAT]:N0}원");
+
+        // 2026-08-22: "각자 시작 자금 → 이번 판 변동 → 현재 잔액을 보여달라"
+        // 요청 — pendingMoneyBefore는 EndGame이 정산 직전에 찍어둔 스냅샷,
+        // 현재 잔액은 그 이후로 안 바뀌었으니 살아있는 money[]를 그대로 쓴다.
+        // 쉬는 좌석(광팔이 등)은 이번 판 정산 대상이 아니므로 참가 좌석만 나열한다.
+        foot.AppendLine();
+        var allSeatsForMoney = new List<int> { pendingWinnerSeat };
+        allSeatsForMoney.AddRange(pendingLoserSeats);
+        for (int i = 0; i < allSeatsForMoney.Count; i++)
+        {
+            int seat = allSeatsForMoney[i];
+            int d = money[seat] - pendingMoneyBefore[seat];
+            string dStr = d == 0 ? "변동 없음" : (d > 0 ? $"+{d:N0}원" : $"{d:N0}원");
+            bool isMe = seat == PLAYER_SEAT;
+            string line = $"{SeatName(seat)}: {pendingMoneyBefore[seat]:N0}원 → {dStr} → {money[seat]:N0}원";
+            if (isMe) line = $"<color=#EDBA2E><b>{line}</b></color>";
+            if (i < allSeatsForMoney.Count - 1) foot.AppendLine(line); else foot.Append(line);
+        }
         scoreDetailPopup.footerText.text = foot.ToString();
 
         // 패자별 광박/멍박/피박 아이콘 — footerText 각 줄 옆에 정확히 맞추기
