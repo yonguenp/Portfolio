@@ -74,8 +74,13 @@ public partial class GoStop3PGame
         // 들어간다(DrawField의 FIELD_COL_PITCH와 반드시 같이 맞출 것).
         const float FIELD_AREA_W = 800f; // FIELD_COLS(6) × FIELD_COL_PITCH(133) — DrawField와 맞출 것
         float fieldRowH = FIELD_H + 10f;
-        fieldArea = HwatuUI.MakeRect("Field", root, new Vector2(FIELD_AREA_W, fieldRowH * 2f), new Vector2(0f, fieldTop));
-        float fieldBottom = fieldTop - fieldRowH * 2f;
+        // 2026-08-22: "코드 생성 컨테이너를 씬 기본 오브젝트로" 요청 —
+        // 씬에 Field가 이미 있으면(에디터에서 위치·크기를 직접 조정한
+        // 것) 그대로 쓴다. 아래 fieldBottom도 사전 계산한 fieldTop이
+        // 아니라 실제 fieldArea의 transform에서 역산해야, 사용자가 Field를
+        // 옮겨도 그 아래(좌/우/나) 배치가 여전히 안 겹치게 자동으로 따라온다.
+        fieldArea = GetOrCreateContainer(root, "Field", new Vector2(FIELD_AREA_W, fieldRowH * 2f), new Vector2(0f, fieldTop), out _);
+        float fieldBottom = fieldArea.anchoredPosition.y - fieldArea.sizeDelta.y; // pivot=(0.5,1)이라 anchoredPosition.y가 곧 윗변
         float centerBottom = fieldBottom - 10f;
 
         // 좌/우(AI-A/C) — 가로뷰라 회전 없이 화면 가장자리 세로 기둥에
@@ -99,7 +104,7 @@ public partial class GoStop3PGame
         // 매턴 자식을 무차별로 지운다).
         float pileX = -460f;
         float pileY = -200f;
-        drawPileArea = HwatuUI.MakeRect("DrawPile", root, new Vector2(PILE_W, PILE_H), new Vector2(pileX, pileY));
+        drawPileArea = GetOrCreateContainer(root, "DrawPile", new Vector2(PILE_W, PILE_H), new Vector2(pileX, pileY), out _);
         // zoneGap은 이제 DrawAiCaptured가 안 읽는다(3존 나란히 배치를
         // 접었으므로) — 예전 호출 형태만 유지하고 값 자체는 의미 없다.
         float sideBottomL = BuildEdgeSeatBlock(1, -SIDE_X, SIDE_W, fieldTop + 16f, root, zoneGap: 0f, maxPerRow: 5, capAreaH: 0f);
@@ -108,21 +113,25 @@ public partial class GoStop3PGame
         // 나(아래) — 위 세 구간(중앙 필드+더미, 좌, 우) 중 가장 낮은 지점
         // 바로 아래부터 시작한다. 하드코딩된 값이 아니라 실제 배치 결과에서
         // 계산하므로, 위쪽 블록이 커져도 자동으로 밀려나 겹치지 않는다.
-        // 2026-08-20: Back/Cap을 씬에서 사용자가 직접 옮기면서(위 재사용
-        // 로직 참고) sideBottomL/R의 커서 감산이 실제 배치와 어긋나 이
-        // 아래 구간(StatusBox~PlayerCap)이 너무 아래로 처졌다 — 사용자가
-        // 직접 재보고 확인한 보정값 +400을 그대로 반영한다. Back/Cap을
-        // 씬에서 또 옮기면 이 값도 다시 맞춰야 할 수 있다.
-        const float MANUAL_LAYOUT_CORRECTION = 400f;
-        float contentBottom = Mathf.Min(centerBottom, Mathf.Min(sideBottomL, sideBottomR)) + MANUAL_LAYOUT_CORRECTION;
+        // 2026-08-22: 예전엔 여기에 사용자가 실측해서 맞춘 보정값
+        // (MANUAL_LAYOUT_CORRECTION=+400)을 더했었는데, 그건 "씬에 있던
+        // Back1/Cap1/Back3/Cap3 오브젝트의 실제 위치"와 "코드가 커서로
+        // 추정한 위치"가 어긋나서 필요했던 땜질이었다 — sideBottomL/R
+        // 자체가 이제 BuildEdgeSeatBlock에서 capAreaAI[seat]의 실제
+        // transform으로 정확히 계산되므로(위 BuildEdgeSeatBlock 주석
+        // 참고) 이 보정이 더 이상 필요 없다. 그 씬 오브젝트들이 사라진
+        // 뒤에도 이 매직 넘버만 남아있어서 "나" 섹션이 필드/더미와
+        // 겹치는 회귀로 이어졌었다 — 매직 넘버 자체를 없애는 게 근본
+        // 해결책이라고 판단해 걷어냈다.
+        float contentBottom = Mathf.Min(centerBottom, Mathf.Min(sideBottomL, sideBottomR));
         float capY = BuildInfoBlock(0, 0f, 700f, contentBottom - 10f, root);
-        playerCapArea = HwatuUI.MakeRect("PlayerCap", root, new Vector2(1000f, CAP_ROW_PITCH * 2f), new Vector2(0f, capY - 6f));
-        HwatuUI.AddZoneBackground(playerCapArea, CapZoneColor);
+        playerCapArea = GetOrCreateContainer(root, "PlayerCap", new Vector2(1000f, CAP_ROW_PITCH * 2f), new Vector2(0f, capY - 6f), out bool playerCapExisted);
+        if (!playerCapExisted) HwatuUI.AddZoneBackground(playerCapArea, CapZoneColor); // 재사용 시엔 배경을 또 얹지 않는다(중복 Image 방지)
         // 2026-08-20: "Hand 영역 posY -878로 조절" 확인 값 — 커서 계산값
         // 대신 직접 지정한다(이 파일이 반복 채택해 온, 사용자가 실측/확인한
         // 값을 그대로 박아 넣는 패턴 — Body/Card 등 다른 팝업들과 동일).
         float handY = -878f;
-        handArea = HwatuUI.MakeRect("Hand", root, new Vector2(1000f, HAND_H), new Vector2(0f, handY));
+        handArea = GetOrCreateContainer(root, "Hand", new Vector2(1000f, HAND_H), new Vector2(0f, handY), out _);
 
         // 팝업(딤+패널)은 전부 ContentArea가 아니라 Canvas 바로 밑(Overlay와
         // 같은 층)에 붙인다 — ContentArea 밑에 두면 게임오버 Overlay(Canvas
@@ -581,13 +590,50 @@ public partial class GoStop3PGame
     /// 두고 매턴 `ClearChildren`하는 것으로 구조적으로 막는다.</summary>
     float BuildInfoBlock(int slot, float centerX, float width, float topY, RectTransform root)
     {
+        // 2026-08-22: "코드로 생성하던 부분(상태창·Cap영역 등)을 씬 기본
+        // 오브젝트로 만들어서 에디터에서 위치/크기를 직접 조정하게 해달라"
+        // 요청 — Back{seat}/Cap{seat}에 이미 있던 "씬에 있으면 재사용,
+        // 없으면 코드로 생성" 패턴을 상태창에도 그대로 확장한다. 씬에
+        // `StatusBox{slot}`이 있으면 그 오브젝트의 실제 위치·너비를
+        // centerX/width/topY보다 우선한다 — 이후 이 함수 안의 모든 좌표
+        // 계산(이름/고점수/금액/배지 줄)이 그 실제 값을 기준으로 다시
+        // 잡힌다. `MakeStatusBox`가 만드는 박스는 pivot=(0.5,1)(top-center)
+        // 이고 y에 +7 오프셋을 주므로, topY를 역산할 때 그만큼 빼야 한다.
+        var existingBox = root.Find($"StatusBox{slot}") as RectTransform;
+        if (existingBox != null)
+        {
+            StripStrayLayoutGroup(existingBox);
+            centerX = existingBox.anchoredPosition.x;
+            width = existingBox.sizeDelta.x;
+            topY = existingBox.anchoredPosition.y - 7f;
+        }
+
         const float NAME_H = 32f, GOSCORE_H = 28f, MONEY_H = 32f, GAP = 5f;
         float totalH = NAME_H + GOSCORE_H + MONEY_H + GAP * 2f;
         float halfW = width * 0.5f;
         float leftCenterX = centerX - halfW * 0.5f - 4f;
         float rightCenterX = centerX + halfW * 0.5f + 4f;
 
-        statusBoxImg[slot] = HwatuUI.MakeStatusBox(root, new Vector2(centerX, topY), totalH - 14f, width);
+        if (existingBox != null)
+        {
+            statusBoxImg[slot] = existingBox.GetComponent<Image>();
+            if (statusBoxImg[slot] == null)
+            {
+                // 사용자가 빈 RectTransform만 놓아뒀을 수 있다 — 배경 이미지가
+                // 없으면 기존 스타일 그대로 붙여준다(위치/크기는 이미 존재하는
+                // 오브젝트의 것을 그대로 쓴다).
+                statusBoxImg[slot] = existingBox.gameObject.AddComponent<Image>();
+                statusBoxImg[slot].sprite = HwatuShapes.RoundedRect(64, 12);
+                statusBoxImg[slot].type = Image.Type.Sliced;
+                statusBoxImg[slot].color = new Color(0.106f, 0.133f, 0.267f, 0.88f);
+                statusBoxImg[slot].raycastTarget = false;
+            }
+        }
+        else
+        {
+            statusBoxImg[slot] = HwatuUI.MakeStatusBox(root, new Vector2(centerX, topY), totalH - 14f, width);
+            statusBoxImg[slot].gameObject.name = $"StatusBox{slot}"; // 다음 실행에서 재사용 가능하도록, 씬 계층에서도 식별 가능하도록
+        }
 
         float cursor = topY;
         statusText[slot] = HwatuUI.MakeLabel(root, new Vector2(leftCenterX, cursor), new Vector2(halfW - 20f, NAME_H), 21f, Color.white);
@@ -744,22 +790,30 @@ public partial class GoStop3PGame
         cursor -= backDeclaredW + 6f;
 
         var existingCap = root.Find($"Cap{seat}") as RectTransform;
-        float capDeclaredW;
         if (existingCap != null)
         {
             capAreaAI[seat] = existingCap;
-            capDeclaredW = existingCap.sizeDelta.x;
             StripStrayLayoutGroup(existingCap);
         }
         else
         {
             capAreaAI[seat] = MakeRotatedContainerByVisualTop($"Cap{seat}", root, CAP_DECLARED_W, CAP_DECLARED_H, centerX, cursor, zRot);
             HwatuUI.AddZoneBackground(capAreaAI[seat], CapZoneColor);
-            capDeclaredW = CAP_DECLARED_W;
         }
-        cursor -= capDeclaredW;
 
-        return cursor;
+        // 2026-08-22: 리턴값을 "커서 누적치"가 아니라 capAreaAI[seat]의
+        // 실제 transform에서 직접 역산한다 — 씬 재사용 오브젝트는 사용자가
+        // 인스펙터에서 자유롭게 옮길 수 있어서, cursor 변수(위쪽에서부터
+        // 크기만 빼내려간 값)가 실제 화면 위치와 어긋날 수 있다("Back/Cap을
+        // 씬에서 옮기면 이 아래 구간이 처진다"던 예전 문제, MANUAL_LAYOUT_
+        // CORRECTION이라는 매직 넘버로 임시 땜질했었다 — 씬의 Back1/Cap1/
+        // Back3/Cap3 오브젝트가 사라진 뒤 그 보정값만 남아 "나" 섹션이
+        // 필드/더미와 겹치는 회귀로 이어졌다). pivot=(0.5,0.5)·회전
+        // ±90도라 실제 화면 아래쪽 끝은 `anchoredPosition.y - sizeDelta.x*0.5`
+        // (회전 후 sizeDelta.x가 화면상 세로 길이가 된다는, 이 파일이 이미
+        // 여러 번 문서화한 규칙)다 — 코드로 새로 만든 경우도, 사용자가
+        // 씬에서 옮긴 경우도 둘 다 이 공식 하나로 정확한 실제 바닥을 얻는다.
+        return capAreaAI[seat].anchoredPosition.y - capAreaAI[seat].sizeDelta.x * 0.5f;
     }
 
     /// <summary>씬에서 인스펙터로 만지다 보면 LayoutGroup(Horizontal/Vertical/
@@ -777,6 +831,27 @@ public partial class GoStop3PGame
         if (lg != null) Destroy(lg);
         var fitter = rt.GetComponent<ContentSizeFitter>();
         if (fitter != null) Destroy(fitter);
+    }
+
+    /// <summary>정적 컨테이너(Field·DrawPile·PlayerCap·Hand 등) 공통 —
+    /// 씬에 같은 이름의 오브젝트가 이미 있으면(에디터에서 사용자가 위치·
+    /// 크기를 직접 조정해 둔 것) 그대로 재사용하고, 없으면 기본값으로
+    /// 새로 만든다. Back{seat}/Cap{seat}에 이미 있던 재사용 패턴을 모든
+    /// 정적 컨테이너로 일반화한 것 — "코드로 생성하던 부분을 씬 기본
+    /// 오브젝트로 만들어서 에디터에서 직접 조정하게 해달라"는 요청.
+    /// 카드·텍스트처럼 매 턴 달라지는 내용은 여전히 코드가 채운다 — 이
+    /// 함수는 오직 "그 내용이 담기는 그릇(위치·크기)"만 다룬다.</summary>
+    RectTransform GetOrCreateContainer(RectTransform root, string name, Vector2 defaultSize, Vector2 defaultPos, out bool wasExisting)
+    {
+        var existing = root.Find(name) as RectTransform;
+        if (existing != null)
+        {
+            StripStrayLayoutGroup(existing);
+            wasExisting = true;
+            return existing;
+        }
+        wasExisting = false;
+        return HwatuUI.MakeRect(name, root, defaultSize, defaultPos);
     }
 
     /// <summary>컨테이너 하나를 통째로 회전시켜서 배치한다 — 안의 내용물은
