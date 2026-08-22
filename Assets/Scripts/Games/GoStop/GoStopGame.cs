@@ -87,6 +87,10 @@ public partial class GoStopGame : MonoBehaviour
     // 뻑 무더기에 같이 묻힌 보너스피 — 그 뻑을 나중에 해소하는 쪽이
     // ppeokCauser의 피 뺏기와 함께 이 카드도 가져간다(사용자 확인 규칙).
     readonly Dictionary<int, HwatuCard> ppeokBonusPi = new();
+    // 비상 시스템 — (내 쪽인지, 세트 인덱스[0=고도리 1=홍단 2=초단 3=청단])
+    // 조합이 이번 판에 이미 한 번 발동했는지. 4인판과 같은 이유로 좌석당
+    // 세트당 한 번만 울린다.
+    readonly HashSet<(bool isPlayerSide, int setIdx)> emergencyFired = new();
     const int PPEOK_MONEY_POINTS = 3; // 첫뻑/연뻑 즉시 획득 금액 = 3점 상당(점수엔 안 들어감)
     bool isFirstPlayOfRound; // 이번 판 첫 카드였는지 — 첫뻑/첫따닥 판정용, 소비되면 false
     int playerPpeokStreak, aiPpeokStreak; // 자기 턴에서 연속으로 뻑을 낸 횟수(뻑이 아니면 0으로 리셋) — "연뻑" 보너스 판정용
@@ -531,6 +535,7 @@ public partial class GoStopGame : MonoBehaviour
         playerShook.Clear(); aiShook.Clear();
         ppeokCauser.Clear();
         ppeokBonusPi.Clear();
+        emergencyFired.Clear();
         playerPpeokStreak = aiPpeokStreak = 0;
         playerPpeokTotal = aiPpeokTotal = 0;
         goLeader = null; goReversalCount = 0;
@@ -1143,6 +1148,81 @@ public partial class GoStopGame : MonoBehaviour
         if (isNetworkHost)
             GoStopNetLobby.Instance?.BroadcastToGuests(GoStopNetMessage.EventMsg(label, isPlayerSide ? 0 : 1));
     }
+
+    // ── 비상 시스템 ──────────────────────────────────────
+    // 4인판(GoStop3PGame.cs)과 동일한 규칙 — 고도리/홍단/초단/청단이
+    // 완성 직전(2/3, 안 막힘)이면 알린다. RebuildUI 맨 끝에서 매번
+    // 호출되므로 캡처가 일어나는 모든 경로 뒤에 항상 걸린다.
+    static readonly (string name, System.Func<HwatuCard, bool> pred)[] EmergencySets =
+    {
+        ("고도리", GoStopRules.IsGodori),
+        ("홍단",   GoStopRules.IsHongdan),
+        ("초단",   GoStopRules.IsChodan),
+        ("청단",   GoStopRules.IsCheongdan),
+    };
+
+    void CheckEmergencies()
+    {
+        CheckEmergencySide(true, playerCaptured, aiCaptured);
+        CheckEmergencySide(false, aiCaptured, playerCaptured);
+    }
+
+    void CheckEmergencySide(bool isPlayerSide, List<HwatuCard> mine, List<HwatuCard> theirs)
+    {
+        if (mine.Count == 0) return;
+        for (int i = 0; i < EmergencySets.Length; i++)
+        {
+            if (emergencyFired.Contains((isPlayerSide, i))) continue;
+            var (state, have) = GoStopRules.CheckSet(mine, theirs, EmergencySets[i].pred);
+            if (state == GoStopRules.SetState.Alive && have == 2)
+            {
+                emergencyFired.Add((isPlayerSide, i));
+                FireEmergency(isPlayerSide, EmergencySets[i].name);
+            }
+        }
+    }
+
+    /// <summary>비상 이펙트 발동 — 4인판과 같은 프리팹(EffectGodori/
+    /// EffectHongdan/EffectChodan/EffectCheongdan, GoStopEffectPopup 공유)을
+    /// 그대로 재사용한다 — 2인판 자체 ShowActionPopup(코드 생성 텍스트)
+    /// 대신 프리팹 쪽을 택했다(디자인 리소스 교체가 쉽도록).</summary>
+    void FireEmergency(bool isPlayerSide, string setName)
+    {
+        string prefabName = setName switch
+        {
+            "고도리" => "EffectGodori",
+            "홍단" => "EffectHongdan",
+            "초단" => "EffectChodan",
+            "청단" => "EffectCheongdan",
+            _ => null,
+        };
+        if (prefabName == null || fieldArea == null) return;
+
+        var canvasRoot = fieldArea.parent as RectTransform;
+        Vector2 local = fieldArea.anchoredPosition + new Vector2(0f, -60f);
+
+        GoStopIcons.SpawnBurst(canvasRoot, local, EmergencyColor(setName), 20);
+
+        var fx = HwatuUI.InstantiateEffect<GoStopEffectPopup>(prefabName, canvasRoot);
+        if (fx != null)
+        {
+            fx.root.anchoredPosition = local;
+            string who = isPlayerSide ? "" : "상대 ";
+            fx.Play($"{who}{setName} 비상!", EmergencyColor(setName));
+        }
+
+        ShowTimedToast($"{(isPlayerSide ? "" : "상대가 ")}{setName} 완성 직전!");
+        GoStopAudio.Instance?.Bonus();
+    }
+
+    static Color EmergencyColor(string setName) => setName switch
+    {
+        "고도리" => new Color(0.949f, 0.718f, 0.020f),
+        "홍단"   => new Color(0.906f, 0.298f, 0.235f),
+        "초단"   => new Color(0.180f, 0.800f, 0.443f),
+        "청단"   => new Color(0.231f, 0.616f, 0.910f),
+        _        => Color.white,
+    };
 
     void ShowTimedToast(string msg)
     {

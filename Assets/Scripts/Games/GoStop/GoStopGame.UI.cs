@@ -430,6 +430,8 @@ public partial class GoStopGame
         flyFrom.Clear();
         flyViaField.Clear();
 
+        CheckEmergencies();
+
         // 호스트만 — 로컬 화면이 갱신되는 매 순간 접속한 게스트도 같이
         // 갱신시킨다(GoStop3PGame.UI.cs의 같은 훅과 동일한 이유).
         if (isNetworkHost) BroadcastNetworkState();

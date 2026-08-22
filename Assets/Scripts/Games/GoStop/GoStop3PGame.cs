@@ -142,6 +142,11 @@ public partial class GoStop3PGame : MonoBehaviour
     // 뻑 무더기에 같이 묻힌 보너스피 — 그 뻑을 나중에 해소하는 사람이
     // ppeokCauser의 피 뺏기와 함께 이 카드도 가져간다(사용자 확인 규칙).
     readonly Dictionary<int, HwatuCard> ppeokBonusPi = new();
+    // 비상 시스템 — (좌석, 세트 인덱스[0=고도리 1=홍단 2=초단 3=청단]) 조합이
+    // 이번 판에 이미 한 번 발동했는지. 세트 카드는 (피와 달리) 획득 이후
+    // 다시 뺏기지 않으므로 have==2에서 3으로만 진행하지 되돌아가지
+    // 않는다 — 한 번 발동하면 그 판 내내 다시 안 울려도 된다.
+    readonly HashSet<(int seat, int setIdx)> emergencyFired = new();
     bool isFirstPlayOfRound;
     int currentSeat;
 
@@ -870,6 +875,7 @@ public partial class GoStop3PGame : MonoBehaviour
         }
         ppeokCauser.Clear();
         ppeokBonusPi.Clear();
+        emergencyFired.Clear();
         flyFrom.Clear();
         flyViaField.Clear();
         isFirstPlayOfRound = true;
@@ -1214,6 +1220,89 @@ public partial class GoStop3PGame : MonoBehaviour
         if (label.Contains("폭탄")) return new Color(1.0f, 0.35f, 0.15f);
         return new Color(0.95f, 0.55f, 0.15f); // 뻑 계열
     }
+
+    // ── 비상 시스템 ──────────────────────────────────────
+    // 고도리/홍단/초단/청단이 완성 직전(2/3, 안 막힘)이면 다른 플레이어
+    // 들에게 알린다 — 단순 장식이 아니라 "이 패를 선점해야 한다"는 게임
+    // 플레이 정보 전달용. RebuildUI 맨 끝에서 매번 호출되므로(캡처가
+    // 일어나는 모든 경로 — r1/r2/조커/DeckOnlySeq — 뒤에 항상 걸린다)
+    // 개별 캡처 지점마다 따로 걸어줄 필요가 없다.
+    static readonly (string name, System.Func<HwatuCard, bool> pred)[] EmergencySets =
+    {
+        ("고도리", GoStopRules.IsGodori),
+        ("홍단",   GoStopRules.IsHongdan),
+        ("초단",   GoStopRules.IsChodan),
+        ("청단",   GoStopRules.IsCheongdan),
+    };
+
+    void CheckEmergencies()
+    {
+        foreach (int seat in ActiveSeats())
+        {
+            var mine = captured[seat];
+            if (mine.Count == 0) continue;
+            List<HwatuCard> theirs = null; // 필요할 때만(세트 하나라도 검사 대상일 때) 만든다
+
+            for (int i = 0; i < EmergencySets.Length; i++)
+            {
+                if (emergencyFired.Contains((seat, i))) continue;
+                theirs ??= ActiveSeats().Where(s => s != seat).SelectMany(s => captured[s]).ToList();
+                var (state, have) = GoStopRules.CheckSet(mine, theirs, EmergencySets[i].pred);
+                if (state == GoStopRules.SetState.Alive && have == 2)
+                {
+                    emergencyFired.Add((seat, i));
+                    FireEmergency(seat, EmergencySets[i].name);
+                }
+            }
+        }
+    }
+
+    /// <summary>비상 이펙트 발동 — 필드 중앙에 큼직하게, 어느 좌석이 어떤
+    /// 족보에 근접했는지 알려준다. 프리팹은 EffectGodori/EffectHongdan/
+    /// EffectChodan/EffectCheongdan(GoStopEffectPopup 공유, 캡처 이펙트와
+    /// 같은 구조 — Assets/Resources/Prefabs/GoStop/Effects/) — 기본 문구에
+    /// 좌석 이름을 앞에 붙여서 덮어쓴다.
+    /// <br/>네트워크 동기화는 이번엔 안 걸었다 — 호스트 화면에서만 보인다
+    /// (게스트에게 안 뜬다). Toast처럼 EventMsg로 실어 보내려면 게스트
+    /// 쪽 수신 핸들러가 이 라벨 형식을 알아야 하는데, 아직 검증 안 된
+    /// 네트워크 경로에 새 메시지 형식을 얹는 리스크를 이번엔 피했다 —
+    /// 다음에 실제 두 기기 테스트를 할 때 같이 확인할 것.</summary>
+    void FireEmergency(int seat, string setName)
+    {
+        string prefabName = setName switch
+        {
+            "고도리" => "EffectGodori",
+            "홍단" => "EffectHongdan",
+            "초단" => "EffectChodan",
+            "청단" => "EffectCheongdan",
+            _ => null,
+        };
+        if (prefabName == null || fieldArea == null) return;
+
+        var canvasRoot = fieldArea.parent.parent.parent as RectTransform;
+        Vector2 local = canvasRoot.InverseTransformPoint(fieldArea.position);
+
+        GoStopIcons.SpawnBurst(canvasRoot, local, EmergencyColor(setName), 20);
+
+        var fx = HwatuUI.InstantiateEffect<GoStopEffectPopup>(prefabName, canvasRoot);
+        if (fx != null)
+        {
+            fx.root.anchoredPosition = local;
+            fx.Play($"{SeatName(seat)} {setName} 비상!", EmergencyColor(setName));
+        }
+
+        ShowTimedToast($"{SeatName(seat)}이(가) {setName} 완성 직전!");
+        GoStopAudio.Instance?.Bonus();
+    }
+
+    static Color EmergencyColor(string setName) => setName switch
+    {
+        "고도리" => new Color(0.949f, 0.718f, 0.020f),
+        "홍단"   => new Color(0.906f, 0.298f, 0.235f),
+        "초단"   => new Color(0.180f, 0.800f, 0.443f),
+        "청단"   => new Color(0.231f, 0.616f, 0.910f),
+        _        => Color.white,
+    };
 
     void ShowTimedToast(string msg)
     {
