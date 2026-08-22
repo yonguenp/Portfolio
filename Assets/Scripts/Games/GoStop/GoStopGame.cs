@@ -693,12 +693,60 @@ public partial class GoStopGame : MonoBehaviour
         // (화면엔 아무것도 안 보여준 채) 먼저 정하고, 그 결과에 따라 r1을
         // 곧장 Cap으로 보내거나(뻑 아님) 필드에 묶어뒀다(뻑) — 그런데 "카드가
         // 곧장 Cap으로 날아가는 애니메이션이 나온다"는 사실 자체가 뒷패 얼굴을
-        // 보기도 전에 "이번엔 뻑이 아니다"를 알려주는 셈이었다. 지금은 뒷패를
-        // 먼저 뽑아 **얼굴만** 공개(아직 field/captured 어디에도 안 넣는다,
-        // 더미 자리에 잠깐 보여주고 지운다)하고, 그 다음에야 뻑·일반 캡처·
-        // 쪽·따닥을 전부 판정해서 최종 위치로 옮긴다. 손패→뒷패 2단계 페이싱
-        // (SlamIn이 헷갈리지 않게 나눠 보여주는 것)은 그대로 유지한다.
+        // 보기도 전에 "이번엔 뻑이 아니다"를 알려주는 셈이었다. 뒷패를 먼저
+        // 뽑아 **얼굴만** 공개(아직 field/captured 어디에도 안 넣는다, 더미
+        // 자리에 잠깐 보여주고 지운다)하고, 그 다음에야 뻑을 판정해서 최종
+        // 위치로 옮긴다.
+        //
+        // 2026-08-22(2차): "손패를 선택했는데 필드에 안 나온다"는 신고 —
+        // 4인판과 같은 원인·같은 수정(GoStop3PGame.cs의 PlaySeq 참고). r1
+        // 커밋 전체를 뒷패 공개 뒤로 미뤄버려서, 뻑이 될 수 없는 게 뻔한
+        // 경우(매칭 실패로 그냥 필드에 놓임·뻑 해소로 4장 쓸어감·폭탄·필드
+        // 2장 중 선택 캡처)까지 전부 뒷패 리빌 0.35초 동안 화면에 아무
+        // 변화가 없었다. 뒷패 공개로 뒤집힐 수 있는 건 오직 matchCount==1
+        // (순수 1:1 매칭, 선택도 폭탄도 아님)뿐이다 — 그 경우만 숨기고
+        // 나머지는 바로 보여준다.
         bool willDraw = !bomb && drawPile.Count > 0;
+        bool couldBePpeok = !bomb && !r1HadChoice && r1.matchCount == 1;
+
+        // 국열끗(9월 열끗) 선택 팝업 — "모든 패가 Cap에 들어간 뒤"로 미룬다.
+        // r1/r2 어느 쪽에서 잡히든 여기 모아뒀다가 턴 맨 끝에 순서대로 묻는다.
+        var dualPiPending = new List<HwatuCard>();
+
+        IEnumerator CommitR1()
+        {
+            if (r1.captured.Count > 0)
+            {
+                captured.AddRange(r1.captured);
+                GoStopAudio.Instance?.Capture();
+                // 손패 캡처(r1)만으로 필드가 비어도 아직 이 턴이 끝난 게 아니다 —
+                // 뒤이어 더미패를 한 장 더 뒤집는데, 그 카드는 (필드가 비어 있으니)
+                // 무조건 매칭 없이 필드에 그대로 놓인다. 즉 폭탄이 아니고 덱이
+                // 남아있는 한, r1이 만든 "빈 필드"는 몇 줄 뒤 항상 다시 채워져서
+                // 실제로는 싹쓸이가 아니다. 싹쓸이 인정은 (1) 폭탄 턴(이번 턴에
+                // 덱을 안 넘긴다) (2) 덱이 이미 바닥나 더 뒤집을 패가 없는 경우로
+                // 한정한다 — 그 외엔 r2(덱 캡처) 쪽에서 최종 상태를 다시 판정한다.
+                ApplyMatchBonus(isPlayerSide, r1, bomb, allowSweep: bomb || !willDraw);
+                RegisterFlyViaField(r1);
+                // isNetworkHost도 같이 확인 — "ai" 쪽 캡처여도 실제로는 접속한
+                // 게스트라 팝업으로 직접 물어봐야 한다(AI는 팝업 없이 나중에
+                // AfterAiAction에서 자동으로 정한다).
+                if (isPlayerSide || isNetworkHost)
+                {
+                    var dual = r1.captured.FirstOrDefault(c => c.dualPi);
+                    if (dual != null) dualPiPending.Add(dual);
+                }
+            }
+
+            // 1단계 리빌드 — 낸 카드만 반영한다. 덱은 아직 안 건드렸다.
+            RebuildUI(newPlayerCapturedFrom: isPlayerSide ? before1 : (int?)null,
+                      newAiCapturedFrom: !isPlayerSide ? before1 : (int?)null);
+            yield return new WaitForSeconds(PLAY_STEP_DELAY);
+        }
+
+        if (!couldBePpeok)
+            yield return StartCoroutine(CommitR1());
+
         HwatuCard drawn = null;
         bool isLastDeckCard = false;
         if (willDraw)
@@ -712,82 +760,55 @@ public partial class GoStopGame : MonoBehaviour
             Destroy(revealGo);
         }
 
-        // 뻑 감지 — 이제 이미 공개된 drawn의 월을 직접 비교한다.
-        bool ppeokFormed = !bomb && !r1HadChoice && r1.matchCount == 1
-                           && drawn != null && !drawn.isJoker && drawn.month == card.month;
-        if (ppeokFormed)
+        if (couldBePpeok)
         {
-            field.AddRange(r1.captured);
-            field.Add(drawn);
-            ppeokCauser[card.month] = isPlayerSide;
-
-            int streak = isPlayerSide ? ++playerPpeokStreak : ++aiPpeokStreak;
-            int total = isPlayerSide ? ++playerPpeokTotal : ++aiPpeokTotal;
-
-            // 첫뻑/연뻑 둘 다 "3점에 해당하는 금액"으로 동일하다 — 점수에는
-            // 안 들어가고 판돈만 그 자리에서 오간다. 쓰리뻑은 별도(아래) —
-            // 돈이 아니라 고정 3점 즉시 승리로 정산된다.
-            if (wasFirstPlay) { ApplyMoneyBonus(isPlayerSide, PpeokMoney()); Toast(isPlayerSide, "첫뻑"); }
-            else if (streak == 2) { ApplyMoneyBonus(isPlayerSide, PpeokMoney()); Toast(isPlayerSide, "연뻑"); }
-            else Toast(isPlayerSide, "뻑");
-
-            RebuildUI(); // 필드에 3장 쌓인 모습을 반영 — 이번 턴은 아무도 캡처가 없다.
-            yield return new WaitForSeconds(PLAY_STEP_DELAY);
-
-            // 쓰리뻑 — 연속일 필요 없이 이번 판 통산 3번째 뻑이면 즉시 승리
-            // (구글링으로 확인한 표준 규칙 — "연속 아니어도 통산 3회면
-            // 쓰리뻑"). 예전엔 연속(streak)으로만 판정해서 "3연뻑"이라는
-            // 실제로는 없는 용어를 썼었다.
-            if (total >= 3)
+            // 뻑 감지 — 이제 이미 공개된 drawn의 월을 직접 비교한다.
+            bool ppeokFormed = drawn != null && !drawn.isJoker && drawn.month == card.month;
+            if (ppeokFormed)
             {
-                // 쓰리뻑 — 지금까지 모은 점수와 무관하게 고정 3점으로 즉시 승리.
-                // 여기서 게임이 끝났으니 onDone(AfterPlayerAction/AfterAiAction)은
-                // 부르면 안 된다 — 그게 "정상적으로 턴이 끝났다"는 뜻이라
-                // EndPlayerTurn 등으로 이어져서 방금 EndGame이 세운 GameOver
-                // 상태를 덮어써 버린다(실제로 이 버그로 상태가 되돌아가는 걸
-                // 리플렉션 테스트에서 잡았다).
-                EndGame(aiWon: !isPlayerSide, fixedBaseScore: 3);
+                field.AddRange(r1.captured);
+                field.Add(drawn);
+                ppeokCauser[card.month] = isPlayerSide;
+
+                int streak = isPlayerSide ? ++playerPpeokStreak : ++aiPpeokStreak;
+                int total = isPlayerSide ? ++playerPpeokTotal : ++aiPpeokTotal;
+
+                // 첫뻑/연뻑 둘 다 "3점에 해당하는 금액"으로 동일하다 — 점수에는
+                // 안 들어가고 판돈만 그 자리에서 오간다. 쓰리뻑은 별도(아래) —
+                // 돈이 아니라 고정 3점 즉시 승리로 정산된다.
+                if (wasFirstPlay) { ApplyMoneyBonus(isPlayerSide, PpeokMoney()); Toast(isPlayerSide, "첫뻑"); }
+                else if (streak == 2) { ApplyMoneyBonus(isPlayerSide, PpeokMoney()); Toast(isPlayerSide, "연뻑"); }
+                else Toast(isPlayerSide, "뻑");
+
+                RebuildUI(); // 필드에 3장 쌓인 모습을 반영 — 이번 턴은 아무도 캡처가 없다.
+                yield return new WaitForSeconds(PLAY_STEP_DELAY);
+
+                // 쓰리뻑 — 연속일 필요 없이 이번 판 통산 3번째 뻑이면 즉시 승리
+                // (구글링으로 확인한 표준 규칙 — "연속 아니어도 통산 3회면
+                // 쓰리뻑"). 예전엔 연속(streak)으로만 판정해서 "3연뻑"이라는
+                // 실제로는 없는 용어를 썼었다.
+                if (total >= 3)
+                {
+                    // 쓰리뻑 — 지금까지 모은 점수와 무관하게 고정 3점으로 즉시 승리.
+                    // 여기서 게임이 끝났으니 onDone(AfterPlayerAction/AfterAiAction)은
+                    // 부르면 안 된다 — 그게 "정상적으로 턴이 끝났다"는 뜻이라
+                    // EndPlayerTurn 등으로 이어져서 방금 EndGame이 세운 GameOver
+                    // 상태를 덮어써 버린다(실제로 이 버그로 상태가 되돌아가는 걸
+                    // 리플렉션 테스트에서 잡았다).
+                    EndGame(aiWon: !isPlayerSide, fixedBaseScore: 3);
+                    yield break;
+                }
+
+                onDone?.Invoke();
                 yield break;
             }
 
-            onDone?.Invoke();
-            yield break;
+            // 뻑이 아니었다 — 이제야 확정되는 r1을 여기서 커밋한다.
+            yield return StartCoroutine(CommitR1());
         }
 
         // 뻑이 아니었으면 이번에 낸 카드로 이 쪽의 연속 뻑 스트릭이 끊긴다.
         if (isPlayerSide) playerPpeokStreak = 0; else aiPpeokStreak = 0;
-
-        // 국열끗(9월 열끗) 선택 팝업 — "모든 패가 Cap에 들어간 뒤"로 미룬다.
-        // r1/r2 어느 쪽에서 잡히든 여기 모아뒀다가 턴 맨 끝에 순서대로 묻는다.
-        var dualPiPending = new List<HwatuCard>();
-
-        if (r1.captured.Count > 0)
-        {
-            captured.AddRange(r1.captured);
-            GoStopAudio.Instance?.Capture();
-            // 손패 캡처(r1)만으로 필드가 비어도 아직 이 턴이 끝난 게 아니다 —
-            // 뒤이어 더미패를 한 장 더 뒤집는데, 그 카드는 (필드가 비어 있으니)
-            // 무조건 매칭 없이 필드에 그대로 놓인다. 즉 폭탄이 아니고 덱이
-            // 남아있는 한, r1이 만든 "빈 필드"는 몇 줄 뒤 항상 다시 채워져서
-            // 실제로는 싹쓸이가 아니다. 싹쓸이 인정은 (1) 폭탄 턴(이번 턴에
-            // 덱을 안 넘긴다) (2) 덱이 이미 바닥나 더 뒤집을 패가 없는 경우로
-            // 한정한다 — 그 외엔 r2(덱 캡처) 쪽에서 최종 상태를 다시 판정한다.
-            ApplyMatchBonus(isPlayerSide, r1, bomb, allowSweep: bomb || !willDraw);
-            RegisterFlyViaField(r1);
-            // isNetworkHost도 같이 확인 — "ai" 쪽 캡처여도 실제로는 접속한
-            // 게스트라 팝업으로 직접 물어봐야 한다(AI는 팝업 없이 나중에
-            // AfterAiAction에서 자동으로 정한다).
-            if (isPlayerSide || isNetworkHost)
-            {
-                var dual = r1.captured.FirstOrDefault(c => c.dualPi);
-                if (dual != null) dualPiPending.Add(dual);
-            }
-        }
-
-        // 1단계 리빌드 — 낸 카드만 반영한다. 덱은 아직 안 건드렸다.
-        RebuildUI(newPlayerCapturedFrom: isPlayerSide ? before1 : (int?)null,
-                  newAiCapturedFrom: !isPlayerSide ? before1 : (int?)null);
-        yield return new WaitForSeconds(PLAY_STEP_DELAY);
 
         if (bomb)
         {

@@ -1461,12 +1461,51 @@ public partial class GoStop3PGame : MonoBehaviour
         // (화면엔 아무것도 안 보여준 채) 먼저 정하고, 그 결과에 따라 r1을
         // 곧장 Cap으로 보내거나(뻑 아님) 필드에 묶어뒀다(뻑) — 그런데 "카드가
         // 곧장 Cap으로 날아가는 애니메이션이 나온다"는 사실 자체가 뒷패 얼굴을
-        // 보기도 전에 "이번엔 뻑이 아니다"를 알려주는 셈이었다. 지금은 뒷패를
-        // 먼저 뽑아 **얼굴만** 공개(아직 field/captured 어디에도 안 넣는다,
-        // 더미 자리에 잠깐 보여주고 지운다)하고, 그 다음에야 뻑·일반 캡처·
-        // 쪽·따닥을 전부 판정해서 최종 위치로 옮긴다. 손패→뒷패 2단계 페이싱
-        // (SlamIn이 헷갈리지 않게 나눠 보여주는 것)은 그대로 유지한다.
+        // 보기도 전에 "이번엔 뻑이 아니다"를 알려주는 셈이었다. 뒷패를 먼저
+        // 뽑아 **얼굴만** 공개(아직 field/captured 어디에도 안 넣는다, 더미
+        // 자리에 잠깐 보여주고 지운다)하고, 그 다음에야 뻑을 판정해서 최종
+        // 위치로 옮긴다.
+        //
+        // 2026-08-22(2차): "손패를 선택했는데 필드에 안 나온다"는 신고 —
+        // 위 규칙을 지키느라 r1(손패 매칭 결과) 커밋 자체를 통째로 뒷패
+        // 공개 뒤로 미뤄버려서, 뻑이 될 수 없는 게 뻔한 경우(매칭 실패로
+        // 그냥 필드에 놓임·뻑 해소로 4장 쓸어감·폭탄·필드 2장 중 선택
+        // 캡처)까지 전부 뒷패 리빌 0.35초 동안 화면에 아무 변화가 없었다 —
+        // "카드를 냈는데 반응이 없다"로 느껴졌다. 뒷패 공개로 뒤집힐 수
+        // 있는 건 오직 matchCount==1(순수 1:1 매칭, 선택도 폭탄도 아님)
+        // 뿐이다 — 그 경우만 숨기고 나머지는 뒷패를 기다릴 필요 없이
+        // 바로 보여준다.
         bool willDraw = !bomb && drawPile.Count > 0;
+        bool couldBePpeok = !bomb && !r1HadChoice && r1.matchCount == 1;
+
+        // 국열끗(9월 열끗) 선택 팝업 — "모든 패가 Cap에 들어간 뒤"로 미룬다
+        // (요청 8번). r1/r2 어느 쪽에서 잡히든 여기 모아뒀다가 턴 맨 끝에
+        // 순서대로 묻는다.
+        var dualPiPending = new List<HwatuCard>();
+
+        void CommitR1()
+        {
+            if (r1.captured.Count > 0)
+            {
+                cap.AddRange(r1.captured);
+                GoStopAudio.Instance?.Capture();
+                ApplyMatchBonus(seat, r1, bomb, allowSweep: bomb || !willDraw);
+                RegisterFlyViaField(r1);
+                if (seat == PLAYER_SEAT || IsRemoteSeat(seat))
+                {
+                    var dual = r1.captured.FirstOrDefault(c => c.dualPi);
+                    if (dual != null) dualPiPending.Add(dual);
+                }
+            }
+            RebuildUI();
+        }
+
+        if (!couldBePpeok)
+        {
+            CommitR1();
+            yield return new WaitForSeconds(PLAY_STEP_DELAY);
+        }
+
         HwatuCard drawn = null;
         bool isLastDeckCard = false;
         if (willDraw)
@@ -1480,56 +1519,42 @@ public partial class GoStop3PGame : MonoBehaviour
             Destroy(revealGo);
         }
 
-        // 뻑 감지 — 이제 이미 공개된 drawn의 월을 직접 비교한다(2인판과 동일
-        // 조건: matchCount==1, 선택 캡처 제외, 조커는 뻑을 못 만든다).
-        bool ppeokFormed = !bomb && !r1HadChoice && r1.matchCount == 1
-                           && drawn != null && !drawn.isJoker && drawn.month == card.month;
-        if (ppeokFormed)
+        if (couldBePpeok)
         {
-            field.AddRange(r1.captured);
-            field.Add(drawn);
-            ppeokCauser[card.month] = seat;
+            // 뻑 감지 — 이제 이미 공개된 drawn의 월을 직접 비교한다(2인판과
+            // 동일 조건: matchCount==1, 선택 캡처 제외, 조커는 뻑을 못 만든다).
+            bool ppeokFormed = drawn != null && !drawn.isJoker && drawn.month == card.month;
+            if (ppeokFormed)
+            {
+                field.AddRange(r1.captured);
+                field.Add(drawn);
+                ppeokCauser[card.month] = seat;
 
-            int streak = ++ppeokStreak[seat];
-            int total = ++ppeokTotalCount[seat];
-            if (wasFirstPlay) { ApplyMoneyBonus(seat, PpeokMoney()); Toast(seat, "첫뻑"); }
-            else if (streak == 2) { ApplyMoneyBonus(seat, PpeokMoney()); Toast(seat, "연뻑"); }
-            else Toast(seat, "뻑");
+                int streak = ++ppeokStreak[seat];
+                int total = ++ppeokTotalCount[seat];
+                if (wasFirstPlay) { ApplyMoneyBonus(seat, PpeokMoney()); Toast(seat, "첫뻑"); }
+                else if (streak == 2) { ApplyMoneyBonus(seat, PpeokMoney()); Toast(seat, "연뻑"); }
+                else Toast(seat, "뻑");
 
-            RebuildUI();
+                RebuildUI();
+                yield return new WaitForSeconds(PLAY_STEP_DELAY);
+
+                // 쓰리뻑 — 연속일 필요 없이 이번 판 통산 3번째 뻑이면 그 자리에서
+                // 즉시 승리(구글링으로 확인한 표준 규칙, "연속 아니어도 통산
+                // 3회면 쓰리뻑"). 예전엔 연속(streak)으로만 판정해서 "3연뻑"
+                // 이라는 실제로는 없는 용어를 썼었다.
+                if (total >= 3) { EndGame(seat, fixedBaseScore: 3); yield break; }
+
+                actionBusy = false;
+                onDone?.Invoke();
+                yield break;
+            }
+
+            // 뻑이 아니었다 — 이제야 확정되는 r1을 여기서 커밋한다.
+            CommitR1();
             yield return new WaitForSeconds(PLAY_STEP_DELAY);
-
-            // 쓰리뻑 — 연속일 필요 없이 이번 판 통산 3번째 뻑이면 그 자리에서
-            // 즉시 승리(구글링으로 확인한 표준 규칙, "연속 아니어도 통산
-            // 3회면 쓰리뻑"). 예전엔 연속(streak)으로만 판정해서 "3연뻑"
-            // 이라는 실제로는 없는 용어를 썼었다.
-            if (total >= 3) { EndGame(seat, fixedBaseScore: 3); yield break; }
-
-            actionBusy = false;
-            onDone?.Invoke();
-            yield break;
         }
         ppeokStreak[seat] = 0;
-
-        // 국열끗(9월 열끗) 선택 팝업 — "모든 패가 Cap에 들어간 뒤"로 미룬다
-        // (요청 8번). r1/r2 어느 쪽에서 잡히든 여기 모아뒀다가 턴 맨 끝에
-        // 순서대로 묻는다.
-        var dualPiPending = new List<HwatuCard>();
-
-        if (r1.captured.Count > 0)
-        {
-            cap.AddRange(r1.captured);
-            GoStopAudio.Instance?.Capture();
-            ApplyMatchBonus(seat, r1, bomb, allowSweep: bomb || !willDraw);
-            RegisterFlyViaField(r1);
-            if (seat == PLAYER_SEAT || IsRemoteSeat(seat))
-            {
-                var dual = r1.captured.FirstOrDefault(c => c.dualPi);
-                if (dual != null) dualPiPending.Add(dual);
-            }
-        }
-        RebuildUI();
-        yield return new WaitForSeconds(PLAY_STEP_DELAY);
 
         if (bomb)
         {
