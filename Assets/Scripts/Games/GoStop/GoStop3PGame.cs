@@ -24,7 +24,7 @@ using TMPro;
 /// </summary>
 public partial class GoStop3PGame : MonoBehaviour
 {
-    [SerializeField] GameUIManager ui;
+    [SerializeField] GoStopUIManager ui; // 2026-08-22: 공용 GameUIManager에서 분리 — GoStopUI.prefab 전용
 
     enum State { Turn, GoStopChoice, GameOver }
     State state;
