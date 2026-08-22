@@ -366,8 +366,11 @@ public partial class GoStop3PGame
     }
 
     /// <summary>점수 항목 줄(라벨+점수) 밑에 관여한 카드 실물을 늘어놓는다 — 2인판
-    /// (GoStopGame.BuildScoreDetailRows)과 같은 로직·같은 시각 스타일이다.</summary>
-    void BuildScoreDetailRows(RectTransform content, List<HwatuCard> captured, GoStopRules.Score baseScore)
+    /// (GoStopGame.BuildScoreDetailRows)과 같은 로직·같은 시각 스타일이다.
+    /// 2026-08-22: 이 아래에 "전체 획득패" 구간(<see cref="AppendAllCapsSection"/>)이
+    /// 이어 붙으므로, 컨텐츠 크기 확정은 호출부(<see cref="ShowScoreDetail"/>)로
+    /// 넘기고 여기선 도달한 y 커서만 돌려준다.</summary>
+    float BuildScoreDetailRows(RectTransform content, List<HwatuCard> captured, GoStopRules.Score baseScore)
     {
         HwatuUI.ClearChildren(content);
         var lines = GoStopRules.BuildScoreLines(captured, baseScore);
@@ -405,7 +408,59 @@ public partial class GoStop3PGame
                 else y += 12f;
             }
         }
-        content.sizeDelta = new Vector2(content.sizeDelta.x, Mathf.Max(y, 420f));
+        return y;
+    }
+
+    /// <summary>결과 화면에서 "승자 점수만 보이고 다른 사람이 뭘 먹었는지
+    /// 모른다"는 요청 — 참가한 전 좌석의 획득패 실물을 승자 점수 분해
+    /// 바로 아래, 같은 스크롤 콘텐츠에 이어서 보여준다. 별도 탭/토글을
+    /// 새로 만드는 대신 한 스크롤에 다 넣어서 구조를 단순하게 유지했다
+    /// (카드 ID나 문자열이 아니라 실제 카드 이미지로 — HwatuUI.MakeCard
+    /// 재사용).</summary>
+    float AppendAllCapsSection(RectTransform content, float y, IEnumerable<int> seats)
+    {
+        var textCol = new Color(0.16f, 0.14f, 0.06f, 1f);
+        y += 16f;
+        var divider = HwatuUI.MakeLabel(content, new Vector2(0f, -y), new Vector2(860f, 30f), 20f, new Color(textCol.r, textCol.g, textCol.b, 0.55f));
+        divider.text = "── 전체 획득패 ──";
+        divider.alignment = TextAlignmentOptions.Center;
+        y += 36f;
+
+        const float cardW = 30f, cardH = 44f, cardGap = 3f, rowGap = 8f;
+        const int perRow = 12;
+        foreach (int seat in seats)
+        {
+            var pile = captured[seat];
+            var nameLbl = HwatuUI.MakeLabel(content, new Vector2(0f, -y), new Vector2(860f, 30f), 20f, textCol);
+            nameLbl.text = $"{SeatName(seat)} ({pile.Count}장)";
+            nameLbl.fontStyle = FontStyles.Bold;
+            nameLbl.alignment = TextAlignmentOptions.TopLeft;
+            y += 32f;
+
+            if (pile.Count == 0)
+            {
+                var empty = HwatuUI.MakeLabel(content, new Vector2(0f, -y), new Vector2(860f, 28f), 18f, new Color(textCol.r, textCol.g, textCol.b, 0.6f));
+                empty.text = "(없음)";
+                empty.alignment = TextAlignmentOptions.TopLeft;
+                y += 32f;
+            }
+            else
+            {
+                var sorted = pile.OrderBy(c => (int)c.EffectiveKind).ThenBy(c => c.month).ToList();
+                for (int i = 0; i < sorted.Count; i++)
+                {
+                    int col = i % perRow, row = i / perRow;
+                    int rowCount = Mathf.Min(perRow, sorted.Count - row * perRow);
+                    float rowWidth = (rowCount - 1) * (cardW + cardGap) + cardW;
+                    float x = -rowWidth * 0.5f + cardW * 0.5f + col * (cardW + cardGap);
+                    HwatuUI.MakeCard(sorted[i], content, new Vector2(x, -(y + row * (cardH + rowGap))), cardW, cardH, null, false);
+                }
+                int rows = Mathf.CeilToInt(sorted.Count / (float)perRow);
+                y += rows * (cardH + rowGap);
+            }
+            y += 14f; // 다음 좌석과의 간격
+        }
+        return y;
     }
 
     /// <summary>"왜 이 점수가 나왔는지" 항목별로 보여준다 — 게임오버 오버레이의
@@ -421,7 +476,11 @@ public partial class GoStop3PGame
         scoreDetailPopup.summaryText.text = $"[{SeatName(pendingWinnerSeat)} 획득패 기준]  기본 소계 {p.baseScore.Total}점" +
             (p.goCount > 0 ? $"  ·  고 {p.goCount}회(+{p.goBonus}) → {p.subtotal}점" : "");
 
-        BuildScoreDetailRows(scoreDetailPopup.rowsContent, captured[pendingWinnerSeat], p.baseScore);
+        float rowsY = BuildScoreDetailRows(scoreDetailPopup.rowsContent, captured[pendingWinnerSeat], p.baseScore);
+        var allSeats = new List<int> { pendingWinnerSeat };
+        allSeats.AddRange(pendingLoserSeats);
+        rowsY = AppendAllCapsSection(scoreDetailPopup.rowsContent, rowsY, allSeats);
+        scoreDetailPopup.rowsContent.sizeDelta = new Vector2(scoreDetailPopup.rowsContent.sizeDelta.x, Mathf.Max(rowsY, 420f));
 
         var mult = new List<string>();
         if (p.goMultiplier > 1) mult.Add($"고배수 ×{p.goMultiplier}");

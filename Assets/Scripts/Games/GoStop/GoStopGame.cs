@@ -1732,7 +1732,10 @@ public partial class GoStopGame : MonoBehaviour
         if (b.goCount > 0) sum.Append($"  ·  고 {b.goCount}회(+{b.goBonus}) → {b.subtotal}점");
         scoreDetailPopup.summaryText.text = sum.ToString();
 
-        BuildScoreDetailRows(scoreDetailPopup.rowsContent, captured, b.baseScore);
+        float rowsY = BuildScoreDetailRows(scoreDetailPopup.rowsContent, captured, b.baseScore);
+        rowsY = AppendAllCapsSection(scoreDetailPopup.rowsContent, rowsY,
+            new (string name, List<HwatuCard> cards)[] { ("나", playerCaptured), ("상대", aiCaptured) });
+        scoreDetailPopup.rowsContent.sizeDelta = new Vector2(scoreDetailPopup.rowsContent.sizeDelta.x, Mathf.Max(rowsY, 520f));
 
         var mult = new List<string>();
         if (b.isReversalGo) mult.Add($"역고 ×{b.goMultiplier}");
@@ -1759,7 +1762,7 @@ public partial class GoStopGame : MonoBehaviour
     /// 동일 판정)와 카드 목록을 같이 돌려주므로 텍스트·카드가 어긋날 일이 없다.
     /// 스크롤 콘텐츠의 실제 필요 높이를 재서 <c>content.sizeDelta</c>에 반영한다 —
     /// 안 그러면 ScrollRect가 몇 줄까지 스크롤해야 할지 모른다.</summary>
-    void BuildScoreDetailRows(RectTransform content, List<HwatuCard> captured, GoStopRules.Score baseScore)
+    float BuildScoreDetailRows(RectTransform content, List<HwatuCard> captured, GoStopRules.Score baseScore)
     {
         HwatuUI.ClearChildren(content);
         var lines = GoStopRules.BuildScoreLines(captured, baseScore);
@@ -1800,7 +1803,56 @@ public partial class GoStopGame : MonoBehaviour
                 else y += 12f;
             }
         }
-        content.sizeDelta = new Vector2(content.sizeDelta.x, Mathf.Max(y, 520f));
+        return y;
+    }
+
+    /// <summary>결과 화면에서 승자 점수만 보이고 상대가 뭘 먹었는지 모른다는
+    /// 요청 — 나/상대 양쪽의 획득패 실물을 점수 분해 바로 아래, 같은 스크롤
+    /// 콘텐츠에 이어서 보여준다(4인판 AppendAllCapsSection과 같은 설계·
+    /// 같은 시각 스타일 — 카드 ID/문자열이 아니라 실제 카드 이미지).</summary>
+    float AppendAllCapsSection(RectTransform content, float y, (string name, List<HwatuCard> cards)[] piles)
+    {
+        var textCol = new Color(0.16f, 0.14f, 0.06f, 1f);
+        y += 16f;
+        var divider = HwatuUI.MakeLabel(content, new Vector2(0f, -y), new Vector2(860f, 30f), 20f, new Color(textCol.r, textCol.g, textCol.b, 0.55f));
+        divider.text = "── 전체 획득패 ──";
+        divider.alignment = TextAlignmentOptions.Center;
+        y += 36f;
+
+        const float cardW = 30f, cardH = 44f, cardGap = 3f, rowGap = 8f;
+        const int perRow = 12;
+        foreach (var (name, pile) in piles)
+        {
+            var nameLbl = HwatuUI.MakeLabel(content, new Vector2(0f, -y), new Vector2(860f, 30f), 20f, textCol);
+            nameLbl.text = $"{name} ({pile.Count}장)";
+            nameLbl.fontStyle = FontStyles.Bold;
+            nameLbl.alignment = TextAlignmentOptions.TopLeft;
+            y += 32f;
+
+            if (pile.Count == 0)
+            {
+                var empty = HwatuUI.MakeLabel(content, new Vector2(0f, -y), new Vector2(860f, 28f), 18f, new Color(textCol.r, textCol.g, textCol.b, 0.6f));
+                empty.text = "(없음)";
+                empty.alignment = TextAlignmentOptions.TopLeft;
+                y += 32f;
+            }
+            else
+            {
+                var sorted = pile.OrderBy(c => (int)c.EffectiveKind).ThenBy(c => c.month).ToList();
+                for (int i = 0; i < sorted.Count; i++)
+                {
+                    int col = i % perRow, row = i / perRow;
+                    int rowCount = Mathf.Min(perRow, sorted.Count - row * perRow);
+                    float rowWidth = (rowCount - 1) * (cardW + cardGap) + cardW;
+                    float x = -rowWidth * 0.5f + cardW * 0.5f + col * (cardW + cardGap);
+                    HwatuUI.MakeCard(sorted[i], content, new Vector2(x, -(y + row * (cardH + rowGap))), cardW, cardH, null, false);
+                }
+                int rows = Mathf.CeilToInt(sorted.Count / (float)perRow);
+                y += rows * (cardH + rowGap);
+            }
+            y += 14f;
+        }
+        return y;
     }
 
     void BuildScoreDetailUI(RectTransform canvasRoot)
