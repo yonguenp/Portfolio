@@ -6841,6 +6841,88 @@ Cap/Back이 없다"였는데, 2인(맞고)은 상대가 1명뿐이라 그 뒷패
   `sizeDelta`를 기준으로 계산되므로, 그 크기가 카드 3~4장이 들어갈
   만큼 넉넉한지)는 육안 확인이 필요.
 
+## 고스톱 — 게임모드 자동 다운그레이드 + 테스트용 인원수 선택 화면 (2026-08-23)
+
+design.md §49.4의 "4인→3인→2인 자동 다운그레이드"를 오프라인(vs AI)
+경로에서 실제로 구현했다 — 씬 통합(GoStop3PGame이 2/3/4인을 전부 처리)
+덕분에 "다른 씬으로 넘어가야 한다"는 예전 장벽이 사라져서 가능해졌다.
+겸사겸사 "GoStop3PScene을 직접 열면 무조건 4인으로 시작해서 테스트가
+불편하다"는 요청도 같이 처리했다.
+
+### 테스트용 인원수 선택 화면
+
+`Awake()`에 `seatCountPreset` 플래그를 추가했다 — 네트워크 로비
+(`lobby.PlayerCount > 0`)나 타이틀의 인원수 선택 팝업(`PendingOfflineSeatCount`)
+을 거쳐 들어왔으면 true, **씬을 직접 열었으면(에디터에서 바로 Play 등)
+false**다. `Start()`가 이제 `seatCountPreset`이 false면 곧장 `BuildStaticUI`/
+`NewGame`을 부르는 대신 `ShowModeSelectPopup()`을 띄운다 — 기존
+`ui.ShowOverlay`(버튼 3개까지 지원) 인프라를 그대로 재사용해 "2인(맞고)/
+3인(고스톱)/4인(고스톱)" 버튼을 보여주고, 고른 값으로 `SetSeatCount` →
+`BuildStaticUI` → `NewGame` 순으로 진행한다(`BeginWithSeatCount`).
+네트워크 게스트는 이 분기를 안 탄다 — 로비가 이미 인원수를 정해줘서
+`seatCountPreset`이 항상 true다.
+
+### 자동 다운그레이드 — `CanDowngrade`/`ApplyDowngrade`
+
+- **`CanDowngrade(bankruptSeats)`**: 파산한 좌석이 있고, **네트워크가
+  아니고**, **내(PLAYER_SEAT)가 파산한 게 아니고**, 아직 2인보다 위일
+  때만 true. 내가 파산했으면 계속할 사람 자체가 없으므로 다운그레이드로
+  구제가 안 된다 — 그 경우는 예전처럼 세션 종료.
+- **`ApplyDowngrade(bankruptSeats)`**: 파산한 좌석(들)을 빼고 **남은
+  좌석의 잔액을 그대로** 새 인덱스(0부터)로 압축해 담는다 — "다운그레이드"는
+  세션 종료와 달리 잔액을 초기화하지 않는다(살아남은 사람은 가진 돈
+  그대로 계속). 오프라인 전용이라 가능한 트릭: AI 좌석은 익명이라
+  "몇 번이 빠졌는지"가 중요하지 않고 그냥 순서대로 다시 채우면 된다.
+  `SetSeatCount`로 SEATS를 줄이고, `dealerSeat=0`으로 단순 리셋하고,
+  `SaveMoney()`로 저장한 뒤 **`ApplySeatVisibility()`를 다시 불러
+  LeftSeat/RightSeat/TopSeat 표시를 새 인원수에 맞게 갱신**한다.
+- **`ApplySeatVisibility`를 `BuildStaticUI`에서 분리**했다 — 좌석
+  컨테이너 on/off + TopSeat 안쪽(StatusBox2 위치·Back4/Cap4) 재구성만
+  담당하는 별도 메서드로 뽑아서, 다운그레이드 후 이것만 다시 부를 수
+  있게 했다. `BuildStaticUI()` 전체를 다시 부르면 팝업들
+  (`HwatuUI.InstantiatePopup`)이 "이미 있으면 재사용"이 아니라 매번 새로
+  Instantiate돼서 겹겹이 쌓이는 버그가 났을 것 — 그래서 최초 1회만
+  전체 `BuildStaticUI`, 이후엔 `ApplySeatVisibility`만 다시 호출한다.
+- **`EndGame`에서 이름(SeatName) 문자열은 전부 `ApplyDowngrade` 호출
+  *전에* 미리 뽑아 둔다** — `SeatName(seat)`는 좌석 번호 기준인데
+  `ApplyDowngrade`가 좌석을 재배치하고 나면 같은 번호가 다른 사람을
+  가리키게 된다. 승리 타이틀·독박 표시·파산 안내 문구를 전부 재배치
+  전에 조립해 두고, 그 다음에 `ApplyDowngrade`를 불러 SEATS/좌석
+  번호를 바꾼 뒤 오버레이를 띄운다(오버레이의 "다시 시작" 버튼은 이제
+  새 SEATS 기준으로 동작).
+
+### 검증(라이브 리플렉션, 실제 성공)
+
+- SEATS=4, 좌석2(AI)만 파산(money=0), 승자=나(seat0) → `EndGame` 호출 후
+  `SEATS=3`, `money=[50000,30000,20000]`(파산한 seat2를 뺀 나머지가
+  순서대로 압축됨, 액수도 정확히 보존) — 전부 기대대로.
+- 같은 결과 상태에서 씬의 `LeftSeat`/`RightSeat`/`TopSeat` 실제
+  `activeSelf`를 확인 — `Left=True, Right=True, Top=False`(3인 모드
+  배치와 정확히 일치).
+- 반대 케이스: 내(PLAYER_SEAT)가 파산한 경우 → `CanDowngrade=False`,
+  `SEATS` 불변, 전 좌석 잔액이 10만원으로 리셋(기존 세션종료 동작 그대로
+  유지) — 회귀 없음 확인.
+
+### 아직 안 된 것 / 알려진 제한
+
+- **네트워크 다운그레이드는 미구현.** 연결된 각 게스트에게 새 좌석
+  번호를 재배정하는 프로토콜(씬 재로딩 없이 in-place로 `PLAYER_SEAT`/
+  `SEATS`만 바꾸는 새 메시지 타입)이 필요한데, 이번 범위에서는 안
+  만들었다 — 네트워크 판에서 파산이 나면 여전히 예전처럼 세션이
+  종료된다. `CanDowngrade`가 `isNetworkHost`/`isNetworkGuest`를 명시적
+  으로 배제하므로 안전하게 예전 동작으로 폴백된다(어중간하게 반쯤
+  작동하는 상태가 아니다).
+- **`ShowScoreDetail`(점수 상세 팝업)이 다운그레이드가 일어난 바로 그
+  판에 한해 좌석 이름을 잘못 보여줄 수 있다** — `pendingWinnerSeat`/
+  `pendingLoserSeats`는 재배치 *전* 좌석 번호를 담고 있는데,
+  `ShowScoreDetail` 내부의 `SeatName()` 호출은 재배치 *후* 기준으로
+  해석한다. 사소한 폴리시 이슈로 판단해 이번엔 안 고쳤다 — 다음에
+  손대려면 `pendingWinnerSeat`/`pendingLoserSeats`도 이름 스냅샷으로
+  같이 저장해야 한다.
+- 다운그레이드 직후 선(dealerSeat)을 항상 나(0)로 단순 리셋한다 —
+  "누가 이겼는지"를 반영한 선 승계(design.md §15)를 다운그레이드
+  케이스에도 정교하게 적용하지는 않았다.
+
 ## 설정 팝업 · 라이선스 정보
 
 `Assets/Scripts/UI/GameAudioSettings.cs` + `TitleOptionsUI.cs`.

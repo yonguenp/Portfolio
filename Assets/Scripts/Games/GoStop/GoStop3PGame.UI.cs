@@ -34,21 +34,28 @@ public partial class GoStop3PGame
     struct EdgeSeatSpec { public float centerX, capZoneGap, blockWidth; public int capMaxPerRow; }
     EdgeSeatSpec[] edgeSpec = new EdgeSeatSpec[SEATS_MAX];
 
-    void BuildStaticUI()
-    {
-        var root = ui.ContentArea;
+    // 2026-08-23(씬 통합): ContentArea 밑의 4개 좌석 부모 컨테이너 —
+    // ApplySeatVisibility가 채운다. BuildStaticUI가 최초 1회, 자동
+    // 다운그레이드(ApplyDowngrade)가 SEATS를 바꾼 뒤 다시 채운다.
+    RectTransform leftSeatT, rightSeatT, topSeatT, mySeatT;
 
-        // 2026-08-23(씬 통합): 사용자가 에디터에서 ContentArea 밑에
-        // LeftSeat/RightSeat/TopSeat/MySeat 네 개의 부모 컨테이너를 만들고
-        // 그 안에 각 좌석의 오브젝트(StatusBox*/Back*/Cap*/PlayerCap/Hand)를
-        // 옮겨 넣었다 — 좌석 수(SEATS)에 따라 이 네 컨테이너를 켜고 끄는
-        // 것만으로 맞고(2인)/고스톱(3인)/고스톱(4인) 화면을 씬 재로딩 없이
-        // 한 씬 안에서 바꿀 수 있다. 없으면(예: 아직 이 구조로 안 바뀐
-        // 다른 씬) root로 폴백해서 예전과 동일하게 동작한다.
-        var leftSeatT = (root.Find("LeftSeat") as RectTransform) ?? root;
-        var rightSeatT = (root.Find("RightSeat") as RectTransform) ?? root;
-        var topSeatT = (root.Find("TopSeat") as RectTransform) ?? root;
-        var mySeatT = (root.Find("MySeat") as RectTransform) ?? root;
+    /// <summary>좌석 수(SEATS)에 따라 LeftSeat/RightSeat/TopSeat 컨테이너를
+    /// 켜고 끄고, TopSeat 안쪽(StatusBox2 위치·Back4/Cap4)을 재구성한다.
+    /// BuildStaticUI()가 최초 1회 호출하고, 자동 다운그레이드가 SEATS를
+    /// 바꾼 뒤에도 다시 호출해서 화면을 새 인원수에 맞게 갱신한다 —
+    /// Field/Hand/PlayerCap 등 나머지 정적 컨테이너나 팝업은 좌석 수와
+    /// 무관하게 그대로 재사용되므로(GetOrCreateContainer/InstantiatePopup
+    /// 둘 다 "이미 있으면 재사용") 여기서 안 건드린다(중복 생성 방지 —
+    /// BuildStaticUI를 통째로 다시 부르면 팝업이 매번 새로 Instantiate돼
+    /// 겹겹이 쌓인다).</summary>
+    void ApplySeatVisibility(RectTransform root)
+    {
+        // 없으면(예: 아직 이 구조로 안 바뀐 다른 씬) root로 폴백해서
+        // 예전과 동일하게 동작한다.
+        leftSeatT = (root.Find("LeftSeat") as RectTransform) ?? root;
+        rightSeatT = (root.Find("RightSeat") as RectTransform) ?? root;
+        topSeatT = (root.Find("TopSeat") as RectTransform) ?? root;
+        mySeatT = (root.Find("MySeat") as RectTransform) ?? root;
 
         // 좌석 수별 on/off (사용자 확인 규칙):
         //  맞고(2인)   — Left/Right 끔, Top 켬(상대 1명을 여기로)
@@ -89,7 +96,22 @@ public partial class GoStop3PGame
                 backArea[2] = back4;
                 capAreaAI[2] = cap4;
             }
+            else
+            {
+                // 2026-08-23: 다운그레이드 등으로 SEATS가 2가 아니게
+                // 되돌아가면 backArea[2]/capAreaAI[2]도 같이 비워야
+                // 한다 — 안 그러면 RebuildUI가 이미 꺼진 Back4/Cap4에
+                // 계속 카드를 그리려 든다.
+                backArea[2] = null;
+                capAreaAI[2] = null;
+            }
         }
+    }
+
+    void BuildStaticUI()
+    {
+        var root = ui.ContentArea;
+        ApplySeatVisibility(root);
 
         // HUD를 통째로 껐으므로(Start()의 SetHudVisible(false)) 뒤로가기
         // 버튼도 같이 사라졌다 — 작은 나가기 버튼 하나만 둔다.

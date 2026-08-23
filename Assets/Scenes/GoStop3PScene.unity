@@ -816,7 +816,7 @@ GameObject:
   - component: {fileID: 573929393}
   - component: {fileID: 573929392}
   m_Layer: 0
-  m_Name: StatusBox2
+  m_Name: StatusBox4
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

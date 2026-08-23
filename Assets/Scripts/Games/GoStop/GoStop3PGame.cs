@@ -113,18 +113,54 @@ public partial class GoStop3PGame : MonoBehaviour
 
     /// <summary>2026-08-23(design.md §49.4 확정): 이번 판 정산 후 0원 이하가
     /// 된 좌석 목록을 돌려준다. 예전엔 REFILL_MONEY로 채워 계속 이어갔지만
-    /// (2026-08-18 확정), 이번 통합 작업에서 그 규칙을 폐기했다 — 파산한
-    /// 좌석이 하나라도 있으면 그 판을 끝으로 세션 자체를 종료한다(호출부
-    /// 참고). "4인→3인→2인 자동 다운그레이드해 즉시 이어서 진행"까지는
-    /// 이번 범위에서 구현하지 않았다 — 좌석 배열이 0~3 고정 인덱스라
-    /// 중간 좌석이 빠지면 재번호매김이 필요하고, 3인 미만은 아예 다른
-    /// 씬/엔진(2인 맞고)으로 넘어가야 해서 리스크가 크다고 판단했다
-    /// (design.md 48번 리스크 관리 원칙 — 최종 보고서에 기록).</summary>
+    /// (2026-08-18 확정), 이번 통합 작업에서 그 규칙을 폐기했다.
+    /// 2026-08-23(2차): 씬 통합(GoStop3PGame이 2/3/4인을 전부 처리)이
+    /// 끝나서 "4인→3인→2인 자동 다운그레이드"가 오프라인(vs AI)에선
+    /// 실제로 가능해졌다 — 아래 CanDowngrade/ApplyDowngrade 참고. 네트워크는
+    /// 아직 미구현(연결된 각 게스트에게 새 좌석 번호를 재배정하는
+    /// 프로토콜이 필요해서 범위 밖으로 남겼다 — 최종 보고서 참고), 나
+    /// 자신이 파산했거나 이미 2인이면 다운그레이드로 못 내려가므로 그
+    /// 판을 끝으로 세션을 종료한다(호출부 참고).</summary>
     List<int> BankruptSeats()
     {
         var bankrupt = new List<int>();
         for (int s = 0; s < SEATS; s++) if (money[s] <= 0) bankrupt.Add(s);
         return bankrupt;
+    }
+
+    /// <summary>파산한 좌석이 있고, 그게 나(사람)가 아니고, 아직 2인보다
+    /// 위(더 내려갈 데가 있음)라면 자동 다운그레이드가 가능하다 —
+    /// 오프라인(vs AI) 전용. 내가 파산했으면 다운그레이드로 구제할 방법이
+    /// 없다(계속할 사람 자체가 없다는 뜻이라 세션 종료가 맞다). 네트워크는
+    /// 아직 미구현 — BankruptSeats() 문서 참고.</summary>
+    bool CanDowngrade(List<int> bankruptSeats) =>
+        bankruptSeats.Count > 0 && !isNetworkHost && !isNetworkGuest &&
+        !bankruptSeats.Contains(PLAYER_SEAT) && SEATS > 2;
+
+    /// <summary>2026-08-23(design.md §49.4): 파산한 좌석(들)을 빼고 남은
+    /// 좌석의 잔액을 그대로 들고 새 인원수로 재구성한다 — "돈을 다 잃은
+    /// 사람만 나가고, 남은 사람들은 가진 돈 그대로 계속"이라는 규칙이다
+    /// (다운그레이드라고 전원 잔액을 초기화하지 않는다 — 그건 "세션
+    /// 종료"쪽 규칙과 다르다). 오프라인 전용: AI 좌석은 익명이라(고유
+    /// 정체성이 없다) 몇 번 좌석이 빠지든 그냥 나머지를 0번부터 다시
+    /// 채워 넣으면 된다 — 나(PLAYER_SEAT)는 CanDowngrade가 이미 "파산
+    /// 안 했음"을 보장해서 항상 새 0번으로 살아남는다.</summary>
+    void ApplyDowngrade(List<int> bankruptSeats)
+    {
+        var survivorMoney = new List<int>();
+        var survivorAllIn = new List<int>();
+        for (int s = 0; s < SEATS; s++)
+        {
+            if (bankruptSeats.Contains(s)) continue;
+            survivorMoney.Add(money[s]);
+            survivorAllIn.Add(allInCount[s]);
+        }
+        int newSeats = survivorMoney.Count;
+        for (int i = 0; i < newSeats; i++) { money[i] = survivorMoney[i]; allInCount[i] = survivorAllIn[i]; }
+        SetSeatCount(newSeats);
+        dealerSeat = 0; // 다운그레이드 직후엔 선을 단순하게 나로 리셋한다(누가 이겼는지와 무관하게)
+        SaveMoney();
+        ApplySeatVisibility(ui.ContentArea); // Left/Right/TopSeat 표시를 새 인원수에 맞게 다시 계산
     }
 
     // ── 판 상태 (좌석별 배열) ─────────────────────────────
@@ -624,6 +660,13 @@ public partial class GoStop3PGame : MonoBehaviour
     /// 이미 확정된 SEATS를 실수로 다시 덮어쓰지 않는다.</summary>
     public static int? PendingOfflineSeatCount;
 
+    /// <summary>true면 이번 씬 진입이 이미 인원수를 알고 들어왔다는 뜻
+    /// (네트워크 로비 또는 타이틀의 인원수 선택 팝업). false면 씬을
+    /// 직접 열었다는 뜻(에디터에서 바로 Play 등, 주로 테스트) — 이 경우
+    /// Start()가 곧장 4인으로 시작하지 않고 인원수 선택 화면을 먼저
+    /// 띄운다(2026-08-23, 테스트 편의 요청).</summary>
+    bool seatCountPreset;
+
     void Awake()
     {
         var lobby = GoStopNetLobby.Instance;
@@ -637,11 +680,13 @@ public partial class GoStop3PGame : MonoBehaviour
             lobby.OnGameMessage += OnNetGameMessage;
             if (isNetworkHost) lobby.OnGuestLeftDuringGame += OnGuestLeftDuringGame;
             if (isNetworkGuest) lobby.OnDisconnected += OnHostDisconnected;
+            seatCountPreset = true;
         }
         else if (PendingOfflineSeatCount.HasValue)
         {
             SetSeatCount(PendingOfflineSeatCount.Value);
             PendingOfflineSeatCount = null;
+            seatCountPreset = true;
         }
     }
 
@@ -692,7 +737,7 @@ public partial class GoStop3PGame : MonoBehaviour
         // 호스트만 결정한다(호스트가 다음 판을 시작하면 그 StateSync를
         // 받아 화면이 알아서 바뀐다).
         ui?.SetNewGameAction(isNetworkGuest ? (System.Action)null : NewGame);
-        ui?.SetTitle(isNetworkHost || isNetworkGuest ? "고스톱 (네트워크)" : "고스톱 (4인)");
+        ui?.SetTitle(isNetworkHost || isNetworkGuest ? "고스톱 (네트워크)" : SeatCountTitle());
         ui?.SetBest(PlayerPrefs.GetInt(BestKey, 0));
         ui?.SetBackground(new Color(0.282f, 0.373f, 0.255f)); // 2인판과 같은 카드테이블 그린
 
@@ -719,12 +764,56 @@ public partial class GoStop3PGame : MonoBehaviour
         if (GoStopAudio.Instance == null)
             new GameObject("GoStopAudio").AddComponent<GoStopAudio>();
 
-        BuildStaticUI();
         // 게스트는 여기서 아무것도 시작 안 한다 — 호스트가 첫 StateSync를
         // 보내오면 OnNetGameMessage → ApplyNetworkSnapshot이 손패를 채우고
-        // 화면을 그린다. 호스트(네트워크 여부 무관)와 싱글플레이는 기존대로
-        // 바로 새 판을 시작한다.
-        if (!isNetworkGuest) NewGame();
+        // 화면을 그린다. BuildStaticUI는 그 StateSync를 받을 그릇을 미리
+        // 지어두기 위해 필요하다(게스트는 이미 lobby가 SEATS를 정해줬으므로
+        // seatCountPreset이 항상 true다).
+        if (isNetworkGuest)
+        {
+            BuildStaticUI();
+            return;
+        }
+
+        // 2026-08-23: 씬을 직접 열면(에디터에서 바로 Play 등, 주로 테스트)
+        // 로비도 없고 타이틀의 인원수 선택도 안 거쳐서 seatCountPreset이
+        // false다 — 이 경우 곧장 4인(SEATS 기본값)으로 시작하는 대신
+        // 인원수 선택 화면부터 띄운다(테스트 편의 요청). BuildStaticUI는
+        // SEATS 값에 따라 LeftSeat/RightSeat/TopSeat on-off를 정하므로,
+        // 인원수가 정해지기 전엔 아직 부르면 안 된다.
+        if (seatCountPreset)
+        {
+            BuildStaticUI();
+            NewGame();
+        }
+        else
+        {
+            ShowModeSelectPopup();
+        }
+    }
+
+    string SeatCountTitle() => SEATS switch { 2 => "맞고", 3 => "고스톱 (3인)", _ => "고스톱 (4인)" };
+
+    /// <summary>테스트 편의용 — 로비/타이틀을 거치지 않고 씬을 바로 열었을
+    /// 때만 뜬다. 기존 게임오버 오버레이 인프라(ui.ShowOverlay)를 그대로
+    /// 재사용한다 — 버튼 3개(2/3/4인)라 딱 맞는다.</summary>
+    void ShowModeSelectPopup()
+    {
+        ui?.ShowOverlay(new Color(.93f, .73f, .18f), "인원수를 선택하세요", null,
+            "테스트용 — 로비/타이틀을 거치면 자동으로 정해집니다",
+            "2인 (맞고)", () => BeginWithSeatCount(2),
+            "3인 (고스톱)", () => BeginWithSeatCount(3),
+            "4인 (고스톱)", () => BeginWithSeatCount(4));
+    }
+
+    void BeginWithSeatCount(int n)
+    {
+        ui?.HideOverlay();
+        SetSeatCount(n);
+        seatCountPreset = true;
+        ui?.SetTitle(SeatCountTitle());
+        BuildStaticUI();
+        NewGame();
     }
 
     /// <summary>타이틀로 나가기 전 화면 방향부터 세로로 되돌린다 — 이 씬만
@@ -2581,23 +2670,31 @@ public partial class GoStop3PGame : MonoBehaviour
             ui?.SetBest(finalScore);
         }
 
-        // 2026-08-23(design.md §49.4 확정): 예전엔(2026-08-18) 0원 이하가
-        // 되면 5만원을 리필해서 계속 이어갔지만, 이번 통합 작업에서 그
-        // 규칙을 폐기했다 — 파산한 좌석이 있으면 그 판을 끝으로 세션을
-        // 종료한다("다시 시작" 버튼을 빼고 타이틀만 안내). 다음에 다시
-        // 열었을 때 0원으로 영구히 막히지 않도록, 세션이 끝나는 시점에
-        // 전 좌석 잔액을 초기 자금으로 되돌린다(design.md가 이 세부까지는
-        // 규정하지 않아 직접 정한 값).
+        // 2026-08-23(design.md §49.4): 파산한 좌석이 있으면 두 갈래로
+        // 갈린다 — CanDowngrade가 참이면(오프라인, 내가 아닌 좌석이
+        // 파산, 아직 2인보다 위) 그 좌석만 빼고 남은 인원·잔액 그대로
+        // 계속한다("자동 다운그레이드"). 아니면(네트워크거나, 내가
+        // 파산했거나, 이미 2인이면) 예전처럼 그 판을 끝으로 세션을
+        // 종료한다 — 이땐 다음에 다시 열었을 때 0원으로 영구히 막히지
+        // 않도록 전 좌석 잔액을 초기 자금으로 되돌린다.
+        //
+        // 이름(SeatName)은 좌석 번호 기준이라 ApplyDowngrade가 좌석을
+        // 재배치하면 더 이상 같은 사람을 안 가리킨다 — 그래서 표시용
+        // 문자열은 전부 재배치 *전에* 미리 뽑아 둔다.
         var bankruptSeats = BankruptSeats();
-        if (bankruptSeats.Count > 0)
+        bool downgrade = CanDowngrade(bankruptSeats);
+        string bankruptNames = bankruptSeats.Count > 0 ? string.Join(", ", bankruptSeats.Select(SeatName)) : null;
+
+        if (!downgrade && bankruptSeats.Count > 0)
         {
             for (int s = 0; s < SEATS; s++) money[s] = STARTING_MONEY;
             foreach (var s in bankruptSeats) allInCount[s]++;
+            // 네트워크 판은 로컬 저장을 안 한다(Start()와 같은 이유 — 매판
+            // 접속하는 사람이 달라질 수 있어 "이 기기의 좌석 N 잔액"이라는
+            // 개념이 안 맞는다). downgrade 분기는 ApplyDowngrade가 저장까지
+            // 알아서 한다.
+            if (!isNetworkHost && !isNetworkGuest) SaveMoney();
         }
-        // 네트워크 판은 로컬 저장을 안 한다(Start()와 같은 이유 — 매판
-        // 접속하는 사람이 달라질 수 있어 "이 기기의 좌석 N 잔액"이라는
-        // 개념이 안 맞는다).
-        if (!isNetworkHost && !isNetworkGuest) SaveMoney();
 
         string title = winnerSeat == PLAYER_SEAT ? "승리!" : $"{SeatName(winnerSeat)} 승리";
         Color col = winnerSeat == PLAYER_SEAT ? new Color(.93f, .73f, .18f) : new Color(.55f, .55f, .60f);
@@ -2611,10 +2708,18 @@ public partial class GoStop3PGame : MonoBehaviour
         string sub = dokbakIdx >= 0 ? $"{SeatName(loserSeats[dokbakIdx])} 독박 · {moneyLine}" : moneyLine;
 
         ui?.SetScore(money[PLAYER_SEAT]); // 상단 HUD의 SCORE는 판점이 아니라 내 보유 머니를 보여준다(사용자 요청)
-        if (bankruptSeats.Count > 0)
+        if (downgrade)
         {
-            string names = string.Join(", ", bankruptSeats.Select(SeatName));
-            sub += $" · {names} 잔액을 모두 잃어 이 판을 끝으로 세션을 종료합니다";
+            // 표시 문자열은 다 만들었으니 이제 실제로 좌석을 재배치한다 —
+            // 이 아래로는 SEATS/좌석 번호가 이미 새 구성이다.
+            ApplyDowngrade(bankruptSeats);
+            sub += $" · {bankruptNames} 잔액을 모두 잃어 퇴장 — 남은 {SEATS}명으로 계속합니다";
+            ui?.ShowOverlay(col, title, finalScore.ToString(), sub,
+                "다시 시작", NewGame, "타이틀", GoToTitle, "점수 상세", ShowScoreDetail);
+        }
+        else if (bankruptSeats.Count > 0)
+        {
+            sub += $" · {bankruptNames} 잔액을 모두 잃어 이 판을 끝으로 세션을 종료합니다";
             ui?.ShowOverlay(col, title, finalScore.ToString(), sub, "타이틀", GoToTitle); // "다시 시작" 없음
         }
         else
