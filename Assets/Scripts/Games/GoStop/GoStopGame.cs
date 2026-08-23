@@ -1277,8 +1277,16 @@ public partial class GoStopGame : MonoBehaviour
     {
         if (state != State.PlayerTurn) return;
 
+        // 2026-08-23: "폭탄하면 그냥 2배인데 흔들기까지 물어봐서 4배가
+        // 된다" 신고 — 4인판(GoStop3PGame.OnPlayerPlay)과 같은 원인·같은
+        // 수정. 폭탄(손 3장+필드 1장)은 무조건·자동으로 터지므로 그 순간엔
+        // "패를 들고 있겠다"는 흔들기 선언 자체가 성립하지 않는다. 필드에
+        // 그 달이 정확히 1장 있으면(폭탄 조건) 흔들기를 안 묻는다 — 이전
+        // 턴에 이미 흔들었던 경우는 playerShook에 남아있어 여기 다시 안
+        // 걸리므로(재질문 없음) 두 배수가 정상적으로 다 인정된다.
         bool tripleInHand = playerHand.Count(c => c.month == card.month) == 3;
-        if (tripleInHand && !playerShook.Contains(card.month))
+        bool bombEligible = field.Count(c => c.month == card.month) == 1;
+        if (tripleInHand && !bombEligible && !playerShook.Contains(card.month))
         {
             pendingShakeCard = card;
             ShowShakeConfirm(card.month);
@@ -1481,7 +1489,12 @@ public partial class GoStopGame : MonoBehaviour
         else
         {
             var card = GoStopAI.ChooseCard(aiHand, field);
-            StartCoroutine(PlayFromHandSeq(card, false, GoStopAI.ShouldShake(), AfterAiAction));
+            // 2026-08-23: 플레이어 쪽과 같은 이유 — 폭탄 조건(손 3장+필드
+            // 1장)이면 흔들기 배수까지 같이 주면 안 된다(OnPlayerPlay
+            // 주석 참고). AI도 예외 없이 같은 규칙을 받는다.
+            bool bombEligible = aiHand.Count(c => c.month == card.month) == 3
+                              && field.Count(c => c.month == card.month) == 1;
+            StartCoroutine(PlayFromHandSeq(card, false, !bombEligible && GoStopAI.ShouldShake(), AfterAiAction));
         }
     }
 

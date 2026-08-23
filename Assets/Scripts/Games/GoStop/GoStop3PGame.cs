@@ -1330,8 +1330,23 @@ public partial class GoStop3PGame : MonoBehaviour
     {
         if (state != State.Turn || currentSeat != PLAYER_SEAT || actionBusy) return;
 
+        // 2026-08-23: "폭탄하면 그냥 2배인데 흔들기까지 물어봐서 4배가
+        // 된다" 신고 — 폭탄(손 3장+필드 1장)은 GoStopRules.ResolveWithBomb에서
+        // 조건이 맞으면 무조건·자동으로 터진다(선택의 여지가 없다). 그런데
+        // 흔들기는 원래 "패를 안 내고 들고 있겠다"는 선언이라, 클릭하는
+        // 순간 무조건 폭탄으로 4장이 한꺼번에 나가는 상황에서는 애초에
+        // "들고 있을" 여지가 없다 — 그런데도 hand.Count==3 조건만 보고
+        // 흔들기부터 물어봐서, 폭탄 배수(×2)와 흔들기 배수(×2)가 같은
+        // 판에 중복으로 곱해졌다. 필드에 그 달이 정확히 1장 있으면(폭탄
+        // 조건) 흔들기를 아예 안 묻는다 — 이전 턴에 이미 흔들기를
+        // 선언해 둔 뒤(그때는 필드에 아직 매칭 카드가 없었을 수 있다)
+        // 나중에 필드가 채워져 폭탄이 되는 경우는 shookMonths에 이미
+        // 기록돼 있어 여기 안 걸리므로(재질문 안 함) 정상적으로 두 배수가
+        // 다 인정된다 — 막는 건 "이번 클릭 한 번으로 흔들기+폭탄이
+        // 동시에 성립하는" 경우뿐이다.
         bool tripleInHand = hand[PLAYER_SEAT].Count(c => c.month == card.month) == 3;
-        if (tripleInHand && !shookMonths[PLAYER_SEAT].Contains(card.month))
+        bool bombEligible = field.Count(c => c.month == card.month) == 1;
+        if (tripleInHand && !bombEligible && !shookMonths[PLAYER_SEAT].Contains(card.month))
         {
             pendingShakeCard = card;
             shakePopup.messageText.text = $"{card.month}월 흔들기 선언하시겠습니까?";
@@ -2111,7 +2126,13 @@ public partial class GoStop3PGame : MonoBehaviour
         else
         {
             var card = GoStopAI.ChooseCard(hand[seat], field);
-            StartCoroutine(PlaySeq(seat, card, GoStopAI.ShouldShake(), () => AfterAction(seat)));
+            // 2026-08-23: 플레이어 쪽과 같은 이유 — 이 카드가 폭탄으로
+            // 터질 조건(손 3장+필드 1장)이면 흔들기 배수까지 같이 주면
+            // 안 된다(OnPlayerPlay 주석 참고). AI도 예외 없이 같은 규칙을
+            // 받는다.
+            bool bombEligible = hand[seat].Count(c => c.month == card.month) == 3
+                              && field.Count(c => c.month == card.month) == 1;
+            StartCoroutine(PlaySeq(seat, card, !bombEligible && GoStopAI.ShouldShake(), () => AfterAction(seat)));
         }
     }
 
