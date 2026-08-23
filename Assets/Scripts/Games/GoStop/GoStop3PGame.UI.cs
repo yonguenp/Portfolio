@@ -38,6 +38,59 @@ public partial class GoStop3PGame
     {
         var root = ui.ContentArea;
 
+        // 2026-08-23(씬 통합): 사용자가 에디터에서 ContentArea 밑에
+        // LeftSeat/RightSeat/TopSeat/MySeat 네 개의 부모 컨테이너를 만들고
+        // 그 안에 각 좌석의 오브젝트(StatusBox*/Back*/Cap*/PlayerCap/Hand)를
+        // 옮겨 넣었다 — 좌석 수(SEATS)에 따라 이 네 컨테이너를 켜고 끄는
+        // 것만으로 맞고(2인)/고스톱(3인)/고스톱(4인) 화면을 씬 재로딩 없이
+        // 한 씬 안에서 바꿀 수 있다. 없으면(예: 아직 이 구조로 안 바뀐
+        // 다른 씬) root로 폴백해서 예전과 동일하게 동작한다.
+        var leftSeatT = (root.Find("LeftSeat") as RectTransform) ?? root;
+        var rightSeatT = (root.Find("RightSeat") as RectTransform) ?? root;
+        var topSeatT = (root.Find("TopSeat") as RectTransform) ?? root;
+        var mySeatT = (root.Find("MySeat") as RectTransform) ?? root;
+
+        // 좌석 수별 on/off (사용자 확인 규칙):
+        //  맞고(2인)   — Left/Right 끔, Top 켬(상대 1명을 여기로)
+        //  고스톱 3인 — Left/Right 켬, Top 끔
+        //  고스톱 4인 — Left/Right/Top 전부 켬
+        if (leftSeatT != root) leftSeatT.gameObject.SetActive(SEATS != 2);
+        if (rightSeatT != root) rightSeatT.gameObject.SetActive(SEATS != 2);
+        if (topSeatT != root) topSeatT.gameObject.SetActive(SEATS != 3);
+        if (mySeatT != root) mySeatT.gameObject.SetActive(true);
+
+        // TopSeat 안쪽 — 원래(4인) 설계는 "상단엔 Cap/Back 없이 정보
+        // 블록만"이었다. 2인(맞고)은 상대가 딱 1명이라 그 뒷패·획득패를
+        // 어딘가엔 보여줘야 해서, TopSeat를 상대 전용 자리로 재활용하며
+        // 거기에만 있는 Back4/Cap4를 켠다 — StatusBox2도 왼쪽으로
+        // 밀어(-700) 그 옆에 Back4/Cap4가 들어갈 자리를 만든다. 4인일 땐
+        // 원래 자리(0)로 되돌리고 Back4/Cap4를 끈다.
+        if (topSeatT != root)
+        {
+            var statusBox2 = topSeatT.Find("StatusBox2") as RectTransform;
+            if (statusBox2 != null)
+            {
+                var p = statusBox2.anchoredPosition;
+                p.x = SEATS == 2 ? -700f : 0f;
+                statusBox2.anchoredPosition = p;
+            }
+            var back4 = topSeatT.Find("Back4") as RectTransform;
+            var cap4 = topSeatT.Find("Cap4") as RectTransform;
+            if (back4 != null) back4.gameObject.SetActive(SEATS == 2);
+            if (cap4 != null) cap4.gameObject.SetActive(SEATS == 2);
+            if (SEATS == 2 && back4 != null && cap4 != null)
+            {
+                // backArea[2]/capAreaAI[2]는 원래(4인) 설계상 항상 null
+                // 이었다(상단엔 Cap/Back이 없었으므로) — 2인일 때만
+                // 채워서, 아래 RebuildUI의 렌더 루프가 슬롯 2도 그리게
+                // 한다.
+                StripStrayLayoutGroup(back4);
+                StripStrayLayoutGroup(cap4);
+                backArea[2] = back4;
+                capAreaAI[2] = cap4;
+            }
+        }
+
         // HUD를 통째로 껐으므로(Start()의 SetHudVisible(false)) 뒤로가기
         // 버튼도 같이 사라졌다 — 작은 나가기 버튼 하나만 둔다.
         // 2026-08-18: "우측하단으로 옮기고, 누르면 바로 나가지 말고
@@ -52,12 +105,14 @@ public partial class GoStop3PGame
         exitRT.anchoredPosition = new Vector2(-14f, 14f);
 
         // 상단 중앙(슬롯2) — 참고 이미지의 "MISSION" 배너 자리를 광팔이/쉬는
-        // 유저 정보 슬롯으로 재활용("저기다 넣으면 될것같아" 요청). 상단은
-        // Cap/Back 없이 정보 블록(닉네임/고+점수/금액/아이콘)만 있다 —
-        // "상단의 Cap, Back 영역은 없애야한다" 요청. 내가 쉬는 드문 판엔
-        // 세 번째 활성 AI가 이 자리에 뜨는데, 그때도 마찬가지로 정보
-        // 블록만 보인다(RecomputeSeatSlots 주석 참고).
-        float topBottom = BuildInfoBlock(2, 0f, 520f, -10f, root);
+        // 유저 정보 슬롯으로 재활용("저기다 넣으면 될것같아" 요청). 4인
+        // 모드는 Cap/Back 없이 정보 블록(닉네임/고+점수/금액/아이콘)만
+        // 있다 — "상단의 Cap, Back 영역은 없애야한다" 요청. 내가 쉬는
+        // 드문 판엔 세 번째 활성 AI가 이 자리에 뜨는데, 그때도 마찬가지로
+        // 정보 블록만 보인다(RecomputeSeatSlots 주석 참고). 2인(맞고)
+        // 모드는 위에서 이미 Back4/Cap4를 켜뒀으므로 여기선 정보 블록만
+        // 그대로 채우면 된다.
+        float topBottom = BuildInfoBlock(2, 0f, 520f, -10f, topSeatT);
 
         // 이하 전부 "이전 블록 바로 아래" 커서 누적 방식(이 파일이 반복
         // 채택해 온 패턴) — 좌표 하드코딩으로 인한 겹침 재발을 구조적으로
@@ -107,8 +162,8 @@ public partial class GoStop3PGame
         drawPileArea = GetOrCreateContainer(root, "DrawPile", new Vector2(PILE_W, PILE_H), new Vector2(pileX, pileY), out _);
         // zoneGap은 이제 DrawAiCaptured가 안 읽는다(3존 나란히 배치를
         // 접었으므로) — 예전 호출 형태만 유지하고 값 자체는 의미 없다.
-        float sideBottomL = BuildEdgeSeatBlock(1, -SIDE_X, SIDE_W, fieldTop + 16f, root, zoneGap: 0f, maxPerRow: 5, capAreaH: 0f);
-        float sideBottomR = BuildEdgeSeatBlock(3, SIDE_X, SIDE_W, fieldTop + 16f, root, zoneGap: 0f, maxPerRow: 5, capAreaH: 0f);
+        float sideBottomL = BuildEdgeSeatBlock(1, -SIDE_X, SIDE_W, fieldTop + 16f, leftSeatT, zoneGap: 0f, maxPerRow: 5, capAreaH: 0f);
+        float sideBottomR = BuildEdgeSeatBlock(3, SIDE_X, SIDE_W, fieldTop + 16f, rightSeatT, zoneGap: 0f, maxPerRow: 5, capAreaH: 0f);
 
         // 나(아래) — 위 세 구간(중앙 필드+더미, 좌, 우) 중 가장 낮은 지점
         // 바로 아래부터 시작한다. 하드코딩된 값이 아니라 실제 배치 결과에서
@@ -124,14 +179,14 @@ public partial class GoStop3PGame
         // 겹치는 회귀로 이어졌었다 — 매직 넘버 자체를 없애는 게 근본
         // 해결책이라고 판단해 걷어냈다.
         float contentBottom = Mathf.Min(centerBottom, Mathf.Min(sideBottomL, sideBottomR));
-        float capY = BuildInfoBlock(0, 0f, 700f, contentBottom - 10f, root);
-        playerCapArea = GetOrCreateContainer(root, "PlayerCap", new Vector2(1000f, CAP_ROW_PITCH * 2f), new Vector2(0f, capY - 6f), out bool playerCapExisted);
+        float capY = BuildInfoBlock(0, 0f, 700f, contentBottom - 10f, mySeatT);
+        playerCapArea = GetOrCreateContainer(mySeatT, "PlayerCap", new Vector2(1000f, CAP_ROW_PITCH * 2f), new Vector2(0f, capY - 6f), out bool playerCapExisted);
         if (!playerCapExisted) HwatuUI.AddZoneBackground(playerCapArea, CapZoneColor); // 재사용 시엔 배경을 또 얹지 않는다(중복 Image 방지)
         // 2026-08-20: "Hand 영역 posY -878로 조절" 확인 값 — 커서 계산값
         // 대신 직접 지정한다(이 파일이 반복 채택해 온, 사용자가 실측/확인한
         // 값을 그대로 박아 넣는 패턴 — Body/Card 등 다른 팝업들과 동일).
         float handY = -878f;
-        handArea = GetOrCreateContainer(root, "Hand", new Vector2(1000f, HAND_H), new Vector2(0f, handY), out _);
+        handArea = GetOrCreateContainer(mySeatT, "Hand", new Vector2(1000f, HAND_H), new Vector2(0f, handY), out _);
 
         // 팝업(딤+패널)은 전부 ContentArea가 아니라 Canvas 바로 밑(Overlay와
         // 같은 층)에 붙인다 — ContentArea 밑에 두면 게임오버 Overlay(Canvas
@@ -895,10 +950,14 @@ public partial class GoStop3PGame
         UpdatePileVisual();
         DrawField();
 
-        // 상대 뒷패·획득패 — 슬롯 1/3(좌/우)만 그린다. 슬롯 2(상단)는
-        // "Cap·Back 영역 제거" 요청으로 애초에 backArea[2]/capAreaAI[2]가
-        // null이다(BuildStaticUI에서 안 만듦).
-        for (int slot = 1; slot <= 3; slot += 2) // 1, 3
+        // 상대 뒷패·획득패 — 3/4인 모드는 슬롯 1/3(좌/우)만 그린다(슬롯
+        // 2=상단은 "Cap·Back 영역 제거" 요청으로 backArea[2]/capAreaAI[2]가
+        // null인 채로 남는다). 2026-08-23: 맞고(2인)는 반대로 상단(슬롯2)
+        // 하나만 그린다 — BuildStaticUI가 SEATS==2일 때만 backArea[2]/
+        // capAreaAI[2]를 채워두므로, 아래 null 체크가 자동으로 올바른
+        // 슬롯만 골라낸다(2인이면 1·3은 seat<0이라 건너뛰고 2만 그려짐,
+        // 3/4인이면 2는 backArea==null이라 건너뛰고 1·3만 그려짐).
+        for (int slot = 1; slot <= 3; slot++)
         {
             int seat = slotSeat[slot];
             if (seat < 0 || backArea[slot] == null) continue;

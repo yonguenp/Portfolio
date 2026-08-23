@@ -6776,6 +6776,71 @@ design.md의 "게임모드 자동결정/자동 다운그레이드"를 하려면 
 - 오프라인(vs AI) 경로(`PendingOfflineSeatCount`)는 컴파일만 확인했고
   실제로 타이틀에서 눌러서 들어가는 것까진 안 해봤다.
 
+## 고스톱 — 씬 통합 2차: LeftSeat/RightSeat/TopSeat/MySeat 컨테이너 (2026-08-23)
+
+사용자가 에디터에서 `GoStop3PScene`의 `ContentArea` 계층을 직접 재구성했다
+— `LeftSeat`/`RightSeat`/`TopSeat`/`MySeat` 4개의 부모 컨테이너를 새로
+만들고, 그 안에 각 좌석이 쓰던 오브젝트(`StatusBox1/Back1/Cap1` →
+`LeftSeat`, `StatusBox3/Back3/Cap3` → `RightSeat`, `StatusBox2/Back4/Cap4`
+→ `TopSeat`, `StatusBox0/PlayerCap/Hand` → `MySeat`)를 옮겨 넣었다.
+`Back4`/`Cap4`는 새로 추가한 오브젝트다 — 원래(4인) 설계는 "상단엔
+Cap/Back이 없다"였는데, 2인(맞고)은 상대가 1명뿐이라 그 뒷패·획득패를
+어딘가엔 보여줘야 해서 TopSeat 전용으로 새로 만든 것.
+
+사용자가 지시한 좌석 수별 on/off 규칙:
+
+| 모드 | LeftSeat | RightSeat | TopSeat | TopSeat 안 |
+|---|---|---|---|---|
+| 맞고(2인) | 끔 | 끔 | 켬 | StatusBox2 X=-700, Back4·Cap4 켬 |
+| 고스톱(3인) | 켬 | 켬 | 끔 | — |
+| 고스톱(4인) | 켬 | 켬 | 켬 | StatusBox2 X=0, Back4·Cap4 끔 |
+
+### 코드 변경
+
+- **`BuildStaticUI()`가 이제 이 4개 컨테이너를 찾아서**(`root.Find("LeftSeat")`
+  등, 없으면 `root`로 폴백 — 이 구조로 아직 안 바뀐 씬에서도 예전처럼
+  동작) **SEATS 값에 따라 SetActive를 건다.** TopSeat 안쪽은 별도로
+  `StatusBox2`의 `anchoredPosition.x`를 SEATS==2면 -700, 아니면 0으로
+  설정하고, `Back4`/`Cap4`를 SEATS==2일 때만 켠 뒤 `backArea[2]`/
+  `capAreaAI[2]`에 채워 넣는다(원래 이 두 배열 인덱스는 4인 설계상
+  항상 null이었다 — 2인일 때만 채워서 렌더 루프가 슬롯 2도 그리게
+  만드는 스위치 역할).
+- **`BuildInfoBlock`/`BuildEdgeSeatBlock`/`GetOrCreateContainer` 호출부가
+  이제 `root` 대신 해당 좌석의 부모 컨테이너를 넘긴다** — `root.Find($"StatusBox{slot}")`
+  같은 내부 `Find` 호출이 원래 `root`(ContentArea)의 **직계 자식만**
+  찾는데, 오브젝트들이 이제 한 단계 더 안쪽(예: `LeftSeat/StatusBox1`)에
+  있어서 `root`를 그대로 넘기면 못 찾고 새로 생성해버렸을 것 — 좌표
+  자체는 안 바뀐다(4개 부모 컨테이너 전부 `anchoredPosition=(0,0)`이라
+  좌표계가 그대로 유지된다).
+- **`RebuildUI()`의 상대 뒷패·획득패 렌더 루프**를 `slot += 2`(1,3만
+  방문)에서 `slot++`(1,2,3 전부 방문)로 바꿨다 — `backArea[slot]==null`
+  가드가 이미 있어서, 3/4인 모드에선 슬롯 2가 자동으로 스킵되고(항상
+  null) 2인 모드에선 슬롯 1·3이 스킵된다(`slotSeat`가 -1). 코드 하나로
+  세 모드 다 올바르게 갈린다.
+- **`RecomputeSeatSlots()`의 3인 분기를 좌(1)+상(2)에서 좌(1)+우(3)로
+  변경**(사용자의 새 지시 — "3인일때는 LeftSeat,RightSeat를 키고
+  TopSeat를 끄고"). 예전엔 3인 모드가 상단을 썼는데(광팔이 로테이션
+  도입 이전부터의 설계), 이제 TopSeat가 2인 전용으로 재활용되면서
+  3인은 좌우 대칭 배치로 바뀌었다 — 실제 턴 진행(좌석 인덱스 증가
+  순서)은 전혀 안 건드리고 "어느 화면 위치에 그릴지"만 바뀐다.
+
+### 검증
+
+컴파일 클린 확인. 사용자가 직접 에디터에서 확인하고 "이상없는거같아"로
+확정 — 이번엔 라이브 리플렉션 검증을 별도로 안 돌렸다(unity-cli 재연결이
+불안정해서 재시도하려던 차에 사용자가 직접 눈으로 확인해준 것으로 충분하다고
+판단).
+
+### 아직 안 된 것
+
+- 3인 모드가 좌우 배치로 바뀌면서 예전에 "좌(1)+상(2)" 기준으로 맞춰
+  뒀던 미세 조정(간격 등)이 새 배치에서도 그대로 맞는지는 실측 안 함 —
+  다음 실플레이에서 확인 필요.
+- `Back4`/`Cap4`의 크기·회전이 사용자가 의도한 그대로 카드가 예쁘게
+  그려지는지(특히 `DrawAiCaptured`의 3존 분할 로직이 `Cap4`의 실제
+  `sizeDelta`를 기준으로 계산되므로, 그 크기가 카드 3~4장이 들어갈
+  만큼 넉넉한지)는 육안 확인이 필요.
+
 ## 설정 팝업 · 라이선스 정보
 
 `Assets/Scripts/UI/GameAudioSettings.cs` + `TitleOptionsUI.cs`.

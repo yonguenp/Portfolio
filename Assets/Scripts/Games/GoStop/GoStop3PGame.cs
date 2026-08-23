@@ -801,17 +801,14 @@ public partial class GoStop3PGame : MonoBehaviour
 
         if (SEATS == 3)
         {
-            // 3인 모드는 광팔이 로테이션이 아예 없어 sittingOutSeat가 항상
-            // -1로 고정된다 — 그대로 두면 바로 아래 "아직 안 정해짐"
-            // placeholder 분기(4인 전용)를 타서 존재하지 않는 4번째
-            // 좌석(3)을 화면에 그리려 들어 깨진다. 상(2)·좌(1)만 실제
-            // 좌석을 쓰고 우(3)는 항상 비워둔다(RebuildUI는 seat<0인
-            // 슬롯을 이미 빈 자리로 처리한다). 우측이 항상 빈 자리라
-            // 반시계 방향(하단→우→상→좌)에서 우측을 건너뛰면 실제로는
-            // 하단→상→좌 순서가 된다.
-            slotSeat[2] = (PLAYER_SEAT + 1) % SEATS;
-            slotSeat[1] = (PLAYER_SEAT + 2) % SEATS;
-            slotSeat[3] = -1;
+            // 2026-08-23(씬 통합, 사용자 확인 규칙 정정): 3인 모드는 이제
+            // 좌/우(LeftSeat/RightSeat)만 쓰고 상단(TopSeat)은 꺼둔다 —
+            // TopSeat는 이제 맞고(2인)가 상대 1명의 뒷패·Cap을 보여주는
+            // 용도로 전용됐다(BuildStaticUI 참고). 3인 모드는 광팔이
+            // 로테이션이 없어 sittingOutSeat가 항상 -1로 고정된다.
+            slotSeat[1] = (PLAYER_SEAT + 1) % SEATS;
+            slotSeat[3] = (PLAYER_SEAT + 2) % SEATS;
+            slotSeat[2] = -1;
             return;
         }
 
