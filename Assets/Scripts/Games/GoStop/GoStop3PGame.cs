@@ -1488,6 +1488,38 @@ public partial class GoStop3PGame : MonoBehaviour
         {
             yield return StartCoroutine(PlayJokerFromHandSeq(seat, card));
             actionBusy = false;
+
+            // 2026-08-23: "조커를 내면 캡+리필까지 하고 바로 턴이 넘어가면
+            // 안 된다, 리필된 손패에서 다시 한 장을 골라 내야 턴이 넘어가야
+            // 한다" 신고 — 조커는 진짜로 낸 카드가 아니라 덤(캡 1장 +
+            // 손패 리필)이라, 여기서 곧장 onDone(=AfterAction, 턴 종료)을
+            // 부르면 이번 턴에 카드를 한 장도 안 내고 턴이 그냥 넘어가
+            // 버린다. 리필 후 손패가 남아있으면(거의 항상 그렇다) 진짜로
+            // 낼 카드를 다시 고르게 한다 — 로컬 AI는 곧바로 재귀 호출로
+            // 이어서 고르고, 원격 좌석은 RemoteTurn을 다시 걸어 다음
+            // 메시지를 기다리고(안 그러면 게스트가 다음 카드를 보내도
+            // 듣는 사람이 없다), 로컬 플레이어는 onDone을 안 불러서 턴을
+            // 그대로 유지한다 — state/currentSeat가 안 바뀌었으니
+            // OnPlayerPlay가 이미 다음 클릭을 받아줄 준비가 돼 있다.
+            // (원래 딜에서 조커 2장을 다 받은 극히 드문 경우, 여기서 고른
+            // "다음 카드"가 또 조커일 수도 있는데 — 그럼 이 분기가 다시
+            // 한 번 더 걸릴 뿐이라 자연스럽게 처리된다.)
+            if (h.Count > 0)
+            {
+                if (seat != PLAYER_SEAT && !IsRemoteSeat(seat))
+                {
+                    var next = GoStopAI.ChooseCard(h, field);
+                    yield return StartCoroutine(PlaySeq(seat, next, GoStopAI.ShouldShake(), onDone));
+                }
+                else if (IsRemoteSeat(seat))
+                {
+                    yield return StartCoroutine(RemoteTurn(seat));
+                }
+                yield break;
+            }
+
+            // 손패가 완전히 바닥났으면(조커를 뽑았는데 더미도 바닥나
+            // 리필이 안 된 경우) 더는 낼 게 없으니 턴을 끝낸다.
             onDone?.Invoke();
             yield break;
         }
