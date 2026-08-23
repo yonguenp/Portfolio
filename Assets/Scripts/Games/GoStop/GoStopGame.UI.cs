@@ -78,6 +78,58 @@ public partial class GoStopGame
         BuildFieldChoiceUI(canvasRoot);
         BuildDualPiChoiceUI(canvasRoot);
         BuildScoreDetailUI(canvasRoot);
+        BuildDealerDrawUI(canvasRoot);
+    }
+
+    /// <summary>선 뽑기 연출 팝업 — 4인판(GoStop3PGame)과 같은 프리팹
+    /// (DealerDrawPopup, 좌석 슬롯 4개)을 공유해서 만들지만, 2인이라
+    /// 0·1번 슬롯("나"/"상대")만 쓰고 나머지 두 슬롯은 통째로 꺼둔다.</summary>
+    void BuildDealerDrawUI(RectTransform canvasRoot)
+    {
+        dealerDrawPopup = HwatuUI.InstantiatePopup<DealerDrawPopupView>("DealerDrawPopup", canvasRoot);
+        dealerDrawPopup.seatLabels[0].text = "나";
+        dealerDrawPopup.seatLabels[1].text = "상대";
+        for (int i = 2; i < 4; i++)
+        {
+            dealerDrawPopup.seatLabels[i].gameObject.SetActive(false);
+            dealerDrawPopup.cardSlots[i].gameObject.SetActive(false);
+        }
+    }
+
+    /// <summary>2장을 순서대로 공개하고 더 높은 패(월이 우선, 같은 월이면
+    /// 광→열끗→띠→피 순)를 뽑은 쪽을 선(첫 턴)으로 정한다 — 4인판
+    /// DetermineDealerSeq와 같은 규칙, 좌석이 2개뿐이라는 점만 다르다.</summary>
+    IEnumerator DetermineStarterSeq()
+    {
+        dealerDrawPopup.Show();
+        dealerDrawPopup.resultText.text = "";
+        for (int s = 0; s < 2; s++) HwatuUI.ClearChildren(dealerDrawPopup.cardSlots[s]);
+
+        var deck = GoStopDeck.BuildFull();
+        GoStopDeck.Shuffle(deck);
+        var draws = new HwatuCard[2];
+
+        for (int s = 0; s < 2; s++)
+        {
+            draws[s] = deck[s];
+            HwatuUI.MakeCard(draws[s], dealerDrawPopup.cardSlots[s], Vector2.zero, FIELD_W, FIELD_H, null, false);
+            GoStopAudio.Instance?.CardPlay();
+            yield return new WaitForSeconds(0.22f);
+        }
+
+        int rank0 = DrawRank(draws[0]), rank1 = DrawRank(draws[1]);
+        starterIsPlayer = rank0 >= rank1; // 동률은 사실상 없다(서로 다른 카드) — 방어적으로 0번(나) 우선
+        dealerDrawPopup.resultText.text = (starterIsPlayer ? "내가" : "상대가") + " 선입니다!";
+        GoStopAudio.Instance?.Bonus();
+        yield return new WaitForSeconds(1.1f);
+
+        dealerDrawPopup.Hide();
+    }
+
+    static int DrawRank(HwatuCard c)
+    {
+        int kindBonus = c.kind switch { HwatuKind.Gwang => 3, HwatuKind.Yeolkkeut => 2, HwatuKind.Ddi => 1, _ => 0 };
+        return c.month * 10 + kindBonus;
     }
 
     /// <summary>
@@ -780,9 +832,18 @@ public partial class GoStopGame
     /// 필드 중앙 위에 큼직한 컬러 텍스트를 띄워 순간적으로 확 커졌다 사라지게
     /// 한다. <see cref="Toast"/>의 라벨과 같은 문자열 매칭으로 트리거한다
     /// (사운드의 <see cref="GoStopAudio.PlayForLabel"/>과 같은 접근).</summary>
+    // 2026-08-23: "첫뻑/연뻑/첫따닥 시에 이펙트 추가" 요청 — 4인판과 같은
+    // 이유(첫뻑/연뻑은 label.Contains("뻑")에 우연히 걸려 평범한 "뻑"과
+    // 똑같은 주황으로만 떴고, "첫따닥"은 어느 조건에도 안 걸려 이펙트
+    // 자체가 없었다). 셋 다 실제 돈이 오가는 이벤트라 초록(금전 신호)으로
+    // 명시적으로 분리한다 — 4인판의 MoneyEventColor와 같은 톤.
+    static readonly Color MoneyEventColor = new Color(0.20f, 0.85f, 0.45f);
+
     void ShowActionPopup(string label)
     {
+        bool moneyEvent = label == "첫뻑" || label == "연뻑" || label == "첫따닥";
         Color? color =
+            moneyEvent               ? MoneyEventColor :
             label == "따닥"          ? new Color(0.72f, 0.45f, 0.95f) : // exact — "첫따닥"과는 다른 이벤트
             label.Contains("쪽")     ? new Color(0.35f, 0.85f, 1f) :
             label.Contains("싹쓸이") ? new Color(1f, 0.82f, 0.25f) :
@@ -795,7 +856,8 @@ public partial class GoStopGame
         // 2026-08-19: "파티클 이펙트로 애니메이션을 좀 더 역동적으로" 요청 —
         // 텍스트 팝업과 같은 자리·같은 색으로 원형 파티클 버스트를 같이
         // 터뜨린다(4인판 GoStop3PGame.cs의 ShowActionPopup과 같은 패턴).
-        GoStopIcons.SpawnBurst(fieldArea.parent as RectTransform, burstPos, color.Value);
+        // 금전 이벤트는 살짝 더 화려하게(16개, 기본 12개보다 많이).
+        GoStopIcons.SpawnBurst(fieldArea.parent as RectTransform, burstPos, color.Value, moneyEvent ? 16 : 12);
 
         var lbl = HwatuUI.MakeLabel(fieldArea.parent, burstPos,
                              new Vector2(600f, 100f), 52f, color.Value);

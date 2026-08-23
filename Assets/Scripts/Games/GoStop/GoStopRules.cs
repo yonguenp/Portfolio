@@ -343,7 +343,11 @@ public static class GoStopRules
         int piTotal = captured.Where(c => c.EffectiveKind == HwatuKind.Pi).Sum(c => c.EffectivePiValue);
         s.pi = piTotal >= 10 ? piTotal - 9 : 0;
 
-        s.sweep = sweepBonusCount; // 싹쓸이 1회당 1점
+        // 2026-08-23(design.md §23 확정): 싹쓸이는 점수를 가산하지 않는다 — 상대 피를
+        // 뺏어오는 효과(StealPi 계열, ApplyMatchBonus에서 별도 처리)만 있고 점수는 없다.
+        // sweepBonusCount 파라미터/Score.sweep 필드는 호출부 호환을 위해 남겨두되
+        // 항상 0으로 고정해 Total에 반영되지 않게 한다. (과거엔 1회당 +1점이었음)
+        s.sweep = 0;
 
         return s;
     }

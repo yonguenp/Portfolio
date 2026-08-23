@@ -75,13 +75,13 @@ public partial class GoStop3PGame : MonoBehaviour
     // 선(딜러)은 이 정산에서 빠진다 — 딜러는 밀어낸 쪽이 아니다.
     const int GWANG_SALE_WON_PER_CARD = 100;
     // 2026-08-18: "다시 시작해도 이전 잔액으로" 요청 — PlayerPrefs에 좌석별로
-    // 영구 저장한다(2인판과 같은 패턴). 0원 이하가 되면 예전엔 세션이 끝났지만
-    // 지금은 REFILL_MONEY로 채우고 올인 횟수만 기록한 채 계속 진행한다.
-    const int REFILL_MONEY = 50_000;
+    // 영구 저장한다(2인판과 같은 패턴). 2026-08-23(design.md §49.4 확정):
+    // 0원 이하가 되면 예전엔 5만원을 리필해서 계속 이어갔지만, 이번
+    // 통합 작업에서 그 규칙을 폐기했다 — BankruptSeats() 참고.
     static string MoneyKey(int s) => "GoStop4P_Money_" + s;
     static string AllInKey(int s) => "GoStop4P_AllIn_" + s;
     readonly int[] money = new int[SEATS_MAX];
-    readonly int[] allInCount = new int[SEATS_MAX];
+    readonly int[] allInCount = new int[SEATS_MAX]; // 이제 "리필 횟수"가 아니라 "파산으로 세션이 끝난 횟수"
     int stakeMultiplier = 1; // 나가리마다 2배, 결판나면 1로 리셋 (Start()에서만 초기화)
 
     // 2026-08-22: "결과 화면에 자금 상세(시작 자금·이번 판 변동·현재 잔액)를
@@ -101,23 +101,20 @@ public partial class GoStop3PGame : MonoBehaviour
         PlayerPrefs.Save();
     }
 
-    /// <summary>이번 판 정산 후 0원 이하가 된 좌석을 전부 REFILL_MONEY로 채우고
-    /// 올인 횟수를 늘린다. 4인이라 이론상 여러 좌석이 동시에 0원 이하가 될 수
-    /// 있어(광팔이·독박 등으로 몰아 냈을 때) 전 좌석을 독립적으로 확인한다.
-    /// 실제로 리필된 좌석 목록을 돌려준다 — 호출부가 결과 문구에 반영할 수 있게.</summary>
-    List<int> RefillIfBankrupt()
+    /// <summary>2026-08-23(design.md §49.4 확정): 이번 판 정산 후 0원 이하가
+    /// 된 좌석 목록을 돌려준다. 예전엔 REFILL_MONEY로 채워 계속 이어갔지만
+    /// (2026-08-18 확정), 이번 통합 작업에서 그 규칙을 폐기했다 — 파산한
+    /// 좌석이 하나라도 있으면 그 판을 끝으로 세션 자체를 종료한다(호출부
+    /// 참고). "4인→3인→2인 자동 다운그레이드해 즉시 이어서 진행"까지는
+    /// 이번 범위에서 구현하지 않았다 — 좌석 배열이 0~3 고정 인덱스라
+    /// 중간 좌석이 빠지면 재번호매김이 필요하고, 3인 미만은 아예 다른
+    /// 씬/엔진(2인 맞고)으로 넘어가야 해서 리스크가 크다고 판단했다
+    /// (design.md 48번 리스크 관리 원칙 — 최종 보고서에 기록).</summary>
+    List<int> BankruptSeats()
     {
-        var refilled = new List<int>();
-        for (int s = 0; s < SEATS; s++)
-        {
-            if (money[s] <= 0)
-            {
-                money[s] = REFILL_MONEY;
-                allInCount[s]++;
-                refilled.Add(s);
-            }
-        }
-        return refilled;
+        var bankrupt = new List<int>();
+        for (int s = 0; s < SEATS; s++) if (money[s] <= 0) bankrupt.Add(s);
+        return bankrupt;
     }
 
     // ── 판 상태 (좌석별 배열) ─────────────────────────────
@@ -582,10 +579,13 @@ public partial class GoStop3PGame : MonoBehaviour
         string sub = snap.gameOverDokbakSeat >= 0
             ? $"{SeatName(snap.gameOverDokbakSeat)} 독박 · 내 머니 {money[PLAYER_SEAT]:N0}원"
             : $"내 머니 {money[PLAYER_SEAT]:N0}원";
+        // gameOverRefilledSeats 필드명은 그대로 재사용하지만(스냅샷 구조체 변경
+        // 회피), 2026-08-23부터는 "리필된 좌석"이 아니라 "파산해서 세션이
+        // 끝난 좌석" 목록이다 — design.md §49.4 확정.
         if (snap.gameOverRefilledSeats != null && snap.gameOverRefilledSeats.Length > 0)
         {
             string names = string.Join(", ", snap.gameOverRefilledSeats.Select(s => SeatName(s)));
-            sub += $" · 잔액 소진 → 5만원 재충전: {names}";
+            sub += $" · {names} 잔액을 모두 잃어 이 판을 끝으로 세션을 종료합니다";
         }
         ui?.SetScore(money[PLAYER_SEAT]);
         ui?.ShowOverlay(col, title, snap.gameOverFinalScore.ToString(), sub, "타이틀", GoToTitle);
@@ -830,7 +830,39 @@ public partial class GoStop3PGame : MonoBehaviour
     /// 채워졌으면 4번째는 참가하고 싶어도 못 끼며 광팔이로 보상받는다 —
     /// 2·3번째 중 누가 스스로 포기하면 자리가 남아 4번째가 그냥 정상
     /// 참가한다(보상 없음). 사용자가 직접 확정해준 규칙.
+    ///
+    /// 2026-08-23(design.md §5.2/§5.3 확정): 2번째가 불참하면 3번째에게는
+    /// 참가 여부를 아예 묻지 않는다("2번째가 참가한 경우에만 3번째에게
+    /// 묻는다") — 3번째는 자동으로 참가 처리된다. 예전엔 2번째 답과 무관하게
+    /// 항상 둘 다에게 물었다.
     /// </summary>
+    IEnumerator AskParticipation(int candidate, System.Action<bool> onResult)
+    {
+        bool wantsIn;
+        if (candidate == PLAYER_SEAT)
+        {
+            pendingDeclareChoice = null;
+            declarePopup.messageText.text = $"{SeatName(dealerSeat)}이(가) 선입니다. 이번 판 참가하시겠습니까?";
+            declarePopup.Show();
+            yield return new WaitUntil(() => pendingDeclareChoice != null);
+            declarePopup.Hide();
+            wantsIn = pendingDeclareChoice.Value;
+        }
+        else if (IsRemoteSeat(candidate))
+        {
+            // SeatName(dealerSeat)이 아니라 SeatNameFor(dealerSeat, candidate) —
+            // 이 문구를 받는 건 호스트가 아니라 candidate 좌석이라, "나"
+            // 판정은 candidate 기준이어야 한다.
+            SendTargetedPrompt(candidate, s => { s.declarePending = true; s.declareDealerName = SeatNameFor(dealerSeat, candidate); });
+            GoStopNetMessage declMsg = null;
+            yield return StartCoroutine(WaitForRemoteMessage(candidate,
+                m => m.type == GoStopNetMessage.Type.DeclareChoice, m => declMsg = m));
+            wantsIn = declMsg.boolValue;
+        }
+        else wantsIn = GoStopAI.WantsToPlay(hand[candidate]);
+        onResult(wantsIn);
+    }
+
     IEnumerator NewGameSeq()
     {
         // 이전 판 종료 오버레이("다시 시작" 버튼이 있던 그 화면)를 여기서
@@ -940,34 +972,27 @@ public partial class GoStop3PGame : MonoBehaviour
 
         var active = new List<int> { order[0] }; // 선 — 무조건 참가
         var declined = new List<int>();
-        for (int i = 1; i <= 2; i++) // 2번째, 3번째
-        {
-            int candidate = order[i];
-            bool wantsIn;
-            if (candidate == PLAYER_SEAT)
-            {
-                pendingDeclareChoice = null;
-                declarePopup.messageText.text = $"{SeatName(dealerSeat)}이(가) 선입니다. 이번 판 참가하시겠습니까?";
-                declarePopup.Show();
-                yield return new WaitUntil(() => pendingDeclareChoice != null);
-                declarePopup.Hide();
-                wantsIn = pendingDeclareChoice.Value;
-            }
-            else if (IsRemoteSeat(candidate))
-            {
-                // SeatName(dealerSeat)이 아니라 SeatNameFor(dealerSeat, candidate) —
-                // 이 문구를 받는 건 호스트가 아니라 candidate 좌석이라, "나"
-                // 판정은 candidate 기준이어야 한다(위 SeatNameFor 문서 참고).
-                SendTargetedPrompt(candidate, s => { s.declarePending = true; s.declareDealerName = SeatNameFor(dealerSeat, candidate); });
-                GoStopNetMessage declMsg = null;
-                yield return StartCoroutine(WaitForRemoteMessage(candidate,
-                    m => m.type == GoStopNetMessage.Type.DeclareChoice, m => declMsg = m));
-                wantsIn = declMsg.boolValue;
-            }
-            else wantsIn = GoStopAI.WantsToPlay(hand[candidate]);
 
-            if (wantsIn) active.Add(candidate); else declined.Add(candidate);
+        // 2026-08-23(design.md §5.2/§5.3 확정): 2번째가 불참하면 이미 4번째까지
+        // 자리가 자연히 채워지므로(선+3번째+4번째), 3번째에게는 참가 여부를
+        // 아예 묻지 않고 자동 참가시킨다 — 예전엔 2번째 답과 무관하게 항상
+        // 3번째에게도 물었다. "2번째가 참가한 경우에만" 3번째에게 묻는다.
+        bool secondIn = false;
+        yield return StartCoroutine(AskParticipation(order[1], r => secondIn = r));
+        if (secondIn) active.Add(order[1]); else declined.Add(order[1]);
+
+        bool thirdIn;
+        if (secondIn)
+        {
+            bool thirdResult = false;
+            yield return StartCoroutine(AskParticipation(order[2], r => thirdResult = r));
+            thirdIn = thirdResult;
         }
+        else
+        {
+            thirdIn = true; // 3번째에게 묻지 않고 자동 참가
+        }
+        if (thirdIn) active.Add(order[2]); else declined.Add(order[2]);
 
         int fourth = order[3];
         bool fourthSqueezedOut = active.Count == 3;
@@ -1187,6 +1212,16 @@ public partial class GoStop3PGame : MonoBehaviour
     /// ("뻑"이 아니라 "감사합니다"/"더 감사합니다")를 그대로 쓰도록
     /// overrideText 없이 호출한다 — 나머지(쪽/싹쓸이/첫뻑/연뻑 등)는
     /// 실제 라벨 문자열을 그대로 보여준다.</summary>
+    // 2026-08-23: "첫뻑/연뻑/첫따닥 시에 이펙트 추가" 요청. 조사해보니
+    // 첫뻑·연뻑은 label.Contains("뻑")에 우연히 걸려 이미 이펙트가
+    // 뜨고는 있었지만 평범한 "뻑"과 완전히 같은 색(주황)이라 구분이
+    // 안 됐고, "첫따닥"은 정확 일치("따닥")·Contains("쪽") 어느 것도
+    // 안 걸려 **이펙트 자체가 아예 안 떴다**(버그). 셋 다 실제 돈이
+    // 오가는 이벤트라 다른 뻑/따닥과는 다른 색(금전 신호 — 초록)으로
+    // 명시적으로 분리한다.
+    static readonly Color MoneyEventColor = new Color(0.20f, 0.85f, 0.45f);
+    static bool IsMoneyEventLabel(string label) => label == "첫뻑" || label == "연뻑" || label == "첫따닥";
+
     void ShowActionPopup(string label)
     {
         // "따닥"은 전용 프리팹을 새로 굽는 대신(2026-08-20) EffectJjok의
@@ -1195,6 +1230,8 @@ public partial class GoStop3PGame : MonoBehaviour
         string prefabName =
             label == "자뻑"          ? "EffectThanksMore" :
             label == "뻑 먹기"       ? "EffectThanks" :
+            label == "첫뻑" || label == "연뻑" ? "EffectPpeok" : // 구조는 뻑과 공유, 색만 금전 이벤트로 override
+            label == "첫따닥"        ? "EffectJjok" :            // 구조는 따닥과 공유, 색만 override
             label == "따닥"          ? "EffectJjok" : // exact — "첫따닥"과는 다른 이벤트, 구조 재사용+색만 override
             label.Contains("쪽")     ? "EffectJjok" :
             label.Contains("싹쓸이") ? "EffectSweep" :
@@ -1207,9 +1244,11 @@ public partial class GoStop3PGame : MonoBehaviour
         var canvasRoot = fieldArea.parent.parent.parent as RectTransform; // Canvas — Overlay와 같은 층
         Vector2 local = canvasRoot.InverseTransformPoint(fieldArea.position);
 
+        bool moneyEvent = IsMoneyEventLabel(label);
         // 2026-08-19: "파티클 이펙트로 애니메이션을 좀 더 역동적으로" 요청 —
         // 텍스트 팝업과 같은 자리에 원형 파티클 버스트를 같이 터뜨린다.
-        GoStopIcons.SpawnBurst(canvasRoot, local, BurstColorForLabel(label));
+        // 금전 이벤트는 살짝 더 화려하게(16개, 기본 12개보다 많이).
+        GoStopIcons.SpawnBurst(canvasRoot, local, moneyEvent ? MoneyEventColor : BurstColorForLabel(label), moneyEvent ? 16 : 12);
 
         var fx = HwatuUI.InstantiateEffect<GoStopEffectPopup>(prefabName, canvasRoot);
         if (fx == null) return;
@@ -1221,9 +1260,10 @@ public partial class GoStop3PGame : MonoBehaviour
 
         // "감사합니다"/"더 감사합니다"는 프리팹 기본 문구를 그대로 쓰고,
         // 나머지는 실제 라벨(첫뻑!/연뻑! 등 상황별 문구)을 덮어써서 보여준다.
-        // "따닥"만 색까지 override해서(EffectJjok의 하늘색과 구분) 별개
-        // 이벤트로 보이게 한다.
+        // "따닥"/금전 이벤트만 색까지 override해서 평범한 뻑/따닥과
+        // 구분되게 한다.
         if (prefabName == "EffectThanks" || prefabName == "EffectThanksMore") fx.Play();
+        else if (moneyEvent) fx.Play(label, MoneyEventColor);
         else if (label == "따닥") fx.Play(label, new Color(0.72f, 0.45f, 0.95f));
         else fx.Play(label);
     }
@@ -1255,6 +1295,10 @@ public partial class GoStop3PGame : MonoBehaviour
         ("청단",   GoStopRules.IsCheongdan),
     };
 
+    // design.md §26/§27이 요구하는 "3광" 비상 전용 판정 슬롯 — emergencyFired의
+    // setIdx로 4를 쓴다(0~3은 위 EmergencySets 배열 인덱스와 겹치지 않는다).
+    const int GwangEmergencyIdx = 4;
+
     void CheckEmergencies()
     {
         foreach (int seat in ActiveSeats())
@@ -1274,7 +1318,37 @@ public partial class GoStop3PGame : MonoBehaviour
                     FireEmergency(seat, EmergencySets[i].name);
                 }
             }
+
+            // 2026-08-23(design.md §26 확정): 3광도 비상 대상에 추가한다.
+            // 광은 5장 중 3장만 있으면 되는 "풀에서 N장" 조건이라, 정확히
+            // 3장뿐인 홍단/청단/초단/고도리에 쓰던 CheckSet의 "상대가 1장만
+            // 가져도 막힘" 판정을 그대로 쓰면 오탐(과잉 차단)이 난다 —
+            // 전용 판정(CheckGwangEmergency)을 따로 쓴다.
+            if (!emergencyFired.Contains((seat, GwangEmergencyIdx)))
+            {
+                theirs ??= ActiveSeats().Where(s => s != seat).SelectMany(s => captured[s]).ToList();
+                var (state, have) = CheckGwangEmergency(mine, theirs);
+                if (state == GoStopRules.SetState.Alive && have == 2)
+                {
+                    emergencyFired.Add((seat, GwangEmergencyIdx));
+                    FireEmergency(seat, "3광");
+                }
+            }
         }
+    }
+
+    /// <summary>3광 비상 판정 — 광 5장 중 3장을 채우면 되므로, 상대가 광을
+    /// 몇 장 가져갔든 "아직 아무도 안 가져간 광"이 필요한 만큼 남아있으면
+    /// 여전히 Alive다(홍단류처럼 상대가 1장만 가져도 바로 Blocked가 아니다).
+    /// </summary>
+    static (GoStopRules.SetState state, int have) CheckGwangEmergency(List<HwatuCard> mine, List<HwatuCard> theirs)
+    {
+        int have = mine.Count(c => c.kind == HwatuKind.Gwang);
+        if (have >= 3) return (GoStopRules.SetState.Achieved, have);
+        int theirsCount = theirs.Count(c => c.kind == HwatuKind.Gwang);
+        int stillObtainable = 5 - have - theirsCount; // 내 손에도 상대 손에도 없는 나머지 광
+        if (stillObtainable < 3 - have) return (GoStopRules.SetState.Blocked, have);
+        return (GoStopRules.SetState.Alive, have);
     }
 
     /// <summary>비상 이펙트 발동 — 필드 중앙에 큼직하게, 어느 좌석이 어떤
@@ -1295,6 +1369,7 @@ public partial class GoStop3PGame : MonoBehaviour
             "홍단" => "EffectHongdan",
             "초단" => "EffectChodan",
             "청단" => "EffectCheongdan",
+            "3광" => "EffectLight", // 2026-08-23(design.md §26/§27 확정)
             _ => null,
         };
         if (prefabName == null || fieldArea == null) return;
@@ -1321,6 +1396,7 @@ public partial class GoStop3PGame : MonoBehaviour
         "홍단"   => new Color(0.906f, 0.298f, 0.235f),
         "초단"   => new Color(0.180f, 0.800f, 0.443f),
         "청단"   => new Color(0.231f, 0.616f, 0.910f),
+        "3광"    => new Color(0.95f, 0.78f, 0.15f), // 고도리와 톤을 살짝 갈랐다(둘 다 금색 계열이라 구분 필요)
         _        => Color.white,
     };
 
@@ -2460,12 +2536,19 @@ public partial class GoStop3PGame : MonoBehaviour
             ui?.SetBest(finalScore);
         }
 
-        // 2026-08-18: 예전엔 누구든 0원 이하가 되면 세션이 끝났는데("다시
-        // 시작"이 의미 없다고 봤었다), 사용자 요청으로 대신 REFILL_MONEY를
-        // 채워서 계속 이어가는 쪽으로 바꿨다. 4인이라 여러 좌석이 동시에
-        // 0원 이하가 될 수 있어(광팔이·독박으로 몰아 냈을 때) 전 좌석을
-        // 독립적으로 확인한다.
-        var refilledSeats = RefillIfBankrupt();
+        // 2026-08-23(design.md §49.4 확정): 예전엔(2026-08-18) 0원 이하가
+        // 되면 5만원을 리필해서 계속 이어갔지만, 이번 통합 작업에서 그
+        // 규칙을 폐기했다 — 파산한 좌석이 있으면 그 판을 끝으로 세션을
+        // 종료한다("다시 시작" 버튼을 빼고 타이틀만 안내). 다음에 다시
+        // 열었을 때 0원으로 영구히 막히지 않도록, 세션이 끝나는 시점에
+        // 전 좌석 잔액을 초기 자금으로 되돌린다(design.md가 이 세부까지는
+        // 규정하지 않아 직접 정한 값).
+        var bankruptSeats = BankruptSeats();
+        if (bankruptSeats.Count > 0)
+        {
+            for (int s = 0; s < SEATS; s++) money[s] = STARTING_MONEY;
+            foreach (var s in bankruptSeats) allInCount[s]++;
+        }
         // 네트워크 판은 로컬 저장을 안 한다(Start()와 같은 이유 — 매판
         // 접속하는 사람이 달라질 수 있어 "이 기기의 좌석 N 잔액"이라는
         // 개념이 안 맞는다).
@@ -2475,22 +2558,28 @@ public partial class GoStop3PGame : MonoBehaviour
         Color col = winnerSeat == PLAYER_SEAT ? new Color(.93f, .73f, .18f) : new Color(.55f, .55f, .60f);
         // "이번 판 얼마를 벌었는지/잃었는지"가 최종 잔액만으론 안 보인다는 요청 —
         // 정산 직전 스냅샷(pendingMoneyBefore) 대비 내 변동을 부호와 함께 보여준다.
+        // (파산으로 세션이 끝나는 판은 위에서 이미 전 좌석 money를 리셋했으므로
+        // 이 delta는 "리셋 후" 기준이 된다 — 아래에서 별도 파산 문구로 구분한다.)
         int myDelta = money[PLAYER_SEAT] - pendingMoneyBefore[PLAYER_SEAT];
         string myDeltaStr = myDelta == 0 ? "변동 없음" : (myDelta > 0 ? $"+{myDelta:N0}원" : $"{myDelta:N0}원");
         string moneyLine = $"이번 판 {myDeltaStr} · 내 머니 {money[PLAYER_SEAT]:N0}원";
         string sub = dokbakIdx >= 0 ? $"{SeatName(loserSeats[dokbakIdx])} 독박 · {moneyLine}" : moneyLine;
-        if (refilledSeats.Count > 0)
-        {
-            string names = string.Join(", ", refilledSeats.Select(s => $"{SeatName(s)}(올인 {allInCount[s]}회)"));
-            sub += $" · 잔액 소진 → 5만원 재충전: {names}";
-        }
 
         ui?.SetScore(money[PLAYER_SEAT]); // 상단 HUD의 SCORE는 판점이 아니라 내 보유 머니를 보여준다(사용자 요청)
-        ui?.ShowOverlay(col, title, finalScore.ToString(), sub,
-            "다시 시작", NewGame, "타이틀", GoToTitle, "점수 상세", ShowScoreDetail);
+        if (bankruptSeats.Count > 0)
+        {
+            string names = string.Join(", ", bankruptSeats.Select(SeatName));
+            sub += $" · {names} 잔액을 모두 잃어 이 판을 끝으로 세션을 종료합니다";
+            ui?.ShowOverlay(col, title, finalScore.ToString(), sub, "타이틀", GoToTitle); // "다시 시작" 없음
+        }
+        else
+        {
+            ui?.ShowOverlay(col, title, finalScore.ToString(), sub,
+                "다시 시작", NewGame, "타이틀", GoToTitle, "점수 상세", ShowScoreDetail);
+        }
 
         if (isNetworkHost)
-            BroadcastGameOverState(false, winnerSeat, finalScore, dokbakIdx >= 0 ? loserSeats[dokbakIdx] : -1, refilledSeats.ToArray());
+            BroadcastGameOverState(false, winnerSeat, finalScore, dokbakIdx >= 0 ? loserSeats[dokbakIdx] : -1, bankruptSeats.ToArray());
     }
 
 }

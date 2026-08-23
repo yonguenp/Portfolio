@@ -32,10 +32,11 @@ public partial class GoStopGame : MonoBehaviour
     // 저장하도록 바꿨다 — 예전엔 Start()에서 매번 10만원으로 리셋해서 씬을
     // 나갔다 들어오거나 앱을 재시작하면 그전 판돈이 사라졌다. 지금은 Start()가
     // 저장된 값이 있으면 그걸 불러오고, 없으면(첫 실행) 10만원으로 시작한다.
-    // 어느 한쪽이 0원 이하가 되면 예전엔 세션이 끝났는데, 지금은 5만원을
-    // 리필해서 계속 이어간다(사용자 요청) — 세션 종료 대신 "올인" 횟수만 기록.
+    // 2026-08-23(design.md §49.4 확정): 어느 한쪽이 0원 이하가 되면 예전엔
+    // 5만원을 리필해서 계속 이어갔지만(2026-08-18 사용자 확정), 이번
+    // 통합 작업에서 그 규칙을 폐기하고 "퇴장 + 세션 종료"로 교체했다 —
+    // 자세한 내용은 EndGame의 bankrupt 분기 참고.
     const int STARTING_MONEY = 100_000;
-    const int REFILL_MONEY = 50_000;
     const int WON_PER_POINT = 100;
     const string PlayerMoneyKey = "GoStop2P_PlayerMoney";
     const string AiMoneyKey = "GoStop2P_AiMoney";
@@ -56,22 +57,20 @@ public partial class GoStopGame : MonoBehaviour
         PlayerPrefs.Save();
     }
 
-    /// <summary>이번 판 정산 후 0원 이하가 된 쪽을 <see cref="REFILL_MONEY"/>로
-    /// 채우고 올인 횟수를 1 늘린다. 둘 다(드물지만 이론상) 0원 이하일 수 있어
-    /// 독립적으로 각각 확인한다. 실제로 리필이 일어났으면 true를 돌려준다 —
-    /// 호출부가 결과 문구에 반영할 수 있도록.</summary>
-    bool RefillIfBankrupt()
-    {
-        bool refilled = false;
-        if (playerMoney <= 0) { playerMoney = REFILL_MONEY; playerAllInCount++; refilled = true; }
-        if (aiMoney <= 0) { aiMoney = REFILL_MONEY; aiAllInCount++; refilled = true; }
-        return refilled;
-    }
     // 나가리(무승부)가 나면 다음 판 판돈이 2배가 된다 — 연속 나가리면 배로
     // 계속 불어난다(2→4→8…). 결판이 나는 순간(누가 이기든) 1로 리셋한다.
     // Start()에서만 초기화하고 NewGame()에서는 안 건드린다 — 나가리→다음 판
     // 경계를 넘어 유지돼야 의미가 있다.
     int stakeMultiplier = 1;
+    // 2026-08-23(design.md §14/§15 확정): 첫 판은 카드를 뽑아 선(첫 턴)을
+    // 정하고, 이후엔 직전 판 승자가 다음 판 선이 된다(나가리면 기존 선
+    // 유지 — EndGame에서 처리). starterIsPlayer=true면 내가 먼저 낸다.
+    // starterDetermined는 세션당 한 번만 뽑기를 하기 위한 플래그(3P의
+    // dealerDetermined와 같은 패턴 — 인스턴스가 새로 생성될 때 기본값
+    // false로 자연히 리셋되므로 Start()에서 따로 안 건드린다).
+    bool starterIsPlayer = true;
+    bool starterDetermined;
+    DealerDrawPopupView dealerDrawPopup;
     // 폭탄을 쓰면 손이 2장 짧아진다 — 그 보상으로 "이후 최대 2번, 손을 안 내고
     // 덱만 넘길 수 있는 권리"를 번다(강제 아님, 매 턴 본인 선택). 원문:
     // "판단에 따라 2번까지 패를 내려놓지 않고 더미에서 뒤집기만 할 수 있다."
@@ -531,6 +530,23 @@ public partial class GoStopGame : MonoBehaviour
 
     IEnumerator NewGameSeq()
     {
+        // 이전 판 종료 오버레이를 여기서 바로 지운다 — 선 뽑기 연출을 넣기
+        // 전엔 판을 다 준비한 뒤에야 지웠는데, 몇 초 걸리는 코루틴이 앞에
+        // 붙으면 그동안 예전 오버레이가 화면을 덮은 채로 남는다(3P에서
+        // 이미 겪은 함정과 같은 원인이라 여기서도 순서를 앞으로 옮긴다).
+        ui?.HideOverlay();
+
+        // 2026-08-23(design.md §14/§15 확정): 선(첫 턴)은 씬에 들어와서 딱
+        // 한 번만 카드 뽑기 연출로 정한다. 이후 판부터는 EndGame이 승자를
+        // starterIsPlayer에 그대로 옮겨 적어둔 값을 쓴다("직전 판 승자가
+        // 선"). 나가리(무승부)면 EndGame이 starterIsPlayer를 안 건드리므로
+        // 자동으로 "선 유지"가 된다.
+        if (!starterDetermined)
+        {
+            yield return StartCoroutine(DetermineStarterSeq());
+            starterDetermined = true;
+        }
+
         var deal = GoStopRules.DealNew();
         playerHand = deal.playerHand; aiHand = deal.aiHand;
         field = deal.field; drawPile = deal.drawPile;
@@ -548,9 +564,8 @@ public partial class GoStopGame : MonoBehaviour
         playerPpeokTotal = aiPpeokTotal = 0;
         goLeader = null; goReversalCount = 0;
         isFirstPlayOfRound = true; // stakeMultiplier는 여기서 안 건드린다 — 나가리 다음 판까지 이어져야 한다.
-        state = State.PlayerTurn;
+        state = starterIsPlayer ? State.PlayerTurn : State.AiTurn;
 
-        ui?.HideOverlay();
         ui?.SetScore(playerMoney); // 상단 HUD의 SCORE는 판점이 아니라 내 보유 머니를 보여준다(사용자 요청)
 
         // 딜링 연출 — 손패/필드가 아직 화면에 하나도 안 그려진 이 시점에만
@@ -568,6 +583,18 @@ public partial class GoStopGame : MonoBehaviour
         // 점수(3점 × 총통 배수 x4)로 정산한다.
         if (GoStopRules.IsChongtong(playerHand)) { EndGameChongtong(isPlayerSide: true); yield break; }
         if (GoStopRules.IsChongtong(aiHand)) { EndGameChongtong(isPlayerSide: false); yield break; }
+
+        // 2026-08-23: 선 뽑기 결과 상대(AI)가 먼저 시작하는 판이면, 예전엔
+        // 항상 내가 먼저였으니 아무도 AI의 첫 턴을 걸어줄 필요가 없었다 —
+        // 이제는 AdvanceTurn의 "상대 턴" 분기(RebuildUI 후 RemoteAiTurn/
+        // AiTurnStep 예약)를 여기서도 그대로 재현해야 한다. 안 하면 시작
+        // 좌석이 AI인 판이 아무 진행 없이 멈춘다(4인판이 예전에 겪은
+        // 것과 같은 종류의 버그).
+        if (!starterIsPlayer)
+        {
+            if (isNetworkHost) StartCoroutine(RemoteAiTurn());
+            else Invoke(nameof(AiTurnStep), 0.7f);
+        }
     }
 
     /// <summary>
@@ -1196,6 +1223,8 @@ public partial class GoStopGame : MonoBehaviour
         CheckEmergencySide(false, aiCaptured, playerCaptured);
     }
 
+    const int GwangEmergencyIdx = 4; // 4인판과 같은 규칙 — 0~3은 EmergencySets 인덱스와 안 겹친다.
+
     void CheckEmergencySide(bool isPlayerSide, List<HwatuCard> mine, List<HwatuCard> theirs)
     {
         if (mine.Count == 0) return;
@@ -1209,6 +1238,30 @@ public partial class GoStopGame : MonoBehaviour
                 FireEmergency(isPlayerSide, EmergencySets[i].name);
             }
         }
+
+        // 2026-08-23(design.md §26 확정) — 3광. 광은 5장 중 3장만 있으면
+        // 되는 "풀에서 N장" 조건이라 CheckSet의 "상대가 1장만 가져도 막힘"
+        // 판정(정확히 3장뿐인 홍단류 전용)을 그대로 못 쓴다 — 4인판과 같은
+        // 전용 판정을 쓴다.
+        if (!emergencyFired.Contains((isPlayerSide, GwangEmergencyIdx)))
+        {
+            var (state, have) = CheckGwangEmergency(mine, theirs);
+            if (state == GoStopRules.SetState.Alive && have == 2)
+            {
+                emergencyFired.Add((isPlayerSide, GwangEmergencyIdx));
+                FireEmergency(isPlayerSide, "3광");
+            }
+        }
+    }
+
+    static (GoStopRules.SetState state, int have) CheckGwangEmergency(List<HwatuCard> mine, List<HwatuCard> theirs)
+    {
+        int have = mine.Count(c => c.kind == HwatuKind.Gwang);
+        if (have >= 3) return (GoStopRules.SetState.Achieved, have);
+        int theirsCount = theirs.Count(c => c.kind == HwatuKind.Gwang);
+        int stillObtainable = 5 - have - theirsCount;
+        if (stillObtainable < 3 - have) return (GoStopRules.SetState.Blocked, have);
+        return (GoStopRules.SetState.Alive, have);
     }
 
     /// <summary>비상 이펙트 발동 — 4인판과 같은 프리팹(EffectGodori/
@@ -1223,6 +1276,7 @@ public partial class GoStopGame : MonoBehaviour
             "홍단" => "EffectHongdan",
             "초단" => "EffectChodan",
             "청단" => "EffectCheongdan",
+            "3광" => "EffectLight", // 2026-08-23(design.md §26/§27 확정)
             _ => null,
         };
         if (prefabName == null || fieldArea == null) return;
@@ -1636,6 +1690,11 @@ public partial class GoStopGame : MonoBehaviour
     {
         state = State.GameOver;
 
+        // 2026-08-23(design.md §15/§16 확정): 나가리가 아니면 이번 판 승자가
+        // 다음 판의 선(첫 턴)이 된다. 나가리(aiWon==null)면 starterIsPlayer를
+        // 안 건드려 기존 선을 그대로 유지한다(4인판의 dealerSeat와 같은 패턴).
+        if (aiWon != null) starterIsPlayer = (aiWon == false);
+
         if (aiWon == null) GoStopAudio.Instance?.Nagari();
         else
         {
@@ -1728,13 +1787,25 @@ public partial class GoStopGame : MonoBehaviour
         }
         if (aiWon.HasValue) stakeMultiplier = 1;
 
-        // 2026-08-18: 예전엔 어느 한쪽이 0원이 되면 세션이 그대로 끝났는데
-        // ("다시 시작"이 의미 없다고 봤었다), 사용자 요청으로 대신 5만원을
-        // 리필해서 계속 이어가는 쪽으로 바꿨다 — 그래서 "다시 시작"이
-        // 항상 유효하다. 몇 번 파산했는지는 올인 횟수로 기록만 하고 정산에는
-        // 영향 없다.
-        if (RefillIfBankrupt())
-            sub += $" · 잔액 소진 → 5만원 재충전(올인 나 {playerAllInCount}회 · 상대 {aiAllInCount}회)";
+        // 2026-08-23(design.md §49.4 확정): "0원 이하가 되면 5만원을 리필해서
+        // 계속 이어간다"던 예전 규칙(2026-08-18에 사용자가 직접 확정했던 것)을
+        // 이번 통합 작업에서 폐기했다. 대신 design.md 49.4대로 "보유 한도 내
+        // 지급 후 퇴장" — 2인 맞고에서 누군가 파산하면 내려갈 다음 모드가
+        // 없으므로(맞고보다 작은 모드는 없다) 그 자리에서 방을 폭파하고
+        // 전원 타이틀로 돌려보낸다. "다시 시작"은 더 걸 돈이 없으므로 뺀다.
+        bool bankrupt = aiWon.HasValue && (playerMoney <= 0 || aiMoney <= 0);
+        if (bankrupt)
+        {
+            // 다음에 이 게임을 다시 열었을 때 0원으로 영구히 막히지 않도록,
+            // 파산으로 세션이 끝나는 시점에 저장값을 초기 자금으로 되돌린다
+            // (design.md가 이 세부까지는 규정하지 않아 직접 정한 값 — 실제
+            // 서비스 정책과 다르면 조정 필요).
+            // 실제로 파산한 쪽만 기록한다(둘 다 정확히 동시에 0 이하가
+            // 되는 것도 이론상 가능해서 &&가 아니라 개별 확인).
+            if (playerMoney <= 0) playerAllInCount++;
+            if (aiMoney <= 0) aiAllInCount++;
+            playerMoney = aiMoney = STARTING_MONEY;
+        }
         // 네트워크 판은 로컬 저장을 안 한다 — 매판 접속하는 사람이 달라질
         // 수 있어 "이 기기의 잔액"이라는 개념이 안 맞는다.
         if (!isNetworkHost && !isNetworkGuest) SaveMoney();
@@ -1743,12 +1814,20 @@ public partial class GoStopGame : MonoBehaviour
         // 오버레이 서브텍스트는 한 줄 고정이라(위 신기록 처리와 같은 이유) 이어 붙인다.
         // "이번 판 얼마를 벌었는지/잃었는지"가 최종 잔액만으론 안 보인다는 요청 —
         // 정산 직전 스냅샷(pendingMoneyBeforePlayer) 대비 변동을 부호와 함께 보여준다.
+        // (파산 시엔 위에서 이미 playerMoney/aiMoney를 초기 자금으로 리셋했으므로
+        // 이 delta는 "파산 직전 정산 결과"가 아니라 "리셋 후" 기준이 된다 —
+        // 아래에서 별도 파산 문구를 덧붙여 헷갈리지 않게 한다.)
         int playerDelta = playerMoney - pendingMoneyBeforePlayer;
         string deltaStr = playerDelta == 0 ? "변동 없음" : (playerDelta > 0 ? $"+{playerDelta:N0}원" : $"{playerDelta:N0}원");
         sub += $" · 이번 판 {deltaStr} · 내 머니 {playerMoney:N0}원";
 
         ui?.SetScore(playerMoney); // 상단 HUD의 SCORE는 판점이 아니라 내 보유 머니를 보여준다(사용자 요청)
-        if (aiWon.HasValue)
+        if (bankrupt)
+        {
+            sub += " · 잔액을 모두 잃어 이 판을 끝으로 세션을 종료합니다";
+            ui?.ShowOverlay(col, title, finalScore.ToString(), sub, "타이틀", GoToTitle);
+        }
+        else if (aiWon.HasValue)
             ui?.ShowOverlay(col, title, finalScore.ToString(), sub,
                 "다시 시작", NewGame, "타이틀", GoToTitle, "점수 상세", ShowScoreDetail);
         else
