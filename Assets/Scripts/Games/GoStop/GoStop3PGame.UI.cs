@@ -1465,6 +1465,88 @@ public partial class GoStop3PGame
         if (rt != null) rt.localScale = baseScale;
     }
 
+    // ── 2026-08-23: 카드 애니메이션 시퀀스 재설계 ──────────────
+    // "손패 선택 → 필드에 슬램(매칭 위치/빈 슬롯) → 뒷패도 슬램 → 그제야
+    // Cap 이동 → 피 뺏기"라는 사용자 지정 순서를 구현하기 위한 헬퍼들.
+    // 실제 카드(필드/Cap)는 여전히 DrawField/DrawPlayerCaptured 등 기존
+    // RebuildUI 파이프라인이 field/captured 데이터를 그대로 읽어 그린다 —
+    // 여기 추가된 건 그 전에 잠깐 보여주는 "고스트"(임시 GameObject)뿐이라
+    // 캡처·점수·피 뺏기 등 실제 판정 로직은 전혀 안 건드린다.
+
+    /// <summary>월(1~12) 하나가 필드에서 차지하는 그리드 슬롯의 fieldArea
+    /// 로컬 좌표 — DrawField가 실제 카드를 그릴 때 쓰는 것과 완전히 같은
+    /// 공식이다(그 카드가 지금 필드에 있든 없든, 매칭됐든 안 됐든 이 슬롯은
+    /// 항상 같다 — 매칭되는 카드도 안 되는 카드도 결국 같은 월이면 같은
+    /// 자리에 앉으므로 고스트 착지 지점을 이 공식 하나로 통일할 수 있다).</summary>
+    Vector2 FieldSlotLocalPos(int month)
+    {
+        float fieldRowH = FIELD_H + 10f;
+        int slotIdx = Mathf.Clamp(month - 1, 0, FIELD_COLS * 2 - 1);
+        int col = slotIdx % FIELD_COLS;
+        int row = slotIdx / FIELD_COLS;
+        float slotX = -FIELD_COL_PITCH * (FIELD_COLS - 1) * 0.5f + col * FIELD_COL_PITCH;
+        float slotY = -row * fieldRowH;
+        return new Vector2(slotX, slotY);
+    }
+
+    Vector3 FieldSlotWorldPos(int month) => fieldArea.TransformPoint(FieldSlotLocalPos(month));
+
+    /// <summary>슬램다운 고스트 카드를 만든다 — ContentArea(안 지워지는 안정된
+    /// 부모)에 최종 착지 위치로 바로 놓는다. 실제 클릭은 안 받는 순수
+    /// 연출용이라 onClick은 항상 null.</summary>
+    GameObject SpawnGhostCard(HwatuCard card, Vector3 worldLandingPos)
+    {
+        Vector2 local = ui.ContentArea.InverseTransformPoint(worldLandingPos);
+        return HwatuUI.MakeCard(card, ui.ContentArea, local, FIELD_W, FIELD_H, null, false);
+    }
+
+    static void DestroyGhost(GameObject go) { if (go != null) Destroy(go); }
+    static void DestroyGhosts(List<GameObject> list)
+    {
+        if (list == null) return;
+        foreach (var g in list) DestroyGhost(g);
+    }
+
+    /// <summary>"공중에서 내려치는" 슬램 모션 — 기존 SlamIn(좌우/사선 이동,
+    /// ease-out)과 의도적으로 다르게 만들었다. 착지 지점 위쪽에서 시작해
+    /// ease-in(가속)으로 빠르게 떨어뜨린 뒤 충격 플래시 + 펀치 스케일로
+    /// 마무리한다 — "카드를 탁 내려놓는다"는 손맛을 노린 것. rt.position이
+    /// 이미 최종 착지 좌표로 설정돼 있어야 한다(SpawnGhostCard가 그렇게
+    /// 만든다) — 그 자리를 기준으로 위쪽 시작점을 역산한다.</summary>
+    IEnumerator SlamDown(RectTransform rt, float dropHeight = 170f, float dropDur = 0.10f, float punchDur = 0.12f)
+    {
+        if (rt == null) yield break;
+        Vector3 landing = rt.position;
+        Vector3 start = landing + new Vector3(0f, dropHeight, 0f);
+        Vector3 baseScale = rt.localScale;
+        rt.position = start;
+
+        float t = 0f;
+        while (t < dropDur)
+        {
+            t += Time.deltaTime;
+            float p = Mathf.Pow(Mathf.Clamp01(t / dropDur), 2f); // ease-in — 내려찍는 가속감
+            if (rt == null) yield break;
+            rt.position = Vector3.Lerp(start, landing, p);
+            yield return null;
+        }
+        if (rt == null) yield break;
+        rt.position = landing;
+        SpawnImpactFlash(rt);
+
+        t = 0f;
+        while (t < punchDur)
+        {
+            t += Time.deltaTime;
+            float p = Mathf.Clamp01(t / punchDur);
+            float s = p < 0.4f ? Mathf.Lerp(1f, 1.22f, p / 0.4f) : Mathf.Lerp(1.22f, 1f, (p - 0.4f) / 0.6f);
+            if (rt == null) yield break;
+            rt.localScale = baseScale * s;
+            yield return null;
+        }
+        if (rt != null) rt.localScale = baseScale;
+    }
+
     /// <summary>내가 이겼을 때 화면 위에 색종이 폭죽을 터뜨린다. Canvas
     /// 바로 밑(Overlay와 같은 층)에 붙인다 — 새로 생성된 GameObject는
     /// 자동으로 마지막 sibling이 되어 Overlay보다 나중에 그려지므로

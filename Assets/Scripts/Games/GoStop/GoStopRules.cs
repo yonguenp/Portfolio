@@ -16,16 +16,39 @@ public static class GoStopRules
     public const int CAPTURE_LINE = 7;   // 이 점수부터 고/스톱을 선택할 수 있다
 
     // ── 딜링 ─────────────────────────────────────────────
+
+    /// <summary>표준 48장 + 보너스 조커 2장(총 50장)을 함께 섞은 풀.
+    /// 2026-08-23: "조커도 손패로 나와야 한다"는 요청 전까지는 조커를
+    /// 표준 48장으로 손패/필드를 다 나눈 뒤 더미에만 강제로 끼워 넣었다
+    /// (조커는 월이 없어 손/필드에 있으면 매칭 로직을 못 타서 처리할
+    /// 방법이 없었기 때문). 이제는 손패/필드/더미 어디든 동등한 확률로
+    /// 갈 수 있게 처음부터 50장을 통째로 섞는다 — 필드에 떨어진 조커는
+    /// 딜링 함수가 직접 걸러내 별도로 돌려주고(아래 각 Deal 클래스의
+    /// <c>jokersInField</c>), 호출자가 선(딜러)에게 즉시 피로 지급한다
+    /// (더미에서 뒤집힐 때 즉시 그 사람 피로 들어가는 기존 규칙과 같은
+    /// 원리를 딜링 시점에도 적용 — 월이 없어 아무도 못 먹는 카드가 필드에
+    /// 영원히 남는 것을 막는다). 손패에 떨어진 조커는 그대로 둔다 — 이제
+    /// 손패에서 조커를 직접 낼 수 있다(캡으로 즉시 이동 + 다음 뒷패를
+    /// 대신 손으로 가져오는 처리는 GoStop3PGame.cs/GoStopGame.cs 쪽).</summary>
+    static List<HwatuCard> BuildFullDeckWithJokers()
+    {
+        var deck = GoStopDeck.BuildFull();
+        deck.Add(new HwatuCard(0, HwatuKind.Pi, "Joker_1", piValue: 1, isJoker: true));
+        deck.Add(new HwatuCard(0, HwatuKind.Pi, "Joker_2", piValue: 2, isJoker: true));
+        GoStopDeck.Shuffle(deck);
+        return deck;
+    }
+
     public class Deal
     {
         public List<HwatuCard> playerHand, aiHand, field, drawPile;
+        public List<HwatuCard> jokersInField = new(); // 딜링 결과 필드에 떨어진 조커 — 즉시 선에게 지급할 것
     }
 
-    /// <summary>10장씩 손패, 8장 필드, 나머지 20장이 더미. 순서는 셔플로 이미 무작위라 상관없다.</summary>
+    /// <summary>10장씩 손패, 8장 필드, 나머지가 더미(50장 기준 22장). 순서는 셔플로 이미 무작위라 상관없다.</summary>
     public static Deal DealNew()
     {
-        var deck = GoStopDeck.BuildFull();
-        GoStopDeck.Shuffle(deck);
+        var deck = BuildFullDeckWithJokers();
 
         var d = new Deal
         {
@@ -35,18 +58,8 @@ public static class GoStopRules
             drawPile   = deck.Skip(28).ToList(),
         };
 
-        // 보너스 조커 — 표준 48장 밖의 특수 패라 손패/필드 배분(48장 기준으로
-        // 이미 확정된 10/10/8)에는 안 섞고, 더미에만 무작위 위치로 끼워
-        // 넣는다. 월이 없어 매칭 로직을 못 타므로 손/필드에 있으면 처리할
-        // 방법이 없다 — 더미에서 뒤집히는 순간 즉시 그 사람 피로 들어가는
-        // 식으로만 다룬다(GoStopGame의 덱 뒤집기 처리 쪽 참고).
-        var jokers = new List<HwatuCard>
-        {
-            new HwatuCard(0, HwatuKind.Pi, "Joker_1", piValue: 1, isJoker: true),
-            new HwatuCard(0, HwatuKind.Pi, "Joker_2", piValue: 2, isJoker: true),
-        };
-        foreach (var j in jokers)
-            d.drawPile.Insert(Random.Range(0, d.drawPile.Count + 1), j);
+        d.jokersInField = d.field.Where(c => c.isJoker).ToList();
+        foreach (var j in d.jokersInField) d.field.Remove(j);
 
         return d;
     }
@@ -60,12 +73,12 @@ public static class GoStopRules
     public class Deal3P
     {
         public List<HwatuCard> hand0, hand1, hand2, field, drawPile;
+        public List<HwatuCard> jokersInField = new();
     }
 
     public static Deal3P DealNew3P()
     {
-        var deck = GoStopDeck.BuildFull();
-        GoStopDeck.Shuffle(deck);
+        var deck = BuildFullDeckWithJokers();
 
         var d = new Deal3P
         {
@@ -73,17 +86,11 @@ public static class GoStopRules
             hand1    = deck.Skip(7).Take(7).ToList(),
             hand2    = deck.Skip(14).Take(7).ToList(),
             field    = deck.Skip(21).Take(6).ToList(),
-            drawPile = deck.Skip(27).ToList(), // 48-27=21
+            drawPile = deck.Skip(27).ToList(), // 50-27=23
         };
 
-        // 보너스 조커 — 2인판과 같은 이유로 더미에만 무작위로 끼워 넣는다.
-        var jokers = new List<HwatuCard>
-        {
-            new HwatuCard(0, HwatuKind.Pi, "Joker_1", piValue: 1, isJoker: true),
-            new HwatuCard(0, HwatuKind.Pi, "Joker_2", piValue: 2, isJoker: true),
-        };
-        foreach (var j in jokers)
-            d.drawPile.Insert(Random.Range(0, d.drawPile.Count + 1), j);
+        d.jokersInField = d.field.Where(c => c.isJoker).ToList();
+        foreach (var j in d.jokersInField) d.field.Remove(j);
 
         return d;
     }
@@ -93,6 +100,7 @@ public static class GoStopRules
     {
         public List<HwatuCard>[] hands; // 길이 4, 전부 7장 실제 손패
         public List<HwatuCard> field, drawPile;
+        public List<HwatuCard> jokersInField = new();
     }
 
     /// <summary>
@@ -106,8 +114,7 @@ public static class GoStopRules
     /// </summary>
     public static Deal4P DealNew4PFull()
     {
-        var deck = GoStopDeck.BuildFull();
-        GoStopDeck.Shuffle(deck);
+        var deck = BuildFullDeckWithJokers();
 
         var hands = new List<HwatuCard>[4];
         int idx = 0;
@@ -121,16 +128,11 @@ public static class GoStopRules
         {
             hands    = hands,
             field    = deck.Skip(idx).Take(6).ToList(),
-            drawPile = deck.Skip(idx + 6).ToList(), // 48-28-6=14
+            drawPile = deck.Skip(idx + 6).ToList(), // 50-28-6=16
         };
 
-        var jokers = new List<HwatuCard>
-        {
-            new HwatuCard(0, HwatuKind.Pi, "Joker_1", piValue: 1, isJoker: true),
-            new HwatuCard(0, HwatuKind.Pi, "Joker_2", piValue: 2, isJoker: true),
-        };
-        foreach (var j in jokers)
-            d.drawPile.Insert(Random.Range(0, d.drawPile.Count + 1), j);
+        d.jokersInField = d.field.Where(c => c.isJoker).ToList();
+        foreach (var j in d.jokersInField) d.field.Remove(j);
 
         return d;
     }

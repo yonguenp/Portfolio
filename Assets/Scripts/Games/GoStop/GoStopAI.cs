@@ -10,6 +10,13 @@ public static class GoStopAI
     /// <summary>손패 중 낼 카드를 고른다. 먹을 수 있는 수가 있으면 가장 값진 것을 우선한다.</summary>
     public static HwatuCard ChooseCard(List<HwatuCard> hand, List<HwatuCard> field)
     {
+        // 2026-08-23: "조커도 손패로 나와야 한다" 요청으로 손패에 조커가
+        // 실제로 있을 수 있게 됐다 — 조커는 필드 상태와 무관하게 항상
+        // Cap 1장 + 손패 리필이라는 확정 이득이라(다른 카드처럼 "지금
+        // 내면 손해"인 경우가 없다), 아낄 이유 없이 무조건 먼저 낸다.
+        var joker = hand.FirstOrDefault(c => c.isJoker);
+        if (joker != null) return joker;
+
         HwatuCard best = null;
         int bestValue = -1;
 
