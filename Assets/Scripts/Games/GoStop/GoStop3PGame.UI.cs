@@ -235,7 +235,7 @@ public partial class GoStop3PGame
             yield return new WaitForSeconds(0.15f); // 한 장씩 순서대로 공개
         }
 
-        gwangSalePopup.amountText.text = $"광+쌍피 {n}장 × {GWANG_SALE_WON_PER_CARD}원";
+        gwangSalePopup.amountText.text = $"광+쌍피 {n}장 × {WON_PER_POINT}원";
         gwangSalePopup.payerText.text = $"{SeatName(payerA)} {payAmounts[payerA]:N0}원, {SeatName(payerB)} {payAmounts[payerB]:N0}원 → {SeatName(sellerSeat)}";
         yield return new WaitForSeconds(1.8f);
 

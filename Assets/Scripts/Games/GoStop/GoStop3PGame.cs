@@ -68,12 +68,19 @@ public partial class GoStop3PGame : MonoBehaviour
 
     // ── 판돈 ─────────────────────────────────────────────
     const int STARTING_MONEY = 100_000;
-    const int WON_PER_POINT = 100;
+    // 2026-08-23(design.md §49.2): 예전엔 고정 상수였다 — 이제 네트워크
+    // 방에서는 호스트가 Home 화면에서 정한 값을 쓴다(Awake()에서 읽어옴).
+    // 오프라인(vs AI) 플레이는 이 UI 대상이 아니라서 계속 기본값(100원).
+    int WON_PER_POINT = 100;
     // 광팔이 — 사용자 확인 규칙: 광이나 쌍피 계열(쌍피·9월 열끗·보너스 조커)
-    // 한 장당 100원씩을, 2·3번째(선을 제외한, 나를 밀어낸 두 명)에게서
-    // "각각" 받는다(2인이 각자 100원씩 내므로 카드 한 장당 실수령은 200원).
-    // 선(딜러)은 이 정산에서 빠진다 — 딜러는 밀어낸 쪽이 아니다.
-    const int GWANG_SALE_WON_PER_CARD = 100;
+    // 한 장당 "1점 가격"씩을, 2·3번째(선을 제외한, 나를 밀어낸 두 명)에게서
+    // "각각" 받는다(2인이 각자 내므로 카드 한 장당 실수령은 1점 가격의
+    // 2배). 선(딜러)은 이 정산에서 빠진다 — 딜러는 밀어낸 쪽이 아니다.
+    // 2026-08-23: 예전엔 GWANG_SALE_WON_PER_CARD라는 별도 상수(우연히
+    // WON_PER_POINT와 같은 100)를 썼는데, design.md §8이 "광팔이 단가 =
+    // 1점 가격"이라고 명시하고 있어 별도 상수를 없애고 WON_PER_POINT를
+    // 그대로 쓴다 — 안 그러면 호스트가 1점 가격을 바꿔도 광팔이 단가는
+    // 그대로 100원에 고정된 채 어긋난다.
     // 2026-08-18: "다시 시작해도 이전 잔액으로" 요청 — PlayerPrefs에 좌석별로
     // 영구 저장한다(2인판과 같은 패턴). 2026-08-23(design.md §49.4 확정):
     // 0원 이하가 되면 예전엔 5만원을 리필해서 계속 이어갔지만, 이번
@@ -615,6 +622,7 @@ public partial class GoStop3PGame : MonoBehaviour
             SetMySeat(lobby.MySeat); // 호스트는 항상 0이라 사실상 no-op, 게스트는 1~3
             isNetworkHost = lobby.IsHost;
             isNetworkGuest = lobby.IsGuest;
+            WON_PER_POINT = lobby.PointPrice; // design.md §49.2 — 호스트가 Home에서 정한 값(게스트는 StartGame으로 전달받은 값)
             lobby.OnGameMessage += OnNetGameMessage;
             if (isNetworkHost) lobby.OnGuestLeftDuringGame += OnGuestLeftDuringGame;
             if (isNetworkGuest) lobby.OnDisconnected += OnHostDisconnected;
@@ -1041,7 +1049,7 @@ public partial class GoStop3PGame : MonoBehaviour
         hand[sittingOutSeat] = new List<HwatuCard>();
         if (fourthSqueezedOut && sellableCount > 0)
         {
-            int perPayer = sellableCount * GWANG_SALE_WON_PER_CARD * stakeMultiplier;
+            int perPayer = sellableCount * WON_PER_POINT * stakeMultiplier;
             var payAmounts = new Dictionary<int, int>();
             foreach (var payer in new[] { order[1], order[2] }) // 2·3번째만 — 선은 빠진다
             {

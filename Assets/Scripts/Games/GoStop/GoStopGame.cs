@@ -37,7 +37,11 @@ public partial class GoStopGame : MonoBehaviour
     // 통합 작업에서 그 규칙을 폐기하고 "퇴장 + 세션 종료"로 교체했다 —
     // 자세한 내용은 EndGame의 bankrupt 분기 참고.
     const int STARTING_MONEY = 100_000;
-    const int WON_PER_POINT = 100;
+    // 2026-08-23(design.md §49.2): 예전엔 고정 상수였다 — 이제 네트워크
+    // 방에서는 호스트가 Home 화면에서 정한 값을 쓴다(Start()에서 읽어옴).
+    // 오프라인(vs AI) 플레이는 이 UI 대상이 아니라서 계속 기본값(100원)을
+    // 쓴다.
+    int WON_PER_POINT = 100;
     const string PlayerMoneyKey = "GoStop2P_PlayerMoney";
     const string AiMoneyKey = "GoStop2P_AiMoney";
     const string PlayerAllInKey = "GoStop2P_PlayerAllIn";
@@ -208,6 +212,7 @@ public partial class GoStopGame : MonoBehaviour
         {
             isNetworkHost = lobby.IsHost;
             isNetworkGuest = lobby.IsGuest;
+            WON_PER_POINT = lobby.PointPrice; // design.md §49.2 — 호스트가 Home에서 정한 값(게스트는 StartGame으로 전달받은 값)
             lobby.OnGameMessage += OnNetGameMessage;
             if (isNetworkHost) lobby.OnGuestLeftDuringGame += OnGuestLeftDuringGame;
             if (isNetworkGuest) lobby.OnDisconnected += OnHostDisconnected;

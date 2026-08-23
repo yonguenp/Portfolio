@@ -49,6 +49,42 @@ public class GoStopNetLobby : MonoBehaviour
     /// 이 값을 읽어 좌석 수·게임 모드를 정한다. 2=맞고, 3/4=고스톱.</summary>
     public int PlayerCount { get; private set; }
 
+    /// <summary>1점 가격(원) — design.md §49.2. 방 생성 시 호스트가 정하고
+    /// (기본 100원, 기존 고정 상수와 동일) 게임 진행 중에는 안 바뀐다.
+    /// 게스트는 StartGame 메시지로 이 값을 그대로 전달받는다(표시용 —
+    /// 실제 정산은 호스트만 계산하므로 게스트가 이 값을 몰라도 결과는
+    /// 어긋나지 않는다).</summary>
+    public int PointPrice { get; private set; } = DefaultPointPrice;
+
+    public const int DefaultPointPrice = 100;
+    public const int MinPointPrice = 10;
+    /// <summary>1점 가격 최댓값. design.md는 "호스트 보유 머니 이하"로
+    /// 제한하라고 하는데, 네트워크 판은 로컬 저장 잔액을 안 쓰고 항상
+    /// <c>STARTING_MONEY</c>(10만원, GoStopGame.cs/GoStop3PGame.cs와
+    /// 동일한 값)로 새로 시작한다 — 그래서 "호스트 보유 머니"라는 게
+    /// 이 시점엔 사실상 이 값 하나뿐이라 그대로 상한으로 쓴다. design.md
+    /// 자체의 절대 상한(100만원)보다 낮지만, 실제로 의미 있는 제약은
+    /// 이쪽이다.</summary>
+    public const int MaxPointPrice = 100_000;
+
+    /// <summary>선택 가능한 단계 — 임의의 숫자를 직접 입력하는 대신
+    /// 프리셋 사이를 오가게 했다(2026-08-23). 이 프로젝트에 TMP_InputField
+    /// 전례가 없어 새로 들여오는 리스크보다, 어차피 [10, 10만원] 범위를
+    /// 벗어날 수 없는 스텝퍼 쪽이 안전하다고 판단했다 — 값 자체는
+    /// design.md가 요구하는 범위·상한을 그대로 만족한다.</summary>
+    public static readonly int[] PointPriceSteps = { 10, 50, 100, 500, 1_000, 5_000, 10_000, 50_000, 100_000 };
+
+    /// <summary>1점 가격을 한 단계 올리거나(+1) 내린다(-1). 이미 양 끝이면
+    /// 그대로 둔다. 호스트가 방을 만들기 전(Home 화면)에만 호출된다 —
+    /// 게임 진행 중에는 이 값을 바꿀 UI 자체가 없다.</summary>
+    public void StepPointPrice(int direction)
+    {
+        int idx = System.Array.IndexOf(PointPriceSteps, PointPrice);
+        if (idx < 0) idx = System.Array.IndexOf(PointPriceSteps, DefaultPointPrice); // 방어적 폴백
+        idx = Mathf.Clamp(idx + (direction > 0 ? 1 : -1), 0, PointPriceSteps.Length - 1);
+        PointPrice = PointPriceSteps[idx];
+    }
+
     string myName;
 
     TcpGoStopHostTransport hostTransport;
@@ -211,7 +247,7 @@ public class GoStopNetLobby : MonoBehaviour
             if (hasName != isConnected)
                 Debug.LogWarning($"[GoStopNet] HostStartGame: seat {seat} 상태 불일치 — PlayerNames={hasName}, 실제연결={isConnected}");
             if (!isConnected) continue;
-            hostTransport.Send(seat, GoStopNetMessage.StartGameMsg(seat, total));
+            hostTransport.Send(seat, GoStopNetMessage.StartGameMsg(seat, total, PointPrice));
         }
         PlayerCount = total;
         OnGameStarting?.Invoke(0, total);
@@ -259,6 +295,7 @@ public class GoStopNetLobby : MonoBehaviour
             case GoStopNetMessage.Type.StartGame:
                 MySeat = msg.seat;
                 PlayerCount = msg.playerCount;
+                PointPrice = msg.pointPrice > 0 ? msg.pointPrice : DefaultPointPrice; // 방어적 폴백(구버전 호스트 등)
                 OnGameStarting?.Invoke(msg.seat, msg.playerCount);
                 break;
             default:

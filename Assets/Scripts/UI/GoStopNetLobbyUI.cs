@@ -244,6 +244,51 @@ public class GoStopNetLobbyUI : MonoBehaviour
         var hint = AddLabel(body, "2명이 모이면 맞고, 3명 이상이면 고스톱으로 시작합니다", 16f, T40);
         hint.rectTransform.sizeDelta = new Vector2(BODY_W, 60f);
         hint.rectTransform.anchoredPosition = new Vector2(0f, -176f);
+
+        // 2026-08-23(design.md §49.2): 1점 가격은 방 만들기 전(Home)에
+        // 정해야 한다 — 게임 진행 중에는 안 바뀐다. hint(-176, 높이60,
+        // 하단 -206) 바로 아래, body 하단(-BODY_H=-300)까지 남는 94px
+        // 안에 들어가야 해서(이 화면은 CARD_H/BODY_H를 다른 화면
+        // (Hosting/Waiting 로스터)에 맞춰 역산해둔 걸 그대로 쓰므로 Home
+        // 자신에게 남는 여유만큼만 써야 한다) 새 줄 하나(56px)로 압축했다.
+        MakePointPriceStepper(body, -248f);
+    }
+
+    /// <summary>1점 가격 선택 — 임의 숫자 입력 대신 프리셋 사이를 +/-로
+    /// 오가는 스텝퍼다(GoStopNetLobby.PointPriceSteps). 이 프로젝트에
+    /// TMP_InputField를 쓴 전례가 없어 새로 들여오는 리스크를 피했고,
+    /// 스텝퍼는 애초에 [10원, 10만원] 범위를 벗어날 수 없어 별도
+    /// 유효성 검증 UI(실패 메시지 등)도 필요 없다.</summary>
+    void MakePointPriceStepper(Transform parent, float y)
+    {
+        var row = MakeRect("PointPrice", parent, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+        row.sizeDelta = new Vector2(660f, 56f);
+        row.anchoredPosition = new Vector2(0f, y);
+
+        var titleLbl2 = AddLabel(row, "1점 가격", 18f, T70);
+        titleLbl2.rectTransform.sizeDelta = new Vector2(180f, 56f);
+        titleLbl2.rectTransform.anchoredPosition = new Vector2(-230f, 0f);
+
+        MakeStepBtn(row, 60f, "−", () => { GoStopNetLobby.Instance.StepPointPrice(-1); Redraw(); });
+        var valueLbl = AddLabel(row, FormatPointPrice(GoStopNetLobby.Instance.PointPrice), 20f, T95);
+        valueLbl.rectTransform.sizeDelta = new Vector2(140f, 56f);
+        valueLbl.rectTransform.anchoredPosition = new Vector2(160f, 0f);
+        MakeStepBtn(row, 260f, "+", () => { GoStopNetLobby.Instance.StepPointPrice(1); Redraw(); });
+    }
+
+    static string FormatPointPrice(int price) => price.ToString("N0") + "원";
+
+    RectTransform MakeStepBtn(Transform parent, float x, string label, UnityEngine.Events.UnityAction onClick)
+    {
+        var btn = MakeRect("Step", parent, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+        btn.sizeDelta = new Vector2(56f, 56f);
+        btn.anchoredPosition = new Vector2(x, 0f);
+        var img = AddImg(btn, UISkin.Button, Surface2, true);
+        img.raycastTarget = true; // AddImg 기본 false — 버튼 직접 클릭엔 반드시 켜야 한다(이 프로젝트 공통 함정)
+        var lbl = AddLabel(btn, label, 30f, T95);
+        lbl.fontStyle = FontStyles.Bold;
+        btn.gameObject.AddComponent<Button>().onClick.AddListener(onClick);
+        return btn;
     }
 
     void OnHostClicked()
@@ -325,6 +370,11 @@ public class GoStopNetLobbyUI : MonoBehaviour
             4 => "4명 · 고스톱 (4인, 광팔이)",
             _ => $"{total}명 · {MIN_NETWORK_PLAYERS}명 이상 모이면 시작할 수 있어요",
         };
+        // 2026-08-23: Home에서 정한 1점 가격을 대기실에서도 계속 보여준다 —
+        // 호스트 자신도 방금 뭘로 정했는지 잊기 쉽고, 게스트는 이 화면
+        // 전까지는 알 방법이 없다(그냥 텍스트만 덧붙이는 거라 레이아웃
+        // 위험이 없다).
+        modeHint += $" · 1점={FormatPointPrice(GoStopNetLobby.Instance.PointPrice)}";
         AddLabel(body, modeHint, 18f, T70).rectTransform.anchoredPosition = new Vector2(0f, 168f);
 
         float[] seatY = { 117f, 51f, -15f, -81f };

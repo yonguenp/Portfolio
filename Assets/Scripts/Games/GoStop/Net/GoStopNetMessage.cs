@@ -107,6 +107,11 @@ public class GoStopNetMessage
     /// (GoStopGame), 3/4면 고스톱(GoStop3PGame)을 띄운다.</summary>
     public int playerCount;
 
+    /// <summary>StartGame — 호스트가 방 생성 시 정한 1점 가격(원). 실제
+    /// 정산은 호스트만 계산하므로(43번 규칙, 서버 권한) 게스트에게는
+    /// 정보 표시용으로만 실어 보낸다(2026-08-23, design.md §49.2).</summary>
+    public int pointPrice;
+
     public static GoStopNetMessage Hello(string name) => new GoStopNetMessage { type = Type.Hello, text = name };
     public static GoStopNetMessage Play(string cardId) => new GoStopNetMessage { type = Type.PlayCard, cardId = cardId };
     public static GoStopNetMessage Choice(string cardId) => new GoStopNetMessage { type = Type.FieldChoice, cardId = cardId };
@@ -121,5 +126,5 @@ public class GoStopNetMessage
     public static GoStopNetMessage EventMsg(string label, int seat) => new GoStopNetMessage { type = Type.Event, text = label, seat = seat };
     public static GoStopNetMessage ByeMsg() => new GoStopNetMessage { type = Type.Bye };
     public static GoStopNetMessage LobbyUpdateMsg(string[] names) => new GoStopNetMessage { type = Type.LobbyUpdate, playerNames = names };
-    public static GoStopNetMessage StartGameMsg(int seat, int playerCount) => new GoStopNetMessage { type = Type.StartGame, seat = seat, playerCount = playerCount };
+    public static GoStopNetMessage StartGameMsg(int seat, int playerCount, int pointPrice) => new GoStopNetMessage { type = Type.StartGame, seat = seat, playerCount = playerCount, pointPrice = pointPrice };
 }
