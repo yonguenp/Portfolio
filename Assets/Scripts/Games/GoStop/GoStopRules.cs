@@ -39,6 +39,24 @@ public static class GoStopRules
         return deck;
     }
 
+    /// <summary>필드에서 조커를 걷어낸 만큼(선에게 지급하고 나면) 필드
+    /// 장수가 원래보다 비게 된다 — 더미에서 그만큼 채워 넣어 필드 장수를
+    /// 딜 규칙대로 맞춘다(사용자 확인, 2026-08-23). 채우는 카드가 또
+    /// 조커면 같은 문제가 재발하므로(월이 없어 아무도 못 먹는 카드가
+    /// 필드에 남는다), 더미에서 <b>조커가 아닌</b> 카드만 골라서 채운다 —
+    /// 더미는 이미 완전히 섞여 있으므로 앞에서부터 순서대로 걸러 뽑아도
+    /// 무작위성이 깨지지 않는다.</summary>
+    static void RefillFieldFromDrawPile(List<HwatuCard> field, List<HwatuCard> drawPile, int count)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            int idx = drawPile.FindIndex(c => !c.isJoker);
+            if (idx < 0) break; // 이론상 안 일어난다 — 더미에 조커 아닌 카드가 항상 넉넉히 남는다
+            field.Add(drawPile[idx]);
+            drawPile.RemoveAt(idx);
+        }
+    }
+
     public class Deal
     {
         public List<HwatuCard> playerHand, aiHand, field, drawPile;
@@ -60,6 +78,7 @@ public static class GoStopRules
 
         d.jokersInField = d.field.Where(c => c.isJoker).ToList();
         foreach (var j in d.jokersInField) d.field.Remove(j);
+        RefillFieldFromDrawPile(d.field, d.drawPile, d.jokersInField.Count);
 
         return d;
     }
@@ -91,6 +110,7 @@ public static class GoStopRules
 
         d.jokersInField = d.field.Where(c => c.isJoker).ToList();
         foreach (var j in d.jokersInField) d.field.Remove(j);
+        RefillFieldFromDrawPile(d.field, d.drawPile, d.jokersInField.Count);
 
         return d;
     }
@@ -133,6 +153,7 @@ public static class GoStopRules
 
         d.jokersInField = d.field.Where(c => c.isJoker).ToList();
         foreach (var j in d.jokersInField) d.field.Remove(j);
+        RefillFieldFromDrawPile(d.field, d.drawPile, d.jokersInField.Count);
 
         return d;
     }
