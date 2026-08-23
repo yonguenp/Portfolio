@@ -204,7 +204,11 @@ public class GoStopNetLobbyUI : MonoBehaviour
 
     void HandleGameStarting(int seat, int total)
     {
-        SceneManager.LoadScene(total <= 2 ? "GoStopScene" : "GoStop3PScene");
+        // 2026-08-23: GoStop3PGame이 SEATS=2(맞고)까지 처리할 수 있게 확장돼
+        // 이제 인원수와 무관하게 항상 같은 씬을 연다 — GoStop3PGame.Awake()가
+        // lobby.PlayerCount를 읽어 SetSeatCount로 알아서 모드를 맞춘다.
+        // 예전엔 2명이면 GoStopScene(GoStopGame 전용 클래스)을 따로 열었다.
+        SceneManager.LoadScene("GoStop3PScene");
     }
 
     void HandleDisconnected(string reason)

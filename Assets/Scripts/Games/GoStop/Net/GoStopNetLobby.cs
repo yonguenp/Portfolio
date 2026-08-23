@@ -11,10 +11,14 @@ using UnityEngine;
 /// <c>DontDestroyOnLoad</c>로 산다.
 ///
 /// <b>인원수 → 게임 모드 매핑(사용자 확인)</b>:
-/// 총 인원(호스트 포함) 2명 = 맞고(<c>GoStopScene</c>), 3명 = 진짜 3인
-/// 고스톱, 4명 = 4인 고스톱(광팔이 로테이션). 3인은 광팔이 로테이션이
-/// 아예 없는 <b>진짜 3인 모드</b>로 새로 만든다(SEATS=4 고정 후 한 자리를
-/// AI로 채우는 방식은 채택 안 함 — 실제 플레이어끼리만 하는 걸 원함).
+/// 총 인원(호스트 포함) 2명 = 맞고, 3명 = 진짜 3인 고스톱, 4명 = 4인
+/// 고스톱(광팔이 로테이션). 3인은 광팔이 로테이션이 아예 없는
+/// <b>진짜 3인 모드</b>로 새로 만든다(SEATS=4 고정 후 한 자리를 AI로
+/// 채우는 방식은 채택 안 함 — 실제 플레이어끼리만 하는 걸 원함).
+/// 2026-08-23(씬 통합): 2/3/4인 전부 이제 <c>GoStop3PScene</c> 하나로
+/// 들어간다 — <c>GoStopScene</c>(GoStopGame.cs 전용)은 더 이상 이
+/// 경로로 진입하지 않는다(고아 상태로 남아 있지만 파일 자체는 아직
+/// 안 지웠다).
 ///
 /// <b>좌석 번호 = 접속 순서.</b> 호스트가 항상 0, 게스트는 1·2·3을
 /// 접속한 순서대로 받는다 — <see cref="TcpGoStopHostTransport"/>가 이미
@@ -98,9 +102,10 @@ public class GoStopNetLobby : MonoBehaviour
     public event Action OnLobbyChanged;
 
     /// <summary>게임이 시작됐다 — 인자는 (내 좌석, 총 인원). 호스트·게스트
-    /// 양쪽 다 이 이벤트를 받는다. 이후 UI는 <c>SceneManager.LoadScene</c>
-    /// 으로 총 인원에 맞는 씬(2명=GoStopScene, 3~4명=GoStop3PScene)을
-    /// 열면 된다.</summary>
+    /// 양쪽 다 이 이벤트를 받는다. 2026-08-23부터 UI는 인원수와 무관하게
+    /// 항상 <c>GoStop3PScene</c> 하나만 여는데(GoStop3PGame이 SEATS=2~4를
+    /// 다 처리한다), 이 이벤트 시그니처 자체는 그대로 둔다 — UI가 "몇
+    /// 명인지" 알아야 안내 문구 등을 표시할 수 있어서다.</summary>
     public event Action<int, int> OnGameStarting;
 
     /// <summary>연결이 끊기거나 방이 닫혔을 때 — 인자는 사유 문자열.

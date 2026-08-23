@@ -44,14 +44,17 @@ public partial class GoStop3PGame : MonoBehaviour
     /// 하며, 그 뒤에 부르면 이미 진행 중이던 판과 좌석 수가 어긋난다 —
     /// 지금은 씬에 막 들어온 시점에서만 쓰는 걸 전제로 한다. 3·4 외의
     /// 값은 무시한다(이 파일은 3~4인 전용, 2인은 GoStopGame이 따로 맡는다).</summary>
+    // 2026-08-23: 씬 통합(design.md 게임모드 자동결정/다운그레이드 선행 작업) —
+    // SEATS=2(맞고)도 이 엔진 안에서 돌릴 수 있게 확장했다. 2는 이제
+    // GoStopGame.cs(2인 전용 클래스)가 아니라 이 클래스가 직접 처리한다.
     public void SetSeatCount(int n)
     {
-        if (n == 3 || n == 4) SEATS = n;
+        if (n == 2 || n == 3 || n == 4) SEATS = n;
     }
     // 맞고(2인)는 7점부터지만 정식 고스톱(3~4인)은 3점부터 난다 — 사용자
-    // 확인 규칙. GoStopRules.CAPTURE_LINE(2인용, 7)과 별개로 이 파일만의
-    // 상수를 둔다.
-    const int CAPTURE_LINE = 3;
+    // 확인 규칙. SEATS==2일 때만 맞고 기준(7)을 쓴다 — GoStopRules.CAPTURE_LINE
+    // (2인 전용 파일 GoStopGame.cs가 쓰던 상수, 값은 7로 동일)과는 별개다.
+    int CaptureLine => SEATS == 2 ? 7 : 3;
     // 2026-08-19: 네트워크 대전용 — 게스트 기기는 실제로 1~3번 좌석을
     // 배정받으므로 더 이상 상수로 고정할 수 없다. 기본값 0은 기존
     // 싱글플레이·호스트(항상 좌석 0) 동작을 그대로 유지한다. SetSeatCount와
@@ -575,7 +578,7 @@ public partial class GoStop3PGame : MonoBehaviour
         if (snap.gameOverIsNagari)
         {
             ui?.ShowOverlay(new Color(.6f, .6f, .6f), "나가리", "-",
-                $"아무도 {CAPTURE_LINE}점을 못 넘겼습니다 · 다음 판 판돈 {snap.gameOverStakeMultiplier}배 (호스트가 다시 시작합니다)",
+                $"아무도 {CaptureLine}점을 못 넘겼습니다 · 다음 판 판돈 {snap.gameOverStakeMultiplier}배 (호스트가 다시 시작합니다)",
                 "타이틀", GoToTitle);
             return;
         }
@@ -613,6 +616,14 @@ public partial class GoStop3PGame : MonoBehaviour
         lobby.SendToSeat(seat, new GoStopNetMessage { type = GoStopNetMessage.Type.StateSync, text = JsonUtility.ToJson(snap) });
     }
 
+    /// <summary>오프라인(vs AI) 진입 전용 — 타이틀의 인원수 선택 팝업
+    /// (GoStopModeChoiceUI)이 씬을 열기 직전에 세팅한다. static이라 씬
+    /// 전환을 넘어 살아남는다(로비 싱글톤이 없는 오프라인 경로라 이
+    /// 방법으로 대신한다 — 2026-08-23, 씬 통합의 일부). Awake()가 읽는
+    /// 즉시 null로 비워서, 나중에 이 씬 안에서 "다시 시작"을 눌러도
+    /// 이미 확정된 SEATS를 실수로 다시 덮어쓰지 않는다.</summary>
+    public static int? PendingOfflineSeatCount;
+
     void Awake()
     {
         var lobby = GoStopNetLobby.Instance;
@@ -626,6 +637,11 @@ public partial class GoStop3PGame : MonoBehaviour
             lobby.OnGameMessage += OnNetGameMessage;
             if (isNetworkHost) lobby.OnGuestLeftDuringGame += OnGuestLeftDuringGame;
             if (isNetworkGuest) lobby.OnDisconnected += OnHostDisconnected;
+        }
+        else if (PendingOfflineSeatCount.HasValue)
+        {
+            SetSeatCount(PendingOfflineSeatCount.Value);
+            PendingOfflineSeatCount = null;
         }
     }
 
@@ -774,6 +790,15 @@ public partial class GoStop3PGame : MonoBehaviour
     {
         slotSeat[0] = PLAYER_SEAT;
 
+        if (SEATS == 2)
+        {
+            // 맞고(2인) — 좌/우 좌석 자체가 없다. 하단=나, 상단=상대만 쓴다.
+            slotSeat[2] = (PLAYER_SEAT + 1) % SEATS;
+            slotSeat[1] = -1;
+            slotSeat[3] = -1;
+            return;
+        }
+
         if (SEATS == 3)
         {
             // 3인 모드는 광팔이 로테이션이 아예 없어 sittingOutSeat가 항상
@@ -897,8 +922,19 @@ public partial class GoStop3PGame : MonoBehaviour
         // 2026-08-19: 네트워크 대전에서 접속 인원이 3명이면 진짜 3인
         // 고스톱(광팔이 로테이션 없음)으로 딜한다 — 4인 전용 DealNew4PFull
         // 대신 원래 있던 3인용 DealNew3P를 그대로 재사용한다.
+        // 2026-08-23: SEATS==2(맞고)는 GoStopGame.cs가 쓰던 GoStopRules.DealNew()
+        // (손 10장×2·필드 8장·더미 22장, 조커 포함 50장)를 그대로 재사용하되
+        // 결과를 SEATS 배열 모양(hand[0]/hand[1])으로 옮겨 담는다 — 딜링 로직
+        // 자체는 새로 안 만들고 기존 검증된 걸 그대로 쓴다.
         List<HwatuCard> jokersInField;
-        if (SEATS == 3)
+        if (SEATS == 2)
+        {
+            var deal2 = GoStopRules.DealNew();
+            hand[0] = deal2.playerHand; hand[1] = deal2.aiHand;
+            field = deal2.field; drawPile = deal2.drawPile;
+            jokersInField = deal2.jokersInField;
+        }
+        else if (SEATS == 3)
         {
             var deal3 = GoStopRules.DealNew3P();
             hand[0] = deal3.hand0; hand[1] = deal3.hand1; hand[2] = deal3.hand2;
@@ -966,8 +1002,9 @@ public partial class GoStop3PGame : MonoBehaviour
 
         // 2026-08-19: 3인 모드는 광팔이 로테이션 자체가 없다 — 접속한
         // 3명이 전원 그대로 플레이한다. 4인 전용인 참가 선언·광판다
-        // 정산 절차 전체를 건너뛴다.
-        if (SEATS == 3)
+        // 정산 절차 전체를 건너뛴다. 2026-08-23: SEATS==2(맞고)도 참가
+        // 선언·광팔이라는 개념 자체가 없어 마찬가지로 건너뛴다.
+        if (SEATS == 2 || SEATS == 3)
         {
             sittingOutSeat = -1;
             sittingOutWasSqueezed = false;
@@ -2216,7 +2253,7 @@ public partial class GoStop3PGame : MonoBehaviour
 
         // 더 낼 손패도, 쓸 폭탄 크레딧도 없으면 점수 변동 여부와 무관하게
         // 그 자리에서 끝난다 — 더 진행할 방법이 없다.
-        if (seat == PLAYER_SEAT && hand[PLAYER_SEAT].Count == 0 && bombCredits[PLAYER_SEAT] == 0 && rawScore >= CAPTURE_LINE)
+        if (seat == PLAYER_SEAT && hand[PLAYER_SEAT].Count == 0 && bombCredits[PLAYER_SEAT] == 0 && rawScore >= CaptureLine)
         {
             EndGame(PLAYER_SEAT);
             return;
@@ -2225,7 +2262,7 @@ public partial class GoStop3PGame : MonoBehaviour
         // lastGoScore보다 실제로 더 올라갔을 때만 다시 묻는다 — 안 그러면
         // 아무것도 못 먹어 점수가 그대로인 턴에도 매번 고/스톱을 물어보게
         // 된다("점수 변동이 없어도 계속 팝업이 뜬다"는 신고).
-        if (rawScore >= CAPTURE_LINE && rawScore > lastGoScore[seat])
+        if (rawScore >= CaptureLine && rawScore > lastGoScore[seat])
         {
             if (seat == PLAYER_SEAT)
             {
@@ -2476,7 +2513,7 @@ public partial class GoStop3PGame : MonoBehaviour
             if (sc > bestScore) { bestScore = sc; bestSeat = s; }
         }
 
-        if (bestScore < CAPTURE_LINE) { EndGame(-1); return true; }
+        if (bestScore < CaptureLine) { EndGame(-1); return true; }
         EndGame(bestSeat);
         return true;
     }
@@ -2499,7 +2536,7 @@ public partial class GoStop3PGame : MonoBehaviour
             pendingPayout = null; // 나가리는 승자가 없어 분석할 점수 자체가 없다
             GoStopAudio.Instance?.Nagari();
             ui?.ShowOverlay(new Color(.6f, .6f, .6f), "나가리", "-",
-                $"아무도 {CAPTURE_LINE}점을 못 넘겼습니다 · 다음 판 판돈 {stakeMultiplier}배",
+                $"아무도 {CaptureLine}점을 못 넘겼습니다 · 다음 판 판돈 {stakeMultiplier}배",
                 "다시 시작", NewGame, "타이틀", GoToTitle);
             if (isNetworkHost) BroadcastGameOverState(true, -1, 0, -1, null);
             return;
@@ -2520,9 +2557,12 @@ public partial class GoStop3PGame : MonoBehaviour
         var goCallers = loserSeats.Where(s => calledGo[s]).ToList();
         int dokbakIdx = goCallers.Count == 1 ? loserSeats.IndexOf(goCallers[0]) : -1;
 
+        // 2026-08-23: SEATS==2(맞고)는 피박 기준이 7장(고스톱 3~4인의 5장과
+        // 다르다 — 2인 전용 GoStopGame.cs가 쓰던 값과 동일). FinalScoreMulti는
+        // 기본값(5)을 그대로 쓰므로 2인일 때만 명시적으로 7을 넘긴다.
         var payout = GoStopRules.FinalScoreMulti(captured[winnerSeat], sweeps[winnerSeat], goCount[winnerSeat],
             heundeulCount[winnerSeat], bombCount[winnerSeat], loserCaptured, WON_PER_POINT,
-            dokbakIdx, fixedBaseScore, extraMultiplier);
+            dokbakIdx, fixedBaseScore, extraMultiplier, piBakThreshold: SEATS == 2 ? 7 : GoStopRules.PI_BAK_THRESHOLD_3P);
         pendingPayout = payout;
         pendingWinnerSeat = winnerSeat;
         pendingLoserSeats = loserSeats;

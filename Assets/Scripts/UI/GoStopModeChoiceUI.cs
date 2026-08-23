@@ -49,10 +49,15 @@ public class GoStopModeChoiceUI : MonoBehaviour
         AddLabel(card, "고스톱", 44f, T95).rectTransform.anchoredPosition = new Vector2(0f, 290f);
         AddLabel(card, "인원수를 고르세요", 24f, T70).rectTransform.anchoredPosition = new Vector2(0f, 230f);
 
+        // 2026-08-23(씬 통합): GoStop3PGame이 SEATS=2(맞고)까지 처리할 수
+        // 있게 확장돼 2인도 이제 GoStop3PScene을 연다 — GoStop3PGame.
+        // PendingOfflineSeatCount를 미리 세팅해 두면 그 씬의 Awake()가
+        // 읽어서 좌석 수를 맞춘다(네트워크 로비가 없는 오프라인 경로라
+        // 로비 인스턴스 대신 이 static 값으로 전달한다).
         MakeChoiceButton(card, new Vector2(0f, 110f), "2인 (맞고)", "손패 10장 · 필드 8장 · 부가 규칙 전부",
-            () => SceneManager.LoadScene("GoStopScene"));
+            () => { GoStop3PGame.PendingOfflineSeatCount = 2; SceneManager.LoadScene("GoStop3PScene"); });
         MakeChoiceButton(card, new Vector2(0f, -20f), "3인 (고스톱)", "손패 7장 · 필드 6장 · 독박·개인별 광박/피박",
-            () => SceneManager.LoadScene("GoStop3PScene"));
+            () => { GoStop3PGame.PendingOfflineSeatCount = 3; SceneManager.LoadScene("GoStop3PScene"); });
         // 2026-08-19: 로컬 네트워크(같은 와이파이) 대전 — IP 입력 없이 자동으로
         // 방을 찾는다(사용자 확인 요청). 이 버튼은 씬을 바로 안 열고 로비
         // 팝업(GoStopNetLobbyUI)을 연다 — 실제 씬 전환은 그 팝업이 호스트가

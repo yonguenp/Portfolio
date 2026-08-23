@@ -659,7 +659,8 @@ public static class GoStopRules
     /// </summary>
     public static MultiPayout FinalScoreMulti(List<HwatuCard> myCaptured, int mySweeps, int myGoCount,
         int myHeundeulCount, int myBombCount, List<List<HwatuCard>> loserCaptured, int wonPerPoint,
-        int dokbakLoserIndex = -1, int? overrideBaseScore = null, int extraMultiplier = 1)
+        int dokbakLoserIndex = -1, int? overrideBaseScore = null, int extraMultiplier = 1,
+        int piBakThreshold = PI_BAK_THRESHOLD_3P)
     {
         var cs = CalcScore(myCaptured, mySweeps);
         int baseScore = overrideBaseScore ?? cs.Total;
@@ -694,7 +695,7 @@ public static class GoStopRules
             if (gwangBak) m *= 2;
 
             int oppPi = lc.Where(c => c.EffectiveKind == HwatuKind.Pi).Sum(c => c.EffectivePiValue);
-            bool piBak = myPi >= 10 && oppPi > 0 && oppPi <= PI_BAK_THRESHOLD_3P; // 피박 — 이 패자 개인 기준
+            bool piBak = myPi >= 10 && oppPi > 0 && oppPi <= piBakThreshold; // 피박 — 이 패자 개인 기준(2인 맞고=7, 3~4인=5)
             if (piBak) m *= 2;
             result.gwangBakPerLoser.Add(gwangBak);
             result.piBakPerLoser.Add(piBak);
