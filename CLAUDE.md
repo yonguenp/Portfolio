@@ -6923,6 +6923,43 @@ false**다. `Start()`가 이제 `seatCountPreset`이 false면 곧장 `BuildStati
   "누가 이겼는지"를 반영한 선 승계(design.md §15)를 다운그레이드
   케이스에도 정교하게 적용하지는 않았다.
 
+### 실제 플레이 사이클 검증 (2026-08-23, 이어서)
+
+씬 통합 이후 처음으로 **실제 카드를 내고 캡처가 일어나는 전체 흐름**을
+2/3/4인 모드 각각 라이브 Play 세션에서 확인했다(그동안은 딜링/좌석배치
+구조만 검증했고, 실제 `OnPlayerPlay` → 캡처 → 턴 전환까지 도는 걸
+확인한 적이 없었다).
+
+- **2인(맞고)**: 모드선택 팝업 → "2인 (맞고)" 클릭 시뮬레이션(`BeginWithSeatCount(2)`
+  리플렉션 호출) → 딜 10/10/8/22=50장 확인 → 실제 매칭되는 손패 카드를
+  3회 연속으로 냄(각각 정상 매칭 캡처 → AI 자동 응수까지 풀 라운드가
+  돎) → 매 라운드 후 `hand+captured+field+drawPile` 합계가 항상 정확히
+  50으로 보존되는 것 확인 → 3라운드 내내 콘솔 예외 0건(사전부터 있던
+  무관한 `BuildProfileContext` 경고 하나만 반복 출력).
+- **3인**: `BeginWithSeatCount(3)` → `slotSeat=[0,1,-1,2]`(좌석1=좌측,
+  좌석2=우측, 상단 미사용)로 사용자가 직접 지정한 새 3인 배치와 정확히
+  일치 → `LeftSeat.active=True, RightSeat.active=True, TopSeat.active=False`
+  확인 → 딜 후 카드 총량 50 보존, 자연 진행(내 턴 대기 중 AI 두 좌석이
+  자동으로 턴을 돎) 확인.
+- **4인**: `BeginWithSeatCount(4)` → `LeftSeat/RightSeat/TopSeat` 전부
+  `active=True`, `TopSeat/StatusBox2.x=0`, `Back4/Cap4.active=False`
+  (스펙대로 4인은 TopSeat가 일반 3번째 AI 자리라 Back4/Cap4를 안 씀)
+  확인 → 카드 총량 50 보존.
+- **2인 TopSeat 특수 배치 재확인**: 다시 `BeginWithSeatCount(2)`로
+  전환 → `TopSeat/StatusBox2.x=-700, Back4.active=True, Cap4.active=True,
+  LeftSeat.active=False, RightSeat.active=False` — 사용자가 지정한
+  "2인일 때 TopSeat 안에서 StatusBox2 -700, Back4/Cap4 켜서 상대 뒷패·Cap
+  표시" 스펙과 정확히 일치.
+- **함정 재확인** — 4인 모드 전환 직후 `hand`/`captured`/`field`/`drawPile`을
+  **같은 스크립트 안에서 바로** 읽는 조합 호출에서 한 번
+  `NullReferenceException`이 발생했다(콘솔에는 안 남는 순수 리플렉션
+  스크립트 쪽 예외). 곧바로 완전히 같은 스크립트를 재실행하니 즉시
+  성공(SEATS=4, 카드 총량 50)했고, 필드를 하나씩 분리해서 읽어도 매번
+  정상이었다 — 이 프로젝트가 이미 여러 번 문서화한 "unity-cli exec
+  reflection 호출이 게임이 딜링 코루틴 중간(아직 새 SEATS 크기로 배열이
+  안정화되기 전) 상태를 우연히 붙잡을 수 있다"는 계열의 타이밍 이슈로
+  보이며, 게임 로직 자체의 결함이 아니었다(재현 안 됨, 반복 성공).
+
 ## 설정 팝업 · 라이선스 정보
 
 `Assets/Scripts/UI/GameAudioSettings.cs` + `TitleOptionsUI.cs`.
