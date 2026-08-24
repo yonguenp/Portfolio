@@ -6960,6 +6960,97 @@ false**다. `Start()`가 이제 `seatCountPreset`이 false면 곧장 `BuildStati
   안정화되기 전) 상태를 우연히 붙잡을 수 있다"는 계열의 타이밍 이슈로
   보이며, 게임 로직 자체의 결함이 아니었다(재현 안 됨, 반복 성공).
 
+## 고스톱 4인판 — 오브젝트 참조를 Find()에서 SerializeField로 전환 (2026-08-24)
+
+"오브젝트 참조할 때 Find 같은거 쓰지말고 Serialize Field로 선언된 변수로
+참조해달라"는 요청. `GoStop3PGame.UI.cs`가 `ApplySeatVisibility`/
+`BuildInfoBlock`/`BuildEdgeSeatBlock`/`GetOrCreateContainer` 네 곳에서
+매 `BuildStaticUI()`마다 `transform.Find(이름)`으로 씬 오브젝트를
+찾고 있었다 — LeftSeat/RightSeat/TopSeat/MySeat, StatusBox0~3,
+Back1/Cap1/Back3/Cap3, Back4/Cap4, Field/DrawPile/PlayerCap/Hand 전부.
+**"씬에 있으면 재사용, 없으면 코드로 생성" 원칙 자체는 그대로 두고,
+"있는지 확인하는 방법"만 Find→SerializeField로 바꿨다.**
+
+`GoStop3PGame.cs`에 새 필드 15개 추가(`leftSeatRef`/`rightSeatRef`/
+`topSeatRef`/`mySeatRef`/`back4Ref`/`cap4Ref`/`fieldAreaRef`/
+`drawPileAreaRef`/`playerCapAreaRef`/`handAreaRef`/`statusBoxRefs[4]`/
+`backSeatRefs[4]`/`capSeatRefs[4]`). `GetOrCreateContainer`는 시그니처를
+`(RectTransform existingRef, RectTransform root, string name, ...)`로
+바꿔 `root.Find(name)` 대신 호출부가 넘긴 참조를 그대로 받는다.
+`BuildInfoBlock(slot,...)`/`BuildEdgeSeatBlock(seat,...)`은 별도
+매개변수 없이 클래스 필드 배열(`statusBoxRefs[slot]`/`backSeatRefs[seat]`/
+`capSeatRefs[seat]`)을 직접 인덱싱한다 — 같은 인스턴스의 필드라 매개변수로
+스레딩할 필요가 없었다. `statusBox2Ref`는 별도로 안 만들고 `statusBoxRefs[2]`
+로 통일했다(ApplySeatVisibility의 StatusBox2 위치 조정과 BuildInfoBlock의
+StatusBox2 생성이 같은 오브젝트를 가리켜야 하므로, 따로 두면 어긋날 위험).
+
+**씬 필드 와이어링은 `SerializedObject`로 스크립트 처리했다** — 인스펙터를
+손으로 드래그하는 대신, `so.FindProperty(name).objectReferenceValue = ...`
+로 15개 참조를 전부 채우고 `ApplyModifiedPropertiesWithoutUndo()` +
+`EditorSceneManager.SaveScene`으로 저장했다. 이 마이그레이션 스크립트
+자체는 씬 계층을 한 번 `Transform.Find`로 훑지만, 이건 에디터 도구일
+뿐 런타임 게임 코드가 아니라 요청 취지(런타임 경로에서 Find 제거)에 어긋나지
+않는다.
+
+> **작업 도중 발견한 별개의 버그 — DrawPile이 Field의 자식으로 잘못
+> 붙어 있었다.** `drawPileArea = GetOrCreateContainer(root, "DrawPile",
+> ...)`에서 `root`는 항상 `ContentArea`였는데, 씬의 실제 "DrawPile"
+> 오브젝트는 `ContentArea/Field/DrawPile`로 **Field의 자식**이었다 —
+> `Transform.Find(name)`은 direct child만 찾으므로(재귀 안 함) 이
+> 조합에서는 **한 번도 실제로 찾아진 적이 없었다**. 런타임은 매 Play
+> 세션마다 하드코딩된 기본값(`pileX=-460, pileY=-200`)으로 새
+> DrawPile을 `ContentArea` 밑에 만들고 있었을 뿐(Play 모드 생성이라
+> 저장도 안 됨) — 씬에 저장된 nested DrawPile은 계속 조용히 방치돼
+> 있었다. 만약 이번에 그 nested 오브젝트를 그대로 `drawPileAreaRef`에
+> 연결했다면 **`RebuildUI`가 매 턴 `HwatuUI.ClearChildren(fieldArea)`로
+> Field의 자식을 전부 지울 때 DrawPile 자신까지 함께 파괴되는** 치명적
+> 회귀가 됐을 것이다(이 파일이 "더미는 fieldArea의 자식으로 넣지 않는다
+> — ClearChildren이 매턴 무차별로 지운다"고 이미 여러 번 명시적으로
+> 경고해 둔 바로 그 함정). `DrawPile`을 `Field`에서 빼내 `ContentArea`의
+> 직계 자식(Field/LeftSeat/RightSeat/TopSeat/MySeat와 같은 층)으로
+> 재배치하고, 위치를 코드가 원래 쓰던 확정값(`-460,-200`)으로 맞춘 뒤
+> `drawPileAreaRef`를 그 재배치된 오브젝트에 연결했다.
+
+**검증(라이브 Play, 리플렉션).** 컴파일 클린 확인 후: (1) 2인 모드에서
+`fieldArea.anchoredPosition.y`가 SerializeField를 통해 사용자가 직전에
+에디터에서 바꾼 값(-195, 아래 "Field posY 조정" 항목 참고)을 정확히
+반영하는 것, `drawPileArea`가 중복 생성 없이 재사용(`-460,-200`)되는 것.
+(2) 2/3/4인 전환 각각에서 `ContentArea` 자식 중 `Field`/`DrawPile`/
+`LeftSeat`가 정확히 1개씩만 존재하는 것(중복 생성 안 됨), `leftSeatT`/
+`rightSeatT`/`topSeatT`가 좌석 수에 맞게 `activeSelf`가 갈리는 것,
+`backArea[1]/[3]`·`capAreaAI[1]/[3]`이 각각 `Back1`/`Cap1`/`Back3`/`Cap3`
+로 정확히 채워지는 것. (3) 실제 카드 한 장을 `OnPlayerPlay`로 내서
+전체 턴 사이클(캡처→AI 자동 진행)이 예외 없이 돌고 카드 총량이 50으로
+보존되는 것까지 확인했다 — Find 제거가 게임 흐름에 아무 영향을 안
+줬다는 뜻.
+
+> 검증 도중 `BeginWithSeatCount(4)` 직후 같은 스크립트 안에서
+> `backArea[1]`을 읽었더니 한 번 `null`(실제로는 정상 채워져 있어야
+> 함)로 관측됐다 — 개별 단계(`BuildStaticUI()` 단독 호출, `NewGame()`
+> 단독 호출)로 쪼개서 재현을 시도했더니 둘 다 정상이었고, 원래
+> 조합(`BeginWithSeatCount(4)` 직후 바로 읽기)을 그대로 다시 실행하니
+> 즉시 정상으로 나왔다 — 이 세션에서 이미 여러 번 겪은 "unity-cli exec
+> 리플렉션 호출이 어중간한 타이밍을 우연히 붙잡는다"는 동일 계열의
+> 재현 안 되는 플레이키(flaky) 결과로 판단했다.
+
+### Field posY 조정 (-126 → -195, 사용자 직접 편집)
+
+이 세션 도중 사용자가 에디터에서 `Field`의 `posY`를 -126→-195로 직접
+옮겼다("바꿨어"). `GetOrCreateContainer`가 씬의 실제 값을 그대로
+읽으므로(위 리스킨 이전에도 Find 기반으로 이미 그렇게 동작했다) 코드
+변경 없이 자동으로 반영됐다 — 다만 **다운스트림 레이아웃(`contentBottom`
+→ `capY` → `PlayerCap`)이 전부 `fieldBottom` 기준 커서로 이어져 있어서**,
+Field가 69px 내려가자 그 아래 배치도 그만큼 같이 내려가며 `PlayerCap`
+하단과 `Hand` 상단 사이의 여유(예전엔 69px)가 **정확히 0px(닿아있지만
+안 겹침)**으로 소진됐다 — 2/3/4인 전부 동일(세 모드 다 `centerBottom`이
+`contentBottom = Min(centerBottom, sideBottomL, sideBottomR)`의 binding
+constraint였다). 실제로 겹치지는 않지만 여유가 완전히 없어졌다는 점을
+확인해 뒀다 — 카드가 정말 드물게 존 경계를 넘는 극단치(광5·열끗9·띠10·피24
+같은 이론상 최대치)에서는 `Hand`와 맞닿을 수 있다. 사용자가 의도한
+조정인지, 아니면 여백을 되돌려야 하는지는 다음에 실제로 플레이해보고
+정할 것 — 이번엔 구조적 문제(overlap 여부)만 확인하고 값 자체는
+사용자가 정한 그대로 뒀다.
+
 ## 설정 팝업 · 라이선스 정보
 
 `Assets/Scripts/UI/GameAudioSettings.cs` + `TitleOptionsUI.cs`.

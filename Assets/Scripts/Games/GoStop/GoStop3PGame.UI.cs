@@ -50,12 +50,12 @@ public partial class GoStop3PGame
     /// 겹겹이 쌓인다).</summary>
     void ApplySeatVisibility(RectTransform root)
     {
-        // 없으면(예: 아직 이 구조로 안 바뀐 다른 씬) root로 폴백해서
-        // 예전과 동일하게 동작한다.
-        leftSeatT = (root.Find("LeftSeat") as RectTransform) ?? root;
-        rightSeatT = (root.Find("RightSeat") as RectTransform) ?? root;
-        topSeatT = (root.Find("TopSeat") as RectTransform) ?? root;
-        mySeatT = (root.Find("MySeat") as RectTransform) ?? root;
+        // 없으면(예: 아직 이 구조로 안 바뀐 다른 씬, 인스펙터에서 아직
+        // 안 연결한 상태) root로 폴백해서 예전과 동일하게 동작한다.
+        leftSeatT = leftSeatRef != null ? leftSeatRef : root;
+        rightSeatT = rightSeatRef != null ? rightSeatRef : root;
+        topSeatT = topSeatRef != null ? topSeatRef : root;
+        mySeatT = mySeatRef != null ? mySeatRef : root;
 
         // 좌석 수별 on/off (사용자 확인 규칙):
         //  맞고(2인)   — Left/Right 끔, Top 켬(상대 1명을 여기로)
@@ -74,15 +74,15 @@ public partial class GoStop3PGame
         // 원래 자리(0)로 되돌리고 Back4/Cap4를 끈다.
         if (topSeatT != root)
         {
-            var statusBox2 = topSeatT.Find("StatusBox2") as RectTransform;
+            var statusBox2 = statusBoxRefs[2];
             if (statusBox2 != null)
             {
                 var p = statusBox2.anchoredPosition;
                 p.x = SEATS == 2 ? -700f : 0f;
                 statusBox2.anchoredPosition = p;
             }
-            var back4 = topSeatT.Find("Back4") as RectTransform;
-            var cap4 = topSeatT.Find("Cap4") as RectTransform;
+            var back4 = back4Ref;
+            var cap4 = cap4Ref;
             if (back4 != null) back4.gameObject.SetActive(SEATS == 2);
             if (cap4 != null) cap4.gameObject.SetActive(SEATS == 2);
             if (SEATS == 2 && back4 != null && cap4 != null)
@@ -156,7 +156,7 @@ public partial class GoStop3PGame
         // 것) 그대로 쓴다. 아래 fieldBottom도 사전 계산한 fieldTop이
         // 아니라 실제 fieldArea의 transform에서 역산해야, 사용자가 Field를
         // 옮겨도 그 아래(좌/우/나) 배치가 여전히 안 겹치게 자동으로 따라온다.
-        fieldArea = GetOrCreateContainer(root, "Field", new Vector2(FIELD_AREA_W, fieldRowH * 2f), new Vector2(0f, fieldTop), out _);
+        fieldArea = GetOrCreateContainer(fieldAreaRef, root, "Field", new Vector2(FIELD_AREA_W, fieldRowH * 2f), new Vector2(0f, fieldTop), out _);
         float fieldBottom = fieldArea.anchoredPosition.y - fieldArea.sizeDelta.y; // pivot=(0.5,1)이라 anchoredPosition.y가 곧 윗변
         float centerBottom = fieldBottom - 10f;
 
@@ -181,7 +181,7 @@ public partial class GoStop3PGame
         // 매턴 자식을 무차별로 지운다).
         float pileX = -460f;
         float pileY = -200f;
-        drawPileArea = GetOrCreateContainer(root, "DrawPile", new Vector2(PILE_W, PILE_H), new Vector2(pileX, pileY), out _);
+        drawPileArea = GetOrCreateContainer(drawPileAreaRef, root, "DrawPile", new Vector2(PILE_W, PILE_H), new Vector2(pileX, pileY), out _);
         // zoneGap은 이제 DrawAiCaptured가 안 읽는다(3존 나란히 배치를
         // 접었으므로) — 예전 호출 형태만 유지하고 값 자체는 의미 없다.
         float sideBottomL = BuildEdgeSeatBlock(1, -SIDE_X, SIDE_W, fieldTop + 16f, leftSeatT, zoneGap: 0f, maxPerRow: 5, capAreaH: 0f);
@@ -202,13 +202,13 @@ public partial class GoStop3PGame
         // 해결책이라고 판단해 걷어냈다.
         float contentBottom = Mathf.Min(centerBottom, Mathf.Min(sideBottomL, sideBottomR));
         float capY = BuildInfoBlock(0, 0f, 700f, contentBottom - 10f, mySeatT);
-        playerCapArea = GetOrCreateContainer(mySeatT, "PlayerCap", new Vector2(1000f, CAP_ROW_PITCH * 2f), new Vector2(0f, capY - 6f), out bool playerCapExisted);
+        playerCapArea = GetOrCreateContainer(playerCapAreaRef, mySeatT, "PlayerCap", new Vector2(1000f, CAP_ROW_PITCH * 2f), new Vector2(0f, capY - 6f), out bool playerCapExisted);
         if (!playerCapExisted) HwatuUI.AddZoneBackground(playerCapArea, CapZoneColor); // 재사용 시엔 배경을 또 얹지 않는다(중복 Image 방지)
         // 2026-08-20: "Hand 영역 posY -878로 조절" 확인 값 — 커서 계산값
         // 대신 직접 지정한다(이 파일이 반복 채택해 온, 사용자가 실측/확인한
         // 값을 그대로 박아 넣는 패턴 — Body/Card 등 다른 팝업들과 동일).
         float handY = -878f;
-        handArea = GetOrCreateContainer(mySeatT, "Hand", new Vector2(1000f, HAND_H), new Vector2(0f, handY), out _);
+        handArea = GetOrCreateContainer(handAreaRef, mySeatT, "Hand", new Vector2(1000f, HAND_H), new Vector2(0f, handY), out _);
 
         // 팝업(딤+패널)은 전부 ContentArea가 아니라 Canvas 바로 밑(Overlay와
         // 같은 층)에 붙인다 — ContentArea 밑에 두면 게임오버 Overlay(Canvas
@@ -671,12 +671,12 @@ public partial class GoStop3PGame
         // 오브젝트로 만들어서 에디터에서 위치/크기를 직접 조정하게 해달라"
         // 요청 — Back{seat}/Cap{seat}에 이미 있던 "씬에 있으면 재사용,
         // 없으면 코드로 생성" 패턴을 상태창에도 그대로 확장한다. 씬에
-        // `StatusBox{slot}`이 있으면 그 오브젝트의 실제 위치·너비를
-        // centerX/width/topY보다 우선한다 — 이후 이 함수 안의 모든 좌표
-        // 계산(이름/고점수/금액/배지 줄)이 그 실제 값을 기준으로 다시
+        // `statusBoxRefs[slot]`이 연결돼 있으면 그 오브젝트의 실제 위치·
+        // 너비를 centerX/width/topY보다 우선한다 — 이후 이 함수 안의 모든
+        // 좌표 계산(이름/고점수/금액/배지 줄)이 그 실제 값을 기준으로 다시
         // 잡힌다. `MakeStatusBox`가 만드는 박스는 pivot=(0.5,1)(top-center)
         // 이고 y에 +7 오프셋을 주므로, topY를 역산할 때 그만큼 빼야 한다.
-        var existingBox = root.Find($"StatusBox{slot}") as RectTransform;
+        var existingBox = statusBoxRefs[slot];
         if (existingBox != null)
         {
             StripStrayLayoutGroup(existingBox);
@@ -851,7 +851,9 @@ public partial class GoStop3PGame
         // 새로 만든다. 재사용할 땐 실제 sizeDelta.x(회전 후 시각적 세로
         // 길이)를 커서 계산에 반영해서, 사용자가 크기를 키우거나 줄여도
         // 그 아래(플레이어 자신의 정보창 등) 배치가 자동으로 따라온다.
-        var existingBack = root.Find($"Back{seat}") as RectTransform;
+        // 2026-08-24: Find 대신 backSeatRefs[seat]/capSeatRefs[seat](인스펙터
+        // 연결)로 찾는다 — seat은 1 또는 3만 들어온다(이 함수 호출부 참고).
+        var existingBack = backSeatRefs[seat];
         float backDeclaredW;
         if (existingBack != null)
         {
@@ -866,7 +868,7 @@ public partial class GoStop3PGame
         }
         cursor -= backDeclaredW + 6f;
 
-        var existingCap = root.Find($"Cap{seat}") as RectTransform;
+        var existingCap = capSeatRefs[seat];
         if (existingCap != null)
         {
             capAreaAI[seat] = existingCap;
@@ -911,21 +913,21 @@ public partial class GoStop3PGame
     }
 
     /// <summary>정적 컨테이너(Field·DrawPile·PlayerCap·Hand 등) 공통 —
-    /// 씬에 같은 이름의 오브젝트가 이미 있으면(에디터에서 사용자가 위치·
-    /// 크기를 직접 조정해 둔 것) 그대로 재사용하고, 없으면 기본값으로
-    /// 새로 만든다. Back{seat}/Cap{seat}에 이미 있던 재사용 패턴을 모든
-    /// 정적 컨테이너로 일반화한 것 — "코드로 생성하던 부분을 씬 기본
-    /// 오브젝트로 만들어서 에디터에서 직접 조정하게 해달라"는 요청.
-    /// 카드·텍스트처럼 매 턴 달라지는 내용은 여전히 코드가 채운다 — 이
-    /// 함수는 오직 "그 내용이 담기는 그릇(위치·크기)"만 다룬다.</summary>
-    RectTransform GetOrCreateContainer(RectTransform root, string name, Vector2 defaultSize, Vector2 defaultPos, out bool wasExisting)
+    /// <paramref name="existingRef"/>(인스펙터에서 미리 연결해 둔 참조)가
+    /// 있으면 그대로 재사용하고, 없으면 기본값으로 새로 만든다.
+    /// Back{seat}/Cap{seat}에 이미 있던 재사용 패턴을 모든 정적 컨테이너로
+    /// 일반화한 것 — "코드로 생성하던 부분을 씬 기본 오브젝트로 만들어서
+    /// 에디터에서 직접 조정하게 해달라"는 요청. 카드·텍스트처럼 매 턴
+    /// 달라지는 내용은 여전히 코드가 채운다 — 이 함수는 오직 "그 내용이
+    /// 담기는 그릇(위치·크기)"만 다룬다. 2026-08-24: Find(name) 대신
+    /// SerializeField 참조를 직접 받는 방식으로 바꿨다.</summary>
+    RectTransform GetOrCreateContainer(RectTransform existingRef, RectTransform root, string name, Vector2 defaultSize, Vector2 defaultPos, out bool wasExisting)
     {
-        var existing = root.Find(name) as RectTransform;
-        if (existing != null)
+        if (existingRef != null)
         {
-            StripStrayLayoutGroup(existing);
+            StripStrayLayoutGroup(existingRef);
             wasExisting = true;
-            return existing;
+            return existingRef;
         }
         wasExisting = false;
         return HwatuUI.MakeRect(name, root, defaultSize, defaultPos);

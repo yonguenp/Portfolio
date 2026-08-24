@@ -26,6 +26,23 @@ public partial class GoStop3PGame : MonoBehaviour
 {
     [SerializeField] GoStopUIManager ui; // 2026-08-22: 공용 GameUIManager에서 분리 — GoStopUI.prefab 전용
 
+    // 2026-08-24: "오브젝트 참조할 때 Find 쓰지 말고 SerializeField로
+    // 선언된 변수로 참조해달라" 요청 — 그동안 ApplySeatVisibility/
+    // BuildInfoBlock/BuildEdgeSeatBlock/GetOrCreateContainer가 매번
+    // transform.Find(이름)으로 씬 오브젝트를 찾던 것을, 인스펙터에서
+    // 미리 연결해 둔 참조로 바꿨다. 비워두면(예: 이 구조가 아직 없는
+    // 씬) 기존처럼 코드가 새로 생성하는 폴백은 그대로 유지한다 — "씬에
+    // 있으면 재사용, 없으면 생성" 원칙 자체는 안 바뀌고 "있는지 확인하는
+    // 방법"만 Find→SerializeField로 바뀐 것.
+    [SerializeField] RectTransform leftSeatRef, rightSeatRef, topSeatRef, mySeatRef;
+    [SerializeField] RectTransform back4Ref, cap4Ref; // TopSeat 안쪽(2인 전용 상대 자리)
+    [SerializeField] RectTransform fieldAreaRef, drawPileAreaRef, playerCapAreaRef, handAreaRef;
+    // StatusBox0~3 — ApplySeatVisibility(StatusBox2 위치 조정)와 BuildInfoBlock이
+    // 같은 배열을 같이 쓴다(같은 오브젝트를 두 번 따로 참조하면 어긋날 수 있어서 하나로 통일).
+    [SerializeField] RectTransform[] statusBoxRefs = new RectTransform[SEATS_MAX];
+    [SerializeField] RectTransform[] backSeatRefs = new RectTransform[SEATS_MAX];  // Back1/Back3(1·3만 사용)
+    [SerializeField] RectTransform[] capSeatRefs = new RectTransform[SEATS_MAX];   // Cap1/Cap3(1·3만 사용)
+
     enum State { Turn, GoStopChoice, GameOver }
     State state;
 
