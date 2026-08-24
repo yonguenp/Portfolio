@@ -41,12 +41,25 @@ public interface IGoStopHostTransport
     /// 먼저 걸러 쓰면 그런 침묵 실패를 원천적으로 피할 수 있다.</summary>
     System.Collections.Generic.IEnumerable<int> ConnectedSeats { get; }
 
-    /// <summary>새 게스트가 접속해서 좌석을 배정받았을 때. 인자는 배정된
-    /// 좌석 번호(1~3).</summary>
-    event Action<int> OnGuestJoined;
+    /// <summary>새 게스트가 접속해서 좌석을 배정받았을 때. 인자는 (배정된
+    /// 좌석 번호(1~3), 재접속인지 — design.md §50.2, 판 도중 끊겼던
+    /// clientId가 같은 좌석으로 돌아온 경우 true).</summary>
+    event Action<int, bool> OnGuestJoined;
 
-    /// <summary>게스트 연결이 끊겼을 때. 인자는 (좌석 번호, 사유).</summary>
+    /// <summary>게스트 연결이 끊겼을 때(소켓이 끊긴 그 즉시, 재접속 유예
+    /// 시작 여부와 무관). 인자는 (좌석 번호, 사유). 게임이 시작된 뒤라면
+    /// 이 좌석은 <see cref="OnGuestGoneForGood"/>가 뜰 때까지 유예 중이다.</summary>
     event Action<int, string> OnGuestLeft;
+
+    /// <summary>게임 도중 끊긴 좌석이 재접속 유예 시간(design.md §50.2) 안에
+    /// 돌아오지 못해 영구 이탈로 확정됐을 때. 인자는 (좌석 번호, 사유).
+    /// 게임 시작 전(로비 단계) 이탈은 유예 없이 <see cref="OnGuestLeft"/>가
+    /// 곧 최종 통보다 — 이 이벤트는 게임 시작 후에만 발사된다.</summary>
+    event Action<int, string> OnGuestGoneForGood;
+
+    /// <summary>재접속 유예 중이던 좌석이 같은 clientId로 다시 접속해서
+    /// 정상 복귀했을 때. 인자는 좌석 번호.</summary>
+    event Action<int> OnGuestReconnected;
 
     /// <summary>게스트로부터 메시지를 받았을 때. 인자는 (보낸 좌석 번호, 메시지).</summary>
     event Action<int, GoStopNetMessage> OnMessage;
@@ -58,6 +71,18 @@ public interface IGoStopHostTransport
     /// <summary>접속해 있는 게스트 전원에게 같은 메시지를 보낸다
     /// (StateSync·LobbyUpdate 등).</summary>
     void Broadcast(GoStopNetMessage msg);
+
+    /// <summary>게임이 실제로 시작됐음을 알린다 — 이 시점 이후의 접속
+    /// 끊김은 즉시 좌석을 비우는 대신 재접속 유예(design.md §50.2)를
+    /// 거친다. 시작 전(로비 단계) 이탈은 유예 없이 즉시 처리된다.</summary>
+    void MarkGameStarted();
+
+    /// <summary>design.md §49.4 네트워크 확장 — 좌석 다운그레이드로 게임
+    /// 쪽 좌석 번호가 압축된 뒤, 이 트랜스포트가 들고 있는 "좌석 번호 →
+    /// 소켓" 매핑도 같은 규칙으로 다시 붙여야 한다(안 하면 게임은 새
+    /// 번호를 쓰는데 실제 메시지는 옛 소켓으로 계속 오간다). oldToNew는
+    /// 살아남는 좌석만 담는다 — 빠진 좌석(제거 대상)의 매핑은 그냥 버려진다.</summary>
+    void RenumberSeats(System.Collections.Generic.Dictionary<int, int> oldToNew);
 }
 
 /// <summary>클라이언트(게스트) 쪽 — 호스트 하나에만 연결한다.</summary>

@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -112,13 +113,41 @@ public class GoStopNetLobby : MonoBehaviour
     /// 게스트 전용(호스트와의 TCP 연결 자체가 끊어졌을 때).</summary>
     public event Action<string> OnDisconnected;
 
-    /// <summary>호스트 전용 — 접속해 있던 게스트 한 명이 도중에 나갔다
-    /// (앱 종료·네트워크 끊김 등). 인자는 그 좌석 번호. 대기실 화면에서는
-    /// <see cref="OnLobbyChanged"/>만으로 충분하지만, 게임이 이미 시작된
-    /// 뒤에는 "그 좌석이 진행 중이던 판을 계속할 수 없다"는 걸 게임 씬이
-    /// 알아야 한다(예: 그 좌석의 메시지를 영원히 기다리며 멈춰있는 것을
-    /// 막아야 함) — 그래서 로비 갱신과 별개의 전용 이벤트로 뺐다.</summary>
+    /// <summary>호스트 전용 — 접속해 있던 게스트 한 명의 소켓이 끊겼다
+    /// (앱 종료·네트워크 끊김 등). 인자는 그 좌석 번호. <b>2026-08-24
+    /// 이후로는 이것만으로 판을 끝내면 안 된다</b> — 게임이 시작된 뒤라면
+    /// 이 좌석은 재접속 유예(design.md §50.2) 중일 뿐이라, 이 이벤트는
+    /// "잠깐 끊겼다"는 안내(토스트 등)에만 쓰고, 실제로 그 좌석을 포기하고
+    /// 정리(다운그레이드/게임 종료)하는 판단은 반드시
+    /// <see cref="OnGuestGoneForGood"/>를 기다려서 내려야 한다.</summary>
     public event Action<int> OnGuestLeftDuringGame;
+
+    /// <summary>호스트 전용(design.md §50.2) — 게임 중 끊긴 좌석이 재접속
+    /// 유예 시간 안에 못 돌아와 영구 이탈로 확정됐다. 게임 씬은 이 시점에
+    /// 서야 그 좌석을 포기하고 다운그레이드/게임 종료를 판단해야 한다.</summary>
+    public event Action<int> OnGuestGoneForGood;
+
+    /// <summary>호스트 전용 — 유예 중이던 좌석이 같은 clientId로 되돌아와
+    /// 정상 복귀했다. 인자는 좌석 번호. 게임 씬이 이걸 받으면 그 좌석에게
+    /// 최신 상태를 다시 보내줘야 한다(그동안 놓친 StateSync를 못 받았으므로).</summary>
+    public event Action<int> OnGuestReconnected;
+
+    /// <summary>게스트 전용(design.md §50.2) — 게임 중 호스트와의 연결이
+    /// 끊겨 자동 재접속을 시도하는 동안 발사된다. UI가 "재접속 중..."
+    /// 안내를 띄우는 데 쓴다. 재접속이 성공하면 <see cref="OnReconnected"/>,
+    /// 유예 시간을 넘기면 평소처럼 <see cref="OnDisconnected"/>가 최종
+    /// 통보한다.</summary>
+    public event Action OnReconnecting;
+
+    /// <summary>게스트 전용 — 자동 재접속이 성공했다. 호스트가 뒤이어
+    /// 최신 StateSync를 보내오므로 화면은 곧 정상으로 돌아온다.</summary>
+    public event Action OnReconnected;
+
+    /// <summary>게스트 전용(design.md §49.4 네트워크 확장) — 다른 좌석이
+    /// 영구 이탈해서 좌석이 압축된 뒤, 내 새 좌석 번호와 새 인원수를
+    /// 알려준다. 씬 재로딩 없이 게임 씬이 <c>SetMySeat</c>/<c>SetSeatCount</c>
+    /// 를 다시 불러 제자리에서 이어가야 한다.</summary>
+    public event Action<int, int> OnSeatReassigned;
 
     /// <summary>대기실 관리용이 아닌 나머지 전부(PlayCard·FieldChoice·
     /// StateSync 등 실제 턴 메시지) — 게임 씬(GoStop3PGame 등)이 이걸
@@ -138,6 +167,25 @@ public class GoStopNetLobby : MonoBehaviour
     /// <summary>호스트 전용 — 접속한 게스트 전원에게 같은 메시지를 보낸다
     /// (StateSync·Event 등 대부분의 턴 메시지가 이 경로를 쓴다).</summary>
     public void BroadcastToGuests(GoStopNetMessage msg) => hostTransport?.Broadcast(msg);
+
+    /// <summary>호스트 전용(design.md §49.4 네트워크 확장) — 좌석 압축 뒤
+    /// 트랜스포트의 좌석↔소켓 매핑을 게임 쪽 새 번호에 맞춰 다시 붙인다.</summary>
+    public void RenumberSeats(Dictionary<int, int> oldToNew) => hostTransport?.RenumberSeats(oldToNew);
+
+    /// <summary>호스트 전용 — 이 시점부터 접속 끊김이 재접속 유예를
+    /// 거친다(design.md §50.2). <c>GoStop3PGame</c>이 실제로 판을 시작할 때
+    /// (딜링 직후) 부른다.</summary>
+    public void MarkGameStarted() => hostTransport?.MarkGameStarted();
+
+    /// <summary>이 기기의 영구 식별자 — 앱을 다시 켜도 같은 값이라 재접속
+    /// (design.md §50.2)의 판별 근거로 그대로 쓸 수 있다. 새 GUID를 따로
+    /// 만들어 저장할 필요 없이 플랫폼이 이미 제공하는 값을 재사용한다.</summary>
+    string MyClientId => SystemInfo.deviceUniqueIdentifier;
+
+    // 게스트 전용 — 자동 재접속 시도에 필요한, 최초 접속 때 썼던 주소.
+    string lastHostIp;
+    int lastHostPort;
+    Coroutine reconnectCoroutine;
 
     void Awake()
     {
@@ -160,6 +208,8 @@ public class GoStopNetLobby : MonoBehaviour
         hostTransport = gameObject.AddComponent<TcpGoStopHostTransport>();
         hostTransport.OnGuestJoined += HostOnGuestJoined;
         hostTransport.OnGuestLeft += HostOnGuestLeft;
+        hostTransport.OnGuestGoneForGood += (seat, reason) => OnGuestGoneForGood?.Invoke(seat);
+        hostTransport.OnGuestReconnected += seat => OnGuestReconnected?.Invoke(seat);
         hostTransport.OnMessage += HostOnMessage;
         hostTransport.StartHosting(port, maxGuests: 3);
 
@@ -170,10 +220,11 @@ public class GoStopNetLobby : MonoBehaviour
         OnLobbyChanged?.Invoke();
     }
 
-    void HostOnGuestJoined(int seat)
+    void HostOnGuestJoined(int seat, bool isReconnect)
     {
         // 이름은 아직 모른다 — 게스트가 접속 직후 보내는 Hello를 받아야
-        // PlayerNames가 채워진다. 그때까지는 "누군가 들어왔다"만 알린다.
+        // PlayerNames가 채워진다(재접속이면 곧바로 같은 이름으로 다시
+        // 채워질 뿐이다). 그때까지는 "누군가 들어왔다"만 알린다.
         if (PlayerNames[seat] == null || PlayerNames[seat] == "") PlayerNames[seat] = "(입장 중...)";
         RefreshAdvertiserCount();
         BroadcastLobbyUpdate();
@@ -188,7 +239,9 @@ public class GoStopNetLobby : MonoBehaviour
         OnLobbyChanged?.Invoke();
         // 대기실 단계(아직 PlayerCount==0, 게임 씬이 없음)에서는 아무도
         // 이 이벤트를 안 듣고 있어 no-op — 게임이 시작된 뒤에만
-        // GoStop3PGame/GoStopGame이 구독해서 실제로 반응한다.
+        // GoStop3PGame이 구독해서 "재접속 대기 중" 안내에 쓴다(2026-08-24
+        // 부터는 이 이벤트만으로 판을 끝내면 안 된다 — 위 문서 참고,
+        // 실제 종료 판단은 OnGuestGoneForGood를 기다린다).
         OnGuestLeftDuringGame?.Invoke(seat);
     }
 
@@ -255,6 +308,9 @@ public class GoStopNetLobby : MonoBehaviour
             hostTransport.Send(seat, GoStopNetMessage.StartGameMsg(seat, total, PointPrice));
         }
         PlayerCount = total;
+        // design.md §50.2 — 이 시점부터 접속 끊김은 재접속 유예를 거친다.
+        // 판이 시작되기 전(로비 단계) 끊김은 예전처럼 즉시 최종 처리다.
+        hostTransport.MarkGameStarted();
         OnGameStarting?.Invoke(0, total);
         return true;
     }
@@ -276,17 +332,66 @@ public class GoStopNetLobby : MonoBehaviour
     {
         myName = displayName;
         scanner?.StopScanning(); // 접속을 시도하는 동안엔 더 이상 다른 방을 찾을 필요 없다
+        lastHostIp = room.ip;
+        lastHostPort = room.tcpPort;
 
         clientTransport = gameObject.AddComponent<TcpGoStopClientTransport>();
         clientTransport.OnConnected += GuestOnConnected;
         clientTransport.OnMessage += GuestOnMessage;
-        clientTransport.OnDisconnected += reason => OnDisconnected?.Invoke(reason);
+        clientTransport.OnDisconnected += GuestOnDisconnected;
         clientTransport.Connect(room.ip, room.tcpPort);
     }
 
     void GuestOnConnected()
     {
-        clientTransport.Send(GoStopNetMessage.Hello(myName));
+        clientTransport.Send(GoStopNetMessage.Hello(myName, MyClientId));
+    }
+
+    /// <summary>design.md §50.2 — 게임이 이미 시작된 뒤(PlayerCount>0)의
+    /// 끊김은 곧바로 "연결 끊김" 통보 대신 자동 재접속을 먼저 시도한다.
+    /// 로비 단계(아직 시작 전)는 예전처럼 즉시 통보한다 — 그 단계는
+    /// 재접속으로 되돌아갈 "진행 중인 판" 자체가 없다.</summary>
+    void GuestOnDisconnected(string reason)
+    {
+        // 이미 재접속 루프가 도는 중이면 그 루프의 임시 핸들러가 이번
+        // 실패를 직접 보고 있다(아래 ReconnectLoop의 OnFail) — 여기서
+        // 또 반응하면 유예 시간이 남았는데도 성급하게 최종 통보를 해버린다.
+        if (reconnectCoroutine != null) return;
+        if (PlayerCount > 0)
+        {
+            reconnectCoroutine = StartCoroutine(ReconnectLoop(reason));
+            return;
+        }
+        OnDisconnected?.Invoke(reason);
+    }
+
+    IEnumerator ReconnectLoop(string reason)
+    {
+        OnReconnecting?.Invoke();
+        float deadline = Time.unscaledTime + TcpGoStopHostTransport.ReconnectGraceSeconds;
+        const float RetryIntervalSeconds = 3f;
+        while (Time.unscaledTime < deadline)
+        {
+            bool connected = false;
+            bool failed = false;
+            void OnOk() => connected = true;
+            void OnFail(string r) => failed = true;
+            clientTransport.OnConnected += OnOk;
+            clientTransport.OnDisconnected += OnFail;
+            clientTransport.Connect(lastHostIp, lastHostPort);
+            yield return new WaitUntil(() => connected || failed || Time.unscaledTime >= deadline);
+            clientTransport.OnConnected -= OnOk;
+            clientTransport.OnDisconnected -= OnFail;
+            if (connected)
+            {
+                reconnectCoroutine = null;
+                OnReconnected?.Invoke();
+                yield break;
+            }
+            yield return new WaitForSeconds(RetryIntervalSeconds);
+        }
+        reconnectCoroutine = null;
+        OnDisconnected?.Invoke(reason); // 유예 시간 초과 — 이제야 진짜 최종 통보
     }
 
     void GuestOnMessage(GoStopNetMessage msg)
@@ -296,6 +401,11 @@ public class GoStopNetLobby : MonoBehaviour
             case GoStopNetMessage.Type.LobbyUpdate:
                 PlayerNames = msg.playerNames ?? new string[4];
                 OnLobbyChanged?.Invoke();
+                break;
+            case GoStopNetMessage.Type.SeatReassign:
+                MySeat = msg.seat;
+                PlayerCount = msg.playerCount;
+                OnSeatReassigned?.Invoke(msg.seat, msg.playerCount);
                 break;
             case GoStopNetMessage.Type.StartGame:
                 MySeat = msg.seat;
@@ -317,6 +427,7 @@ public class GoStopNetLobby : MonoBehaviour
     /// 정리한다 — 새 역할로 다시 시작하기 전에 항상 먼저 부른다.</summary>
     public void StopAll()
     {
+        if (reconnectCoroutine != null) { StopCoroutine(reconnectCoroutine); reconnectCoroutine = null; }
         if (hostTransport != null) { hostTransport.StopHosting(); Destroy(hostTransport); hostTransport = null; }
         if (advertiser != null) { advertiser.StopAdvertising(); Destroy(advertiser); advertiser = null; }
         if (clientTransport != null) { clientTransport.Disconnect(); Destroy(clientTransport); clientTransport = null; }
@@ -324,6 +435,7 @@ public class GoStopNetLobby : MonoBehaviour
         IsHost = false;
         IsGuest = false;
         MySeat = -1;
+        PlayerCount = 0;
     }
 
     void OnDestroy()

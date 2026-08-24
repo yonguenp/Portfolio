@@ -389,18 +389,41 @@ public partial class GoStop3PGame : MonoBehaviour
     // 고르는가"만 세 갈래(로컬 팝업/원격 메시지 대기/AI)로 나눈다.
     bool isNetworkHost, isNetworkGuest;
 
+    /// <summary>design.md §50.2 — 재접속 유예 시간을 넘겨 영구 이탈이
+    /// 확정된 좌석(호스트 전용, <see cref="OnGuestGoneForGood"/>가 표시).
+    /// 한 번 true가 되면 이번 네트워크 세션 내내 그대로다(그 좌석이
+    /// 다시 쓰일 일은 없다 — 다음에 접속하는 사람은 다운그레이드 이후
+    /// 압축된 새 번호를 받는다). <see cref="IsRemoteSeat"/>가 이 값도
+    /// 확인해서, 이후 이 좌석의 모든 결정이 자동으로 AI 경로로 떨어진다.</summary>
+    readonly bool[] permaGoneNetworkSeat = new bool[SEATS_MAX];
+
     /// <summary>이 좌석이 "원격 사람"인지 — 호스트일 때만 의미가 있다.
     /// 네트워크로 시작된 판은 호스트 자신을 제외한 모든 좌석이 접속한
     /// 게스트다(AI와 섞이지 않는다 — 로비가 인원이 다 찰 때까지 시작을
     /// 안 받아준다). 게스트 쪽에서는 항상 false — 게스트는 자기 자신
-    /// (PLAYER_SEAT) 말고는 어떤 좌석도 직접 판정하지 않는다.</summary>
-    bool IsRemoteSeat(int seat) => isNetworkHost && seat != PLAYER_SEAT && seat >= 0 && seat < SEATS;
+    /// (PLAYER_SEAT) 말고는 어떤 좌석도 직접 판정하지 않는다. 영구
+    /// 이탈이 확정된 좌석(<see cref="permaGoneNetworkSeat"/>)도 false —
+    /// 그 순간부터 AI가 대신한다(design.md §50.2).</summary>
+    bool IsRemoteSeat(int seat) => isNetworkHost && seat != PLAYER_SEAT && seat >= 0 && seat < SEATS && !permaGoneNetworkSeat[seat];
+
+    /// <summary>design.md §50.1 — 참가 여부/Go-Stop/국열끗/카드 선택(턴) 등
+    /// 원격 좌석의 응답을 기다리는 모든 지점이 공유하는 무응답 제한
+    /// 시간. 넘기면 <see cref="WaitForRemoteMessage"/>가 <c>null</c>을
+    /// 넘겨주고, 호출부가 각자의 기본값(불참/스톱/쌍피/첫 번째 카드)을
+    /// 적용한다. 연결이 아예 끊긴 좌석(재접속 유예 중, design.md §50.2)도
+    /// 이 시간 안엔 절대 응답할 수 없으므로 자동으로 같은 경로를 탄다 —
+    /// 유예와 이 타임아웃을 따로 조율할 필요가 없다. 정확한 초 단위는
+    /// 이 프로젝트에 선례가 없어 새로 정한 값이다(너무 짧으면 정상적으로
+    /// 고민 중인 사람도 잘리고, 너무 길면 나머지 인원이 오래 기다린다).</summary>
+    const float REMOTE_INPUT_TIMEOUT_SECONDS = 25f;
 
     /// <summary>호스트 쪽에서 특정 원격 좌석의 다음 메시지를 기다린다.
     /// <paramref name="accept"/>가 null이면 그 좌석에서 오는 아무 메시지나
     /// 받는다(예: 이번 턴엔 PlayCard 또는 BombSkip 둘 다 유효한 응답).
     /// 받는 즉시 구독을 해제하므로 이후 같은 좌석의 낡은/중복 메시지는
-    /// 자동으로 무시된다.</summary>
+    /// 자동으로 무시된다. <see cref="REMOTE_INPUT_TIMEOUT_SECONDS"/> 안에
+    /// 응답이 없으면 <paramref name="onReceived"/>에 <c>null</c>을 넘긴다 —
+    /// 호출부가 반드시 null을 확인해서 자기 몫의 기본값을 적용해야 한다.</summary>
     IEnumerator WaitForRemoteMessage(int seat, System.Func<GoStopNetMessage, bool> accept, System.Action<GoStopNetMessage> onReceived)
     {
         GoStopNetMessage received = null;
@@ -409,9 +432,10 @@ public partial class GoStop3PGame : MonoBehaviour
             if (fromSeat == seat && (accept == null || accept(msg))) received = msg;
         }
         GoStopNetLobby.Instance.OnGameMessage += Handler;
-        yield return new WaitUntil(() => received != null);
+        float deadline = Time.unscaledTime + REMOTE_INPUT_TIMEOUT_SECONDS;
+        yield return new WaitUntil(() => received != null || Time.unscaledTime >= deadline);
         GoStopNetLobby.Instance.OnGameMessage -= Handler;
-        onReceived(received);
+        onReceived(received); // 타임아웃이면 received==null 그대로 넘어간다
     }
 
     /// <summary>호스트·게스트 공용 진입점 — 로비가 넘겨준 턴 메시지를
@@ -695,8 +719,19 @@ public partial class GoStop3PGame : MonoBehaviour
             isNetworkGuest = lobby.IsGuest;
             WON_PER_POINT = lobby.PointPrice; // design.md §49.2 — 호스트가 Home에서 정한 값(게스트는 StartGame으로 전달받은 값)
             lobby.OnGameMessage += OnNetGameMessage;
-            if (isNetworkHost) lobby.OnGuestLeftDuringGame += OnGuestLeftDuringGame;
-            if (isNetworkGuest) lobby.OnDisconnected += OnHostDisconnected;
+            if (isNetworkHost)
+            {
+                lobby.OnGuestLeftDuringGame += OnGuestLeftDuringGame;
+                lobby.OnGuestGoneForGood += OnGuestGoneForGoodHandler;
+                lobby.OnGuestReconnected += OnGuestReconnectedHandler;
+            }
+            if (isNetworkGuest)
+            {
+                lobby.OnDisconnected += OnHostDisconnected;
+                lobby.OnReconnecting += OnReconnectingHandler;
+                lobby.OnReconnected += OnReconnectedHandler;
+                lobby.OnSeatReassigned += OnSeatReassignedHandler;
+            }
             seatCountPreset = true;
         }
         else if (PendingOfflineSeatCount.HasValue)
@@ -707,33 +742,82 @@ public partial class GoStop3PGame : MonoBehaviour
         }
     }
 
-    /// <summary>호스트 전용 — 접속해 있던 게스트 한 명이 판 도중 나갔다.
-    /// 남은 좌석들끼리 판을 계속할 방법이 없어서(그 좌석의 메시지를
-    /// 영원히 기다리며 멈추는 게 최악이다 — "콜백은 반드시 한 번은
-    /// 불려야 한다"는 이 프로젝트의 광고 콜백 원칙과 같은 이유) 판
-    /// 자체를 즉시 끝내고 전원을 타이틀로 돌려보낸다. 재접속·좌석
-    /// 대체는 v1 스코프 밖.</summary>
+    /// <summary>호스트 전용 — 접속해 있던 게스트 한 명의 소켓이 판 도중
+    /// 끊겼다. design.md §50.2 확장 전에는 여기서 곧바로 판을 끝냈지만,
+    /// 지금은 재접속 유예 중이라는 뜻일 뿐이다 — 판은 계속 진행되고
+    /// (§50.1 타임아웃이 이 좌석의 턴/결정을 자동으로 대신 처리한다),
+    /// 여기서는 안내 토스트만 띄운다. 실제로 "이 좌석을 포기한다"는
+    /// 판단은 유예가 끝난 뒤 <see cref="OnGuestGoneForGoodHandler"/>에서
+    /// 내린다.</summary>
     void OnGuestLeftDuringGame(int seat)
     {
-        if (state == State.GameOver) return; // 이미 끝난 판이면 신경 쓸 필요 없음
+        if (state == State.GameOver) return;
         if (seat < 0 || seat >= SEATS) return;
-        string name = SeatName(seat);
-        state = State.GameOver; // 더 이상 아무 턴도 진행되지 않게 막는다
-        ui?.ShowOverlay(new Color(.8f, .35f, .3f), "연결 끊김", "-",
-            $"{name}의 연결이 끊어져 이번 판을 종료합니다.", "타이틀", GoToTitle);
-        GoStopNetLobby.Instance?.BroadcastToGuests(
-            new GoStopNetMessage { type = GoStopNetMessage.Type.Bye, text = $"{name}의 연결이 끊어져 이번 판이 종료됐습니다." });
+        ShowTimedToast($"{SeatName(seat)} 연결 끊김 — 재접속을 기다립니다");
     }
 
-    /// <summary>게스트 전용 — 호스트와의 TCP 연결 자체가 끊겼다(호스트가
-    /// 종료했거나 네트워크가 끊긴 경우). 더 기다려도 다음 StateSync가
-    /// 올 방법이 없으므로 바로 안내하고 타이틀로 돌려보낸다.</summary>
+    /// <summary>호스트 전용(design.md §50.2) — 판 도중 끊긴 좌석이 재접속
+    /// 유예 시간을 넘겨 영구 이탈이 확정됐다. 이제부터 이 좌석은 AI가
+    /// 대신한다(<see cref="IsRemoteSeat"/>가 자동으로 걸러준다) — 이번
+    /// 판은 그대로 마저 진행하고, 판이 끝나는 시점(<see cref="EndGame"/>)에
+    /// 좌석을 압축(다운그레이드)해서 남은 인원으로 다음 판을 잇는다(§49.4
+    /// 네트워크 확장). 그 자리에서 즉시 압축하지 않는 이유 — 손패/필드/
+    /// 캡처가 전부 좌석 번호로 인덱싱돼 있어, 판 도중에 번호를 당기면
+    /// 진행 중인 상태 전체를 다시 매핑해야 한다(오프라인 다운그레이드도
+    /// 원래 EndGame에서만 일어나는 것과 같은 이유 — ApplyDowngrade 문서
+    /// 참고).</summary>
+    void OnGuestGoneForGoodHandler(int seat)
+    {
+        if (seat < 0 || seat >= SEATS || permaGoneNetworkSeat[seat]) return;
+        permaGoneNetworkSeat[seat] = true;
+        ShowTimedToast($"{SeatName(seat)} 재접속 실패 — 이번 판은 AI가 대신하고, 다음 판부터 인원이 줄어듭니다");
+    }
+
+    /// <summary>호스트 전용(design.md §50.2) — 유예 중이던 좌석이 돌아왔다.
+    /// 그동안 놓친 StateSync가 여러 번 있었을 테니, 지금 상태 전체를
+    /// 그 좌석에게 즉시 다시 보내 화면을 바로 복원시킨다(다음 자연스러운
+    /// 이벤트가 생길 때까지 기다리게 두지 않는다).</summary>
+    void OnGuestReconnectedHandler(int seat)
+    {
+        if (seat < 0 || seat >= SEATS) return;
+        ShowTimedToast($"{SeatName(seat)} 재접속했습니다");
+        SendTargetedPrompt(seat, _ => { }); // configure 없이 정규 스냅샷만 — 최신 상태로 즉시 복원
+    }
+
+    /// <summary>게스트 전용 — 호스트와의 TCP 연결 자체가 끊겼다. design.md
+    /// §50.2 확장 후로는 <c>GoStopNetLobby</c>가 먼저 자동 재접속을
+    /// 시도하고(유예 시간 동안), 그마저 실패해야 이 콜백이 최종적으로
+    /// 불린다 — 그래서 지금은 정말 더 기다려도 소용없다는 뜻이라 바로
+    /// 안내하고 타이틀로 돌려보낸다.</summary>
     void OnHostDisconnected(string reason)
     {
         if (state == State.GameOver) return;
         state = State.GameOver;
         ui?.ShowOverlay(new Color(.8f, .35f, .3f), "연결 끊김", "-",
             "호스트와의 연결이 끊어졌습니다.", "타이틀", GoToTitle);
+    }
+
+    /// <summary>게스트 전용(design.md §50.2) — 자동 재접속 시도가 시작됐다.
+    /// 게임오버 오버레이처럼 화면을 통째로 가리진 않는다(§50.1 타임아웃이
+    /// 알아서 진행시켜 주므로 다른 사람 화면은 안 멈춘다) — 가벼운
+    /// 토스트로만 알린다.</summary>
+    void OnReconnectingHandler() => ShowTimedToast("연결이 끊어졌습니다 — 재접속 시도 중...");
+
+    /// <summary>게스트 전용 — 자동 재접속에 성공했다. 곧이어 호스트가
+    /// 최신 StateSync를 보내오므로(OnGuestReconnectedHandler) 별도로
+    /// 화면을 다시 그릴 필요는 없다 — 안내만 띄운다.</summary>
+    void OnReconnectedHandler() => ShowTimedToast("재접속 완료");
+
+    /// <summary>게스트 전용(design.md §49.4 네트워크 확장) — 다른 좌석이
+    /// 영구 이탈해서 호스트가 좌석을 압축했다. 씬을 다시 로드하지 않고
+    /// 제자리에서 내 좌석 번호·인원수만 갱신한다 — 곧이어 오는 StateSync가
+    /// 나머지(손패·필드 등)를 정상적으로 채워준다.</summary>
+    void OnSeatReassignedHandler(int newSeat, int newPlayerCount)
+    {
+        SetMySeat(newSeat);
+        SetSeatCount(newPlayerCount);
+        ApplySeatVisibility(ui.ContentArea);
+        ShowTimedToast("다른 자리가 정리되어 좌석이 조정됐습니다");
     }
 
     void Start()
@@ -860,7 +944,12 @@ public partial class GoStop3PGame : MonoBehaviour
         {
             GoStopNetLobby.Instance.OnGameMessage -= OnNetGameMessage;
             GoStopNetLobby.Instance.OnGuestLeftDuringGame -= OnGuestLeftDuringGame;
+            GoStopNetLobby.Instance.OnGuestGoneForGood -= OnGuestGoneForGoodHandler;
+            GoStopNetLobby.Instance.OnGuestReconnected -= OnGuestReconnectedHandler;
             GoStopNetLobby.Instance.OnDisconnected -= OnHostDisconnected;
+            GoStopNetLobby.Instance.OnReconnecting -= OnReconnectingHandler;
+            GoStopNetLobby.Instance.OnReconnected -= OnReconnectedHandler;
+            GoStopNetLobby.Instance.OnSeatReassigned -= OnSeatReassignedHandler;
         }
     }
 
@@ -993,7 +1082,8 @@ public partial class GoStop3PGame : MonoBehaviour
             GoStopNetMessage declMsg = null;
             yield return StartCoroutine(WaitForRemoteMessage(candidate,
                 m => m.type == GoStopNetMessage.Type.DeclareChoice, m => declMsg = m));
-            wantsIn = declMsg.boolValue;
+            // design.md §50.1 — 무응답(타임아웃) 시 불참(죽기) 처리.
+            wantsIn = declMsg?.boolValue ?? false;
         }
         else wantsIn = GoStopAI.WantsToPlay(hand[candidate]);
         onResult(wantsIn);
@@ -2303,13 +2393,16 @@ public partial class GoStop3PGame : MonoBehaviour
             GoStopNetMessage msg = null;
             yield return StartCoroutine(WaitForRemoteMessage(seat,
                 m => m.type == GoStopNetMessage.Type.FieldChoice, m => msg = m));
+            // design.md §50.1엔 필드선택 전용 기본값이 명시돼 있지 않지만
+            // 같은 원칙(가능한 것 중 자동 선택)을 적용한다 — msg==null(타임아웃)
+            // 이면 decoded도 자연히 null이 되어 아래 AI 기본값으로 떨어진다.
             // 게스트가 보낸 카드 이름으로 진짜 후보 인스턴스를 찾는다 —
             // 게스트가 갖고 있는 건 스냅샷에서 새로 디코딩한 별개의
             // HwatuCard 객체라 참조가 다르다(GoStopRules 내부는 리스트
             // 안 참조 동일성으로 카드를 다루므로 반드시 원본을 찾아 써야 한다).
-            var decoded = GoStopDeck.Decode(msg.cardId);
+            var decoded = msg != null ? GoStopDeck.Decode(msg.cardId) : null;
             chosen = decoded != null ? initial.choiceCandidates.FirstOrDefault(c => c.spriteName == decoded.spriteName) : null;
-            if (chosen == null) chosen = GoStopAI.ChooseFieldMatch(initial.choiceCandidates); // 방어 — 오염된 메시지가 와도 판이 안 멈추게
+            if (chosen == null) chosen = GoStopAI.ChooseFieldMatch(initial.choiceCandidates); // 방어 — 오염된 메시지/타임아웃이 와도 판이 안 멈추게
         }
         else chosen = GoStopAI.ChooseFieldMatch(initial.choiceCandidates);
 
@@ -2324,7 +2417,8 @@ public partial class GoStop3PGame : MonoBehaviour
             GoStopNetMessage msg = null;
             yield return StartCoroutine(WaitForRemoteMessage(seat,
                 m => m.type == GoStopNetMessage.Type.DualPiChoice, m => msg = m));
-            card.useAsPi = msg.boolValue;
+            // design.md §50.1 — 국열끗 무응답(타임아웃) 시 쌍피 처리.
+            card.useAsPi = msg?.boolValue ?? true;
             yield break;
         }
         pendingDualPiChoice = null;
@@ -2421,7 +2515,8 @@ public partial class GoStop3PGame : MonoBehaviour
         yield return StartCoroutine(WaitForRemoteMessage(seat,
             m => m.type == GoStopNetMessage.Type.GoStopDecision, m => msg = m));
 
-        if (msg.boolValue)
+        // design.md §50.1 — Go/Stop 무응답(타임아웃) 시 스톱 처리.
+        if (msg != null && msg.boolValue)
         {
             goCount[seat]++;
             lastGoScore[seat] = rawScore;
@@ -2573,6 +2668,15 @@ public partial class GoStop3PGame : MonoBehaviour
               || (m.type == GoStopNetMessage.Type.BombSkip && bombCredits[seat] > 0),
             m => msg = m));
 
+        if (msg == null)
+        {
+            // design.md §50.1 — 카드 선택(턴) 무응답(타임아웃) 시 가능한
+            // 카드 중 첫 번째를 자동 선택한다.
+            var autoCard = hand[seat][0];
+            StartCoroutine(PlaySeq(seat, autoCard, false, () => AfterAction(seat)));
+            yield break;
+        }
+
         if (msg.type == GoStopNetMessage.Type.BombSkip)
         {
             bombCredits[seat]--;
@@ -2702,6 +2806,19 @@ public partial class GoStop3PGame : MonoBehaviour
         bool downgrade = CanDowngrade(bankruptSeats);
         string bankruptNames = bankruptSeats.Count > 0 ? string.Join(", ", bankruptSeats.Select(SeatName)) : null;
 
+        // 2026-08-24(design.md §49.4 네트워크 확장) — 판 도중 재접속 유예를
+        // 넘겨 영구 이탈이 확정된 좌석(permaGoneNetworkSeat)이 있으면, 이
+        // 판이 끝나는 시점에 그 좌석을 뺀 채로 압축한다. 파산 다운그레이드와
+        // 같은 ApplyDowngrade를 재사용하되(둘 다 "좌석 하나를 빼고 남은
+        // 잔액 그대로 압축"이라는 같은 동작이라 그대로 쓸 수 있다), 네트워크
+        // 전용으로 남은 접속자들에게 새 좌석 번호를 반드시 알려야 한다(안
+        // 그러면 게임은 새 번호를 쓰는데 실제 메시지는 옛 소켓으로 계속
+        // 오간다). 남은 인원이 2명 미만이 되면 압축이 무의미해(1인 게임은
+        // 성립하지 않는다) 예전처럼 판을 끝낸다.
+        var permaGoneSeats = isNetworkHost ? Enumerable.Range(0, SEATS).Where(s => permaGoneNetworkSeat[s]).ToList() : new List<int>();
+        bool networkDowngrade = permaGoneSeats.Count > 0 && SEATS - permaGoneSeats.Count >= 2;
+        string permaGoneNames = permaGoneSeats.Count > 0 ? string.Join(", ", permaGoneSeats.Select(SeatName)) : null;
+
         if (!downgrade && bankruptSeats.Count > 0)
         {
             for (int s = 0; s < SEATS; s++) money[s] = STARTING_MONEY;
@@ -2725,7 +2842,43 @@ public partial class GoStop3PGame : MonoBehaviour
         string sub = dokbakIdx >= 0 ? $"{SeatName(loserSeats[dokbakIdx])} 독박 · {moneyLine}" : moneyLine;
 
         ui?.SetScore(money[PLAYER_SEAT]); // 상단 HUD의 SCORE는 판점이 아니라 내 보유 머니를 보여준다(사용자 요청)
-        if (downgrade)
+        if (permaGoneSeats.Count > 0 && !networkDowngrade)
+        {
+            // 압축해도 2명 미만이 남는다 — 더 이어갈 수 없다(design.md
+            // §49.4 "방 폭파"). §50.2 확장 전의 OnGuestLeftDuringGame
+            // 즉시-종료 동작을 그대로 재사용한다.
+            sub += $" · {permaGoneNames} 연결이 끊겨 더 이상 진행할 수 없습니다";
+            ui?.ShowOverlay(col, title, finalScore.ToString(), sub, "타이틀", GoToTitle); // "다시 시작" 없음
+            GoStopNetLobby.Instance?.BroadcastToGuests(
+                new GoStopNetMessage { type = GoStopNetMessage.Type.Bye, text = $"{permaGoneNames} 연결이 끊겨 게임을 종료합니다." });
+        }
+        else if (networkDowngrade)
+        {
+            // 좌석을 재배치하기 전에 old→new 매핑부터 계산해 둔다 —
+            // ApplyDowngrade가 SEATS/좌석 번호를 바꾸고 나면 "누가 몇 번
+            // 이었는지"를 더 이상 알 수 없다.
+            var oldToNew = new Dictionary<int, int>();
+            int next = 0;
+            for (int s = 0; s < SEATS; s++) { if (permaGoneSeats.Contains(s)) continue; oldToNew[s] = next++; }
+
+            ApplyDowngrade(permaGoneSeats); // 파산 다운그레이드와 동일한 압축 로직 재사용(이유 무관 — "좌석 하나 빼고 압축"은 같은 동작)
+            System.Array.Clear(permaGoneNetworkSeat, 0, SEATS_MAX); // 살아남은 좌석 기준으로 전부 리셋 — 낡은 인덱스가 다른 사람을 가리키면 안 된다
+
+            // 트랜스포트의 좌석↔소켓 매핑도 같이 다시 붙이고, 남은 각
+            // 접속자에게 새 좌석 번호를 알린다(호스트 자신=좌석0은 항상
+            // 자기 자신이라 알릴 대상이 아니다).
+            GoStopNetLobby.Instance?.RenumberSeats(oldToNew);
+            foreach (var kv in oldToNew)
+            {
+                if (kv.Key == 0) continue; // 호스트 자신
+                GoStopNetLobby.Instance?.SendToSeat(kv.Value, GoStopNetMessage.SeatReassignMsg(kv.Value, SEATS));
+            }
+
+            sub += $" · {permaGoneNames} 연결이 끊겨 퇴장 — 남은 {SEATS}명으로 계속합니다";
+            ui?.ShowOverlay(col, title, finalScore.ToString(), sub,
+                "다시 시작", NewGame, "타이틀", GoToTitle, "점수 상세", ShowScoreDetail);
+        }
+        else if (downgrade)
         {
             // 표시 문자열은 다 만들었으니 이제 실제로 좌석을 재배치한다 —
             // 이 아래로는 SEATS/좌석 번호가 이미 새 구성이다.

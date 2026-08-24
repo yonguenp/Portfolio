@@ -70,6 +70,12 @@ public class GoStopNetMessage
         /// 클라이언트는 이 메시지 하나로 "내가 몇 번 자리인지"와 "어느
         /// 게임 모드인지"를 전부 알 수 있다.</summary>
         StartGame,
+        /// <summary>호스트 → 그 좌석 하나(design.md §49.4/§50.2, 2026-08-24).
+        /// 판 도중 다른 좌석이 재접속 유예를 넘겨 영구 이탈해서 좌석을
+        /// 압축(다운그레이드)했을 때, 남은 각 게스트에게 "네 새 좌석 번호는
+        /// 이거다"를 알린다. 씬 재로딩 없이 <see cref="seat"/>(새 좌석)·
+        /// <see cref="playerCount"/>(새 인원수)만 받아 제자리에서 계속한다.</summary>
+        SeatReassign,
     }
 
     public Type type;
@@ -112,7 +118,14 @@ public class GoStopNetMessage
     /// 정보 표시용으로만 실어 보낸다(2026-08-23, design.md §49.2).</summary>
     public int pointPrice;
 
-    public static GoStopNetMessage Hello(string name) => new GoStopNetMessage { type = Type.Hello, text = name };
+    /// <summary>Hello — 이 기기를 식별하는 영구 ID(<c>SystemInfo.
+    /// deviceUniqueIdentifier</c>, 앱을 다시 켜도 같은 값). 재접속(design.md
+    /// §50.2)을 판별하는 유일한 근거다 — 판 도중 연결이 끊긴 좌석과 같은
+    /// clientId로 다시 접속하면 호스트가 새 참가자가 아니라 "그 좌석이
+    /// 돌아왔다"로 인식해 같은 좌석을 그대로 돌려준다. 2026-08-24 추가.</summary>
+    public string clientId;
+
+    public static GoStopNetMessage Hello(string name, string clientId) => new GoStopNetMessage { type = Type.Hello, text = name, clientId = clientId };
     public static GoStopNetMessage Play(string cardId) => new GoStopNetMessage { type = Type.PlayCard, cardId = cardId };
     public static GoStopNetMessage Choice(string cardId) => new GoStopNetMessage { type = Type.FieldChoice, cardId = cardId };
     public static GoStopNetMessage Shake(bool shake) => new GoStopNetMessage { type = Type.ShakeDecision, boolValue = shake };
@@ -127,4 +140,5 @@ public class GoStopNetMessage
     public static GoStopNetMessage ByeMsg() => new GoStopNetMessage { type = Type.Bye };
     public static GoStopNetMessage LobbyUpdateMsg(string[] names) => new GoStopNetMessage { type = Type.LobbyUpdate, playerNames = names };
     public static GoStopNetMessage StartGameMsg(int seat, int playerCount, int pointPrice) => new GoStopNetMessage { type = Type.StartGame, seat = seat, playerCount = playerCount, pointPrice = pointPrice };
+    public static GoStopNetMessage SeatReassignMsg(int seat, int playerCount) => new GoStopNetMessage { type = Type.SeatReassign, seat = seat, playerCount = playerCount };
 }
