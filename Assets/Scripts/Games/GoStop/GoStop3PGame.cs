@@ -295,11 +295,14 @@ public partial class GoStop3PGame : MonoBehaviour
     // Image를 FillSlot에서 좌석 차례일 때 색을 바꾼다.
     Image[] statusBoxImg = new Image[SEATS_MAX];
     // 2026-08-19: 상태 아이콘 전용 컨테이너 — 정보 패널을 좌(닉네임/고점수/
-    // 금액)/우(아이콘) 반분할로 재설계하며 추가했다. 이전엔 아이콘을
-    // ui.ContentArea에 직접 그려서 매턴 안 지워지는 버그가 있었다(아래
-    // BuildInfoBlock/FillSlot 주석 참고) — 전용 컨테이너를 매턴
-    // ClearChildren하는 것으로 고쳤다.
+    // 금액)/우(아이콘) 반분할로 재설계하며 추가했다. 2026-08-24부터는
+    // GoStopStatusBoxView 프리팹이 배지 6종을 고정 슬롯으로 미리 갖고
+    // 있어서(아래 statusBoxView) 이 필드는 그 프리팹의 BadgeArea 자식을
+    // 그대로 가리키기만 한다 — 더 이상 ClearChildren 대상이 아니다.
     RectTransform[] badgeArea = new RectTransform[SEATS_MAX];
+    // 2026-08-24: BuildInfoBlock이 인스턴스화한 프리팹 뷰 — DrawBadgeStrip이
+    // 이걸 통해 배지 상태(선/광박/멍박/피박/흔들기/뻑)만 갱신한다(재생성 안 함).
+    GoStopStatusBoxView[] statusBoxView = new GoStopStatusBoxView[SEATS_MAX];
 
     // 팝업 7종 — 전부 Assets/Resources/Prefabs/GoStop/Popups/의 실제 .prefab
     // 에셋을 Instantiate해서 쓴다(2026-08-18 전환). ShakeConfirm/FieldChoice/

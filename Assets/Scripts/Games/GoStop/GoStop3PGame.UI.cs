@@ -703,64 +703,38 @@ public partial class GoStop3PGame
         goScoreText[slot] = view.GoScoreText;
         moneyText[slot] = view.MoneyText;
         badgeArea[slot] = view.BadgeArea;
+        statusBoxView[slot] = view;
 
         return topY - GoStopStatusBoxView.TotalHeight;
     }
 
-    // 상태 아이콘 크기·색(전 슬롯 공통) — "아이콘이 작고 대비가 약해 안
-    // 보인다"는 신고로 34px(기존 26)로 키우고, 꺼진 상태 배경을 반투명
-    // 흰색(백색 위 백색이라 거의 안 보였다)에서 짙은 남색 표면색으로,
-    // 글자도 alpha 0.35(거의 투명)에서 0.6 이상으로 올렸다.
-    const float BADGE_SIZE = 34f;
-    static readonly Color BadgeDimBg = new Color(0.106f, 0.133f, 0.267f, 0.95f); // #1B2244 계열 — B안 표면색
-    static readonly Color BadgeDimFg = new Color(1f, 1f, 1f, 0.62f);
+    // 배지 위험/카운트 색 — GoStopStatusBoxView 프리팹에 고정 슬롯으로
+    // 구워둔 배지(선/광박/멍박/피박/흔들기/뻑)의 상태만 여기서 갱신한다.
+    static readonly Color GwangBakColor = new Color(0.69f, 0.37f, 0.86f);
+    static readonly Color MeongBakColor = new Color(0.55f, 0.42f, 0.30f);
+    static readonly Color PiBakColor = new Color(0.88f, 0.32f, 0.32f);
+    static readonly Color ShakeDotColor = new Color(0.93f, 0.78f, 0.20f);
+    static readonly Color PpeokDotColor = new Color(0.85f, 0.25f, 0.22f);
 
-    /// <summary>선/광박/멍박/피박/흔들기/뻑 아이콘 — 정보 슬롯(RebuildUI)과
-    /// 승리 화면 점수 상세(ShowScoreDetail) 양쪽에서 공유한다. <paramref
-    /// name="maxWidth"/>를 넘으면 다음 줄로 감싼다(우측 절반 폭이 자리마다
-    /// 달라서 한 줄에 다 안 들어갈 수 있다 — 특히 좌우 슬롯).</summary>
-    void DrawBadgeStrip(RectTransform parent, int seat, Vector2 startPos, float maxWidth)
+    /// <summary>선/광박/멍박/피박/흔들기/뻑 배지 — 2026-08-24부터
+    /// <c>GoStopStatusBoxView</c> 프리팹이 6개 슬롯을 고정으로 갖고 있어서
+    /// (씬에서 디자인 편집 가능), 여기서는 매턴 상태(표시 여부/색/카운트)만
+    /// 갱신한다 — 예전처럼 <c>GoStopIcons</c>로 매번 새로 그리거나
+    /// <c>ClearChildren</c>으로 지우지 않는다.</summary>
+    void DrawBadgeStrip(GoStopStatusBoxView view, int seat)
     {
         var mine = captured[seat];
         var others = ActiveSeats().Where(s => s != seat).Select(s => captured[s]);
-        bool shook = shookMonths[seat].Count > 0;
         bool gwangBak = GoStopRules.IsLiveGwangBakRisk(mine, others);
         bool meongBak = GoStopRules.IsLiveMeongBakRisk(mine, others);
         bool piBak = GoStopRules.IsLivePiBakRisk(mine, others, GoStopRules.PI_BAK_THRESHOLD_3P);
-        bool isDealer = seat == dealerSeat;
 
-        float x = startPos.x, y = startPos.y;
-        const float STEP = BADGE_SIZE + 6f;
-        void Place(System.Action<Vector2> draw)
-        {
-            if (x + STEP > startPos.x + maxWidth) { x = startPos.x; y -= STEP; } // 다음 줄로 감싸기
-            draw(new Vector2(x, y));
-            x += STEP;
-        }
-
-        // 표기 순서(요청): 선 → 광박 → 멍박 → 피박 → 흔들기 → 뻑
-        // 2026-08-18: "先/光 한자가 폰트에 없어 □로 깨진다"는 신고 —
-        // 이 프로젝트 폰트 공통 함정(한자 미출력)이라 한자 대신 그
-        // 한자의 한글 훈/음(선/광)을 그대로 쓴다.
-        if (isDealer)
-            Place(p => GoStopIcons.MakeTextIcon(parent, p, BADGE_SIZE, "선", new Color(0.93f, 0.73f, 0.18f), Color.black));
-        Place(p => GoStopIcons.MakeTextIcon(parent, p, BADGE_SIZE, "광", gwangBak ? new Color(0.69f, 0.37f, 0.86f) : BadgeDimBg, gwangBak ? Color.white : BadgeDimFg));
-        Place(p => GoStopIcons.MakeTextIcon(parent, p, BADGE_SIZE, "멍", meongBak ? new Color(0.55f, 0.42f, 0.30f) : BadgeDimBg, meongBak ? Color.white : BadgeDimFg));
-        Place(p => GoStopIcons.MakeTextIcon(parent, p, BADGE_SIZE, "피", piBak ? new Color(0.88f, 0.32f, 0.32f) : BadgeDimBg, piBak ? Color.white : BadgeDimFg));
-
-        // 2026-08-19: "마지막 아이콘이 뭔지 모르겠다" 신고 — 원형 아이콘
-        // 구석에 작은 숫자만 떠 있던 뻑 표시가 안 읽혔다. 흔들기·뻑을
-        // "[흔듬]"/"[뻑]" 글자 박스 + 원 2개(횟수만큼 채워짐)로 바꾸고,
-        // 폭이 기존 정사각 아이콘과 달라 Place()의 줄바꿈 계산에 안 맞으므로
-        // 아예 다음 줄에 고정으로 그린다(요청: "다음줄에 흔듬,뻑 아이콘
-        // 추가"). 뻑은 3회째 즉시 승리라(쓰리뻑 규칙) 원 2개로 충분하다.
-        float row2Y = y - STEP;
-        float rowX = startPos.x;
-        var shakeBadge = GoStopIcons.MakeCountBadge(parent, new Vector2(rowX, row2Y), "흔듬",
-            new Color(0.93f, 0.78f, 0.20f), Mathf.Min(shookMonths[seat].Count, 2));
-        rowX += shakeBadge.sizeDelta.x + 8f;
-        GoStopIcons.MakeCountBadge(parent, new Vector2(rowX, row2Y), "뻑",
-            new Color(0.85f, 0.25f, 0.22f), Mathf.Min(ppeokTotalCount[seat], 2));
+        view.SetDealer(seat == dealerSeat);
+        view.SetRisk(0, gwangBak, GwangBakColor, Color.white);
+        view.SetRisk(1, meongBak, MeongBakColor, Color.white);
+        view.SetRisk(2, piBak, PiBakColor, Color.white);
+        view.SetCountBadge(true, Mathf.Min(shookMonths[seat].Count, 2), ShakeDotColor);
+        view.SetCountBadge(false, Mathf.Min(ppeokTotalCount[seat], 2), PpeokDotColor);
     }
 
     /// <summary>상대 좌석 한 블록(상태줄→뒷패 줄→획득패 존) — 상단(seat2)·
@@ -1005,27 +979,18 @@ public partial class GoStop3PGame
 
             if (moneyLbl != null) moneyLbl.text = $"{money[seat]:N0}원";
 
-            // 배지 영역은 매턴 여기서 지운다 — 전용 컨테이너라(badgeArea)
-            // 매번 새로 그려도 이전 것들이 안 남는다("광팔이한테 선 아이콘이
-            // 남아있다"는 신고의 원인이 바로 이 클리어 누락이었다).
-            if (badgeArea[slot] != null) HwatuUI.ClearChildren(badgeArea[slot]);
-
             if (sittingOutSeat == seat)
             {
                 if (goLbl != null) goLbl.text = $"쉬는 중 {sitOutReason}";
-                return; // 쉬는 좌석은 이번 판 캡처가 없어 배지가 의미 없다 — 안 그림
+                statusBoxView[slot]?.HideAllBadges(); // 쉬는 좌석은 이번 판 캡처가 없어 배지가 의미 없다 — 지난 상태가 안 남게 리셋
+                return;
             }
 
             int seatScore = GoStopRules.CalcScore(captured[seat], sweeps[seat]).Total;
             if (goLbl != null)
                 goLbl.text = decidingGoStop ? "고/스톱 선택 중..." : $"{goCount[seat]}고 {seatScore}점";
 
-            if (badgeArea[slot] != null)
-            {
-                float w = badgeArea[slot].sizeDelta.x;
-                float startX = -w * 0.5f + BADGE_SIZE * 0.5f;
-                DrawBadgeStrip(badgeArea[slot], seat, new Vector2(startX, 0f), w);
-            }
+            if (statusBoxView[slot] != null) DrawBadgeStrip(statusBoxView[slot], seat);
         }
 
         for (int slot = 1; slot <= 3; slot++)
@@ -1034,7 +999,7 @@ public partial class GoStop3PGame
             if (seat < 0)
             {
                 if (statusText[slot]) statusText[slot].text = "";
-                if (badgeArea[slot] != null) HwatuUI.ClearChildren(badgeArea[slot]);
+                statusBoxView[slot]?.HideAllBadges();
                 continue;
             }
             bool myTurn = state == State.Turn && currentSeat == seat;
