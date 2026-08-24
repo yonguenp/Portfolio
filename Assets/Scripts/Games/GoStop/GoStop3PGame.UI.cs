@@ -1238,7 +1238,13 @@ public partial class GoStop3PGame
         // 요청 대상이 아니라 그대로 뒀다(열끗=위쪽 절반 상단고정, 띠=
         // 아래쪽 절반 상단고정 — 내 획득패(DrawPlayerCaptured)의 광/피와
         // 같은 방향으로 통일한 것이기도 하다).
-        float bottomY = -capH + CAP_PAD;
+        // 버그 수정 — MakeCard는 카드를 "윗변" 기준(피벗 0.5,1)으로 놓으므로
+        // anchoredPosition.y는 카드의 윗변이지 아랫변이 아니다. 카드
+        // 아랫변이 바닥에서 CAP_PAD만큼 떨어지게 하려면 그 윗변(=y값)은
+        // 카드 높이(CAP_AI_H)만큼 더 위에 있어야 한다 — 이걸 빼먹어서
+        // "카드가 cap 밖에서부터 쌓인다"(카드 아랫부분이 컨테이너 바닥을
+        // 뚫고 나감) 버그가 났었다.
+        float bottomY = -capH + CAP_PAD + CAP_AI_H;
         DrawCapZoneInBox(container, gwang, -colW, bottomY, colW, bottomUp: true);
         DrawCapZoneInBox(container, yeol,  0f,    -CAP_PAD, colW);
         DrawCapZoneInBox(container, ddi,   0f,    -capH * 0.5f - CAP_PAD, colW);
