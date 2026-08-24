@@ -1900,7 +1900,20 @@ public partial class GoStop3PGame : MonoBehaviour
             }
         }
 
-        if (bomb) bombCount[seat]++;
+        // 2026-08-24 정정(사용자 확인) — "폭탄이란 흔들고(흔들기 카운트
+        // 올리고) 매칭되는 패를 즉시 내서 상대 피를 가져오는 것"이다.
+        // 폭탄은 손패에 3장이 모여야만 성립하는데(그 자체가 흔들기 조건과
+        // 동일), 예전엔 폭탄이면 흔들기 팝업 자체를 건너뛰어서(4배 방지)
+        // heundeulCount가 전혀 안 올랐다 — 배지도 같이 안 떴다. 폭탄은
+        // "흔들기를 즉시 실행한 것"이므로 배지/카운트는 그대로 올리고,
+        // 배수 중복(×4)은 GoStopRules 쪽에서 막는다(폭탄 전용 곱셈 루프를
+        // 없애고 heundeulCount 하나로 통일 — 폭탄이 흔들기 개수에 이미
+        // 포함되므로 따로 또 곱할 필요가 없다).
+        if (bomb)
+        {
+            bombCount[seat]++;
+            if (shookMonths[seat].Add(card.month)) heundeulCount[seat]++;
+        }
 
         bool willDraw = !bomb && drawPile.Count > 0;
         // 뻑 감지: 뒷패 공개로 뒤집힐 수 있는 건 순수 1:1 매칭(선택도

@@ -716,7 +716,19 @@ public partial class GoStopGame : MonoBehaviour
             }
         }
 
-        if (bomb) { if (isPlayerSide) playerBombCount++; else aiBombCount++; }
+        // 2026-08-24 정정(사용자 확인, 4인판과 동일) — "폭탄이란 흔들고
+        // 매칭되는 패를 즉시 내서 상대 피를 가져오는 것"이라, 폭탄도
+        // 흔들기 카운트/배지가 같이 올라야 한다. 배수 중복(×4)은
+        // GoStopRules의 폭탄 전용 곱셈 루프를 없애 heundeulCount 하나로
+        // 통일하는 쪽에서 막는다.
+        if (bomb)
+        {
+            if (isPlayerSide) playerBombCount++; else aiBombCount++;
+            if (shookMonths.Add(card.month))
+            {
+                if (isPlayerSide) playerHeundeul++; else aiHeundeul++;
+            }
+        }
 
         int before1 = captured.Count;
 
@@ -1872,8 +1884,15 @@ public partial class GoStopGame : MonoBehaviour
         var mult = new List<string>();
         if (b.isReversalGo) mult.Add($"역고 ×{b.goMultiplier}");
         else if (b.goMultiplier > 1) mult.Add($"고배수 ×{b.goMultiplier}");
-        if (b.heundeulCount > 0) mult.Add($"흔들기 ×{1 << b.heundeulCount}({b.heundeulCount}회)");
-        if (b.bombCount > 0) mult.Add($"폭탄 ×{1 << b.bombCount}({b.bombCount}회)");
+        // 2026-08-24 — 폭탄은 흔들기의 즉시실행 버전이라 GoStopRules에서
+        // 더 이상 별도로 곱하지 않는다(heundeulCount에 이미 포함). "폭탄
+        // ×N" 줄을 따로 더하면 실제 totalMultiplier보다 부풀려 보이므로
+        // 없애고, 흔들기 줄에 "그 중 폭탄 N회"만 붙인다.
+        if (b.heundeulCount > 0)
+        {
+            string bombNote = b.bombCount > 0 ? $", 폭탄 {b.bombCount}회 포함" : "";
+            mult.Add($"흔들기 ×{1 << b.heundeulCount}({b.heundeulCount}회{bombNote})");
+        }
         if (b.gwangBak) mult.Add("광박 ×2");
         if (b.piBak) mult.Add("피박 ×2");
         if (b.extraMultiplier > 1) mult.Add($"고정배수 ×{b.extraMultiplier}");

@@ -591,8 +591,16 @@ public static class GoStopRules
         }
         b.goMultiplier = mult;
 
-        for (int i = 0; i < myHeundeulCount; i++) mult *= 2;   // 흔들기 1회당 x2
-        for (int i = 0; i < myBombCount; i++) mult *= 2;       // 폭탄 1회당 x2
+        // 2026-08-24 정정(사용자 확인) — "폭탄이란 흔들고(흔들기 카운트를
+        // 올리고) 매칭되는 패를 즉시 내서 상대 피를 가져오는 것"이라, 폭탄
+        // 자체가 흔들기의 즉시실행 버전이지 별개의 사건이 아니다. 그래서
+        // 폭탄이 일어난 순간은 이미 myHeundeulCount에도 포함돼 있고(호출부가
+        // 폭탄마다 흔들기 카운트도 같이 올린다), 여기서 bombCount로 또
+        // 곱하면 같은 사건의 배수가 두 번(흔들기 ×2, 폭탄 ×2 = 사실상 ×4)
+        // 들어간다 — 그래서 폭탄 전용 곱셈 루프를 없앴다. myBombCount 필드
+        // 자체는 "몇 번 폭탄이었는지" 표시용으로만 남아 있다(ScoreBreakdown.
+        // bombCount, 화면에는 흔들기 줄에 "폭탄 N회 포함"으로 붙는다).
+        for (int i = 0; i < myHeundeulCount; i++) mult *= 2;   // 흔들기 1회당 x2(폭탄도 포함)
 
         int myGwang = myCaptured.Count(c => c.kind == HwatuKind.Gwang);
         int oppGwang = opponentCaptured.Count(c => c.kind == HwatuKind.Gwang);
@@ -668,8 +676,10 @@ public static class GoStopRules
 
         int goMult = GoMultiplier(myGoCount);
         int mult = goMult;
+        // 2026-08-24 — FinalScoreBreakdown과 같은 이유로 폭탄 전용 곱셈
+        // 루프를 없앴다: 폭탄은 흔들기의 즉시실행 버전이라 이미
+        // myHeundeulCount에 포함돼 있다(호출부가 폭탄마다 같이 올린다).
         for (int i = 0; i < myHeundeulCount; i++) mult *= 2;
-        for (int i = 0; i < myBombCount; i++) mult *= 2;
         mult *= extraMultiplier;
 
         int myGwang = myCaptured.Count(c => c.kind == HwatuKind.Gwang);

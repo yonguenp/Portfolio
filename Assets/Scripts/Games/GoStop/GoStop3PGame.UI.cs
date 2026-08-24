@@ -570,8 +570,15 @@ public partial class GoStop3PGame
 
         var mult = new List<string>();
         if (p.goMultiplier > 1) mult.Add($"고배수 ×{p.goMultiplier}");
-        if (p.heundeulCount > 0) mult.Add($"흔들기 ×{1 << p.heundeulCount}({p.heundeulCount}회)");
-        if (p.bombCount > 0) mult.Add($"폭탄 ×{1 << p.bombCount}({p.bombCount}회)");
+        // 2026-08-24 — 폭탄은 흔들기의 즉시실행 버전이라 GoStopRules에서
+        // 더 이상 별도로 곱하지 않는다(heundeulCount에 이미 포함). 그래서
+        // "폭탄 ×N" 줄을 따로 더하면 실제 totalMultiplier보다 부풀려
+        // 보이므로 없앴다 — 대신 흔들기 줄에 "그 중 폭탄 N회"만 붙인다.
+        if (p.heundeulCount > 0)
+        {
+            string bombNote = p.bombCount > 0 ? $", 폭탄 {p.bombCount}회 포함" : "";
+            mult.Add($"흔들기 ×{1 << p.heundeulCount}({p.heundeulCount}회{bombNote})");
+        }
         if (p.extraMultiplier > 1) mult.Add($"고정배수 ×{p.extraMultiplier}");
 
         var foot = new System.Text.StringBuilder();
