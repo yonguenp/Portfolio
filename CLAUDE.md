@@ -3277,6 +3277,55 @@ goScore 라벨이 평소엔 흰색 alpha 0.82로 살짝 흐렸던 미세한 차�
 내 턴(`currentSeat==0`)일 때 `FillSlot`을 거친 실제 배경색이 강조색으로
 정확히 나오는 것까지 확인. 컴파일 클린, 콘솔 예외 0건.
 
+### 버그 — 슬램다운 고스트 착지지점이 실제 카드 위치와 540px 어긋남 (2026-08-24)
+
+"필드로 슬램다운할때 애니메이션 착지지점이 실제 생성되는 패 포지션과
+차이가 많이나" 신고 — 실측으로 정확한 원인을 잡았다. `SpawnGhostCard`가
+`ui.ContentArea.InverseTransformPoint(worldLandingPos)`로 구한 로컬 좌표를
+그대로 카드의 `anchoredPosition`에 대입하고 있었는데, **`anchoredPosition`은
+"부모 rect 위의 앵커 기준점"에서 잰 값이고 `InverseTransformPoint`는
+"부모 Transform의 피벗"에서 잰 값이라 애초에 기준점이 다르다** — 이
+둘이 같은 값이 되려면 자식의 앵커와 부모의 피벗이 정확히 일치해야 한다.
+`HwatuUI.MakeCard`가 만드는 카드는 항상 앵커/피벗 `(0.5,1)`(상단중앙)인데,
+`ContentArea`는 피벗 `(0.5,0.5)`(중앙) — 서로 다르다. 실측 결과 Y축으로
+정확히 **540px**(`ContentArea 높이 1080 × (카드앵커.y 1.0 − ContentArea
+피벗.y 0.5)`) 어긋나 있었다 — 고스트가 항상 의도한 자리보다 540px 위에
+떨어지고 있었다(X축은 두 피벗의 x값이 우연히 같은 0.5라 안 어긋났다).
+
+`GoStopFX.FlyMoney`/`FlyDealCard`, `SlamDown`/`SlamIn` 등 이 프로젝트의
+다른 모든 "월드 좌표에 정확히 놓기" 헬퍼는 전부 앵커 수학을 거치지 않고
+**생성 직후 `rt.position = worldPos`를 직접 대입**하는 방식을 쓴다 —
+`SpawnGhostCard`만 유일하게 `InverseTransformPoint` → `anchoredPosition`
+경로를 썼다. 같은 안전한 방식으로 통일해서 고쳤다:
+
+```csharp
+GameObject SpawnGhostCard(HwatuCard card, Vector3 worldLandingPos)
+{
+    var go = HwatuUI.MakeCard(card, ui.ContentArea, Vector2.zero, FIELD_W, FIELD_H, null, false);
+    (go.transform as RectTransform).position = worldLandingPos;
+    return go;
+}
+```
+
+이 방식은 부모/카드의 피벗이 무엇이든 항상 정확한 월드 좌표에 놓이므로
+같은 종류의 어긋남이 구조적으로 재발할 수 없다.
+
+검증: 수정 전 `SpawnGhostCard`를 직접 호출해 `FieldSlotWorldPos(6)`
+대비 실제 생성된 고스트의 `.position`을 비교 — `diff=(0, 540, 0)`으로
+정확히 재현. 수정 후 같은 테스트에서 `diff=(0, 0, 0)`으로 완전히
+일치하는 것 확인. 실제 카드 플레이(월드 클릭 경로, `OnPlayerPlay`)도
+콘솔 예외 없이 정상 완주하는 것까지 확인.
+
+> **교훈 — `InverseTransformPoint`로 구한 값을 그대로 `anchoredPosition`에
+> 대입하는 건 자식 앵커와 부모 피벗이 우연히 일치할 때만 맞는다.** 이
+> 프로젝트에 이미 확립된 "생성 직후 `.position`을 직접 대입" 패턴
+> (`FlyMoney`/`FlyDealCard`)이 정확히 이런 불일치를 피하려고 쓰던
+> 방식이었는데, `SpawnGhostCard`를 새로 만들 때 그 패턴을 안 따르고
+> 직접 앵커 수학을 했다가 이번에 걸렸다. **월드 좌표에 UI 요소를 정확히
+> 놓아야 할 때는 항상 `rt.position = worldPos`를 생성 직후 직접
+> 대입할 것** — `InverseTransformPoint` + `anchoredPosition` 조합은
+> 부모·자식의 피벗이 정확히 같다는 걸 미리 확인하지 않는 한 피할 것.
+
 ## UI 리스킨 — Kenney "샘플 느낌" Depth 스킨 (진행 중, 2026-08-18)
 
 "UI가 너무 투박하다, `Assets/Art/Kenney/ui-pack`의 `Sample.png` 느낌으로 바꿔줄

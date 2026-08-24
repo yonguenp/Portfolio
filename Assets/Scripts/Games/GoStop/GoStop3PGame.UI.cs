@@ -1521,10 +1521,25 @@ public partial class GoStop3PGame
     /// <summary>슬램다운 고스트 카드를 만든다 — ContentArea(안 지워지는 안정된
     /// 부모)에 최종 착지 위치로 바로 놓는다. 실제 클릭은 안 받는 순수
     /// 연출용이라 onClick은 항상 null.</summary>
+    // 2026-08-24 버그 수정 — "슬램다운 착지지점이 실제 카드 위치와 많이
+    // 차이난다" 신고로 발견: `InverseTransformPoint`로 구한 로컬 좌표를
+    // 그대로 `anchoredPosition`에 대입하면, 카드(HwatuUI.MakeCard, 앵커/
+    // 피벗 항상 (0.5,1) 상단중앙)의 앵커가 부모(ContentArea, 피벗 (0.5,0.5)
+    // 중앙)의 피벗과 다를 때 어긋난다 — anchoredPosition은 "부모 rect 위의
+    // 앵커 기준점"에서 잰 값인데, InverseTransformPoint는 "부모 Transform의
+    // 피벗"에서 잰 값이라 둘이 다른 기준점이다. 실측으로 확인된 어긋남은
+    // Y축으로 정확히 540px(ContentArea 높이 1080 × (카드앵커.y 1.0 −
+    // ContentArea피벗.y 0.5)) — 고스트가 항상 의도한 자리보다 540px 위에
+    // 떨어졌다. 이 프로젝트의 다른 모든 "월드 좌표로 정확히 놓기" 헬퍼
+    // (GoStopFX.FlyMoney/FlyDealCard, SlamDown/SlamIn 등)는 전부 앵커
+    // 수학을 거치지 않고 생성 직후 `rt.position = worldPos`를 직접
+    // 대입하는 방식을 쓴다 — 여기도 그 방식으로 통일해서, 부모/카드의
+    // 피벗이 무엇이든 항상 정확히 그 월드 좌표에 놓이게 했다.
     GameObject SpawnGhostCard(HwatuCard card, Vector3 worldLandingPos)
     {
-        Vector2 local = ui.ContentArea.InverseTransformPoint(worldLandingPos);
-        return HwatuUI.MakeCard(card, ui.ContentArea, local, FIELD_W, FIELD_H, null, false);
+        var go = HwatuUI.MakeCard(card, ui.ContentArea, Vector2.zero, FIELD_W, FIELD_H, null, false);
+        (go.transform as RectTransform).position = worldLandingPos;
+        return go;
     }
 
     static void DestroyGhost(GameObject go) { if (go != null) Destroy(go); }
