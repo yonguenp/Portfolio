@@ -1232,35 +1232,44 @@ public partial class GoStop3PGame
         // 3열: 광(왼쪽,전체높이) | 열끗(가운데 위쪽 절반)+띠(가운데 아래쪽
         // 절반) | 피(오른쪽,전체높이) — centerX는 참조 오브젝트 실측값을
         // 일반화한 공식(±capW/3, 가운데 0).
-        DrawCapZoneInBox(container, gwang, -colW, -CAP_PAD, colW);
+        // 2026-08-24: "피랑 광이 윗줄부터 차는데 아래줄부터 위로 차도록"
+        // 요청 — 전체 높이를 혼자 쓰는 광/피만 바닥 기준(bottomUp)으로
+        // 바꿨다. 열끗/띠는 가운데 칸을 위아래로 나눠 쓰는 별개의 배치라
+        // 요청 대상이 아니라 그대로 뒀다(열끗=위쪽 절반 상단고정, 띠=
+        // 아래쪽 절반 상단고정 — 내 획득패(DrawPlayerCaptured)의 광/피와
+        // 같은 방향으로 통일한 것이기도 하다).
+        float bottomY = -capH + CAP_PAD;
+        DrawCapZoneInBox(container, gwang, -colW, bottomY, colW, bottomUp: true);
         DrawCapZoneInBox(container, yeol,  0f,    -CAP_PAD, colW);
         DrawCapZoneInBox(container, ddi,   0f,    -capH * 0.5f - CAP_PAD, colW);
-        DrawCapZoneInBox(container, pi,    colW,  -CAP_PAD, colW, weighted: true);
+        DrawCapZoneInBox(container, pi,    colW,  bottomY, colW, weighted: true, bottomUp: true);
     }
 
     /// <summary><see cref="DrawCapZone"/>의 얇은 래퍼 — 존 폭(<paramref
     /// name="boxWidth"/>)에서 한 줄에 몇 장이 들어가는지(maxPerRow)를
     /// 역산해서 넘긴다. 카드가 없으면 조용히 건너뛴다.</summary>
-    void DrawCapZoneInBox(RectTransform area, List<HwatuCard> cards, float centerX, float topY, float boxWidth, bool weighted = false)
+    void DrawCapZoneInBox(RectTransform area, List<HwatuCard> cards, float centerX, float baselineY, float boxWidth, bool weighted = false, bool bottomUp = false)
     {
         if (cards.Count == 0) return;
         int maxPerRow = Mathf.Max(1, Mathf.FloorToInt((boxWidth - CAP_AI_W) / CAP_AI_PITCH) + 1);
         float rowStep = CAP_AI_H + 3f;
-        DrawCapZone(area, cards, centerX, topY, rowStep, maxPerRow, weighted);
+        DrawCapZone(area, cards, centerX, baselineY, rowStep, maxPerRow, weighted, bottomUp);
     }
 
-    /// <summary>상대 획득패 한 존(광/열끗/띠/피 중 하나)을 그린다 — 위쪽 기준
-    /// 정렬(<paramref name="baselineY"/>가 0번째 줄, 아래로 줄이 늘어난다).
+    /// <summary>상대 획득패 한 존(광/열끗/띠/피 중 하나)을 그린다.
+    /// <paramref name="bottomUp"/>이 false(기본)면 위쪽 기준 정렬(<paramref
+    /// name="baselineY"/>가 0번째 줄, 아래로 줄이 늘어난다) — true면 그
+    /// 반대로 <paramref name="baselineY"/>가 바닥이고 위로 줄이 늘어난다.
     /// <paramref name="weighted"/>가 true면 장수가 아니라 피 값(쌍피=2) 합으로
     /// 줄바꿈한다("5장씩"이 아니라 "5피씩" 쌓여야 한다는 사용자 확인 규칙).</summary>
-    void DrawCapZone(RectTransform area, List<HwatuCard> cards, float centerX, float baselineY, float rowStep, int maxPerRow, bool weighted = false)
+    void DrawCapZone(RectTransform area, List<HwatuCard> cards, float centerX, float baselineY, float rowStep, int maxPerRow, bool weighted = false, bool bottomUp = false)
     {
         var rows = HwatuUI.GroupIntoRows(cards, maxPerRow, weighted);
         for (int row = 0; row < rows.Count; row++)
         {
             var rowCards = rows[row];
             float rowWidth = (rowCards.Count - 1) * CAP_AI_PITCH + CAP_AI_W;
-            float y = baselineY - row * rowStep;
+            float y = bottomUp ? baselineY + row * rowStep : baselineY - row * rowStep;
             for (int i = 0; i < rowCards.Count; i++)
             {
                 float x = centerX - rowWidth * 0.5f + CAP_AI_W * 0.5f + i * CAP_AI_PITCH;
