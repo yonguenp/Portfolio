@@ -961,21 +961,15 @@ public partial class GoStop3PGame
             if (nameLbl == null) return;
 
             // 2026-08-20 정정(사용자 신고 — "화살표가 눈에 안 띈다") — 이름
-            // 앞에 "▶ "를 붙이는 대신, 상태창 배경 자체를 강조색(노랑)으로
-            // 바꾼다. 노란 배경 위 흰 글자는 안 읽히므로(2048 카드 v.., 이
-            // 프로젝트 공통 함정) 글자는 밝을 때만 어두운 남색으로 뒤집는다.
+            // 앞에 "▶ "를 붙이는 대신, 상태창 배경 자체를 강조색으로
+            // 바꾼다. 2026-08-24 — 실제 배경/글자 색 값은
+            // GoStopStatusBoxView(프리팹)의 SerializeField로 옮겼다 — 여기서는
+            // "지금 강조 상태냐"만 넘긴다(디자인은 프리팹에서 직접 조정).
             bool highlight = myTurn || decidingGoStop;
             string who = seat == PLAYER_SEAT ? "나" : SeatName(seat);
             nameLbl.text = who;
 
-            Color darkText = new Color(0.106f, 0.133f, 0.267f, 1f); // 상태창 기본 배경색을 그대로 글자색으로
-            if (statusBoxImg[slot] != null)
-                statusBoxImg[slot].color = highlight ? new Color(0.929f, 0.729f, 0.180f, 0.95f) /* #EDBA2E */
-                                                      : new Color(0.106f, 0.133f, 0.267f, 0.88f);
-            nameLbl.color = highlight ? darkText : Color.white;
-            nameLbl.fontStyle = highlight ? FontStyles.Bold : FontStyles.Normal;
-            if (goLbl != null) goLbl.color = highlight ? darkText : new Color(1f, 1f, 1f, 0.82f);
-            if (moneyLbl != null) moneyLbl.color = highlight ? darkText : Color.white;
+            statusBoxView[slot]?.ApplyTurnState(highlight);
 
             if (moneyLbl != null) moneyLbl.text = $"{money[seat]:N0}원";
 

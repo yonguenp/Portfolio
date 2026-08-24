@@ -32,6 +32,12 @@ using TMPro;
 /// 폭만 바꾸고 나머지는 앵커·LayoutGroup에 맡긴다 — 이 프리팹 안의
 /// 정확한 배치(칸 간격·정렬 등)를 바꾸고 싶으면 코드가 아니라 프리팹을
 /// 열어 직접 조정할 것.
+///
+/// 2026-08-24(4차) — 기본/현재턴 배경·글자색도 SerializeField로 뺐다.
+/// 예전엔 <c>GoStop3PGame.FillSlot</c>이 이 색들(#1B2244/#EDBA2E 등)을
+/// 코드에 직접 박아 넣고 있었다 — 이제 <see cref="ApplyTurnState"/>가
+/// 이 프리팹의 필드 값으로 배경·글자색을 정하므로, 프리팹을 열어 색만
+/// 바꾸면 4개 좌석(상단/좌/우/하단) 전부에 반영된다.
 /// </summary>
 public class GoStopStatusBoxView : MonoBehaviour
 {
@@ -44,6 +50,12 @@ public class GoStopStatusBoxView : MonoBehaviour
     [SerializeField] RectTransform moneyIconRect;
     [SerializeField] TextMeshProUGUI moneyText;
     [SerializeField] RectTransform badgeArea;
+
+    [Header("색상 — 2026-08-24: 기본/현재턴 배경·글자색을 프리팹에서 직접\n조정할 수 있게 SerializeField로 뺐다. 예전엔 GoStop3PGame.FillSlot이\n이 값들을 코드에 직접 박아 넣고 있었다(#1B2244/#EDBA2E 등) — 이제\n이 프리팹을 열어 색만 바꾸면 4개 좌석(상단/좌/우/하단) 전부에\n반영된다. 기본값은 기존 하드코딩 값과 동일하게 맞춰서 색을 아직\n안 바꾼 기존 씬은 시각적으로 그대로다.")]
+    [SerializeField] Color normalBgColor = new Color(0.106f, 0.133f, 0.267f, 0.88f);       // #1B2244 계열 — B안 표면색
+    [SerializeField] Color normalTextColor = Color.white;
+    [SerializeField] Color highlightBgColor = new Color(0.929f, 0.729f, 0.180f, 0.95f);    // #EDBA2E — 강조색(현재 턴)
+    [SerializeField] Color highlightTextColor = new Color(0.106f, 0.133f, 0.267f, 1f);     // 밝은 배경 위라 어두운 글자로 뒤집는다
 
     [Header("배지 — 매턴 상태만 갱신(재생성 안 함)")]
     [SerializeField] RectTransform dealerIcon;          // "선"(항상 같은 자리, SetActive로만 표시)
@@ -85,6 +97,25 @@ public class GoStopStatusBoxView : MonoBehaviour
 
     /// <summary>선(딜러) 여부 — 슬롯 자체는 항상 같은 자리, 표시만 껐다 켠다.</summary>
     public void SetDealer(bool isDealer) => dealerIcon.gameObject.SetActive(isDealer);
+
+    /// <summary>배경·이름/고점수/금액 글자색을 기본↔현재턴 강조 상태로
+    /// 전환한다. 예전엔 <c>GoStop3PGame.FillSlot</c>이 이 네 색을 직접
+    /// 골라 각 컴포넌트에 대입했는데, 이제 이 프리팹의 <see
+    /// cref="normalBgColor"/> 등 필드로 색 자체를 디자인하고 이 메서드는
+    /// "지금 어느 상태냐"만 전달받는다. 이름 라벨만 강조 시 볼드로
+    /// 바뀐다(고점수/금액은 굵기 그대로) — 기존 동작과 동일.</summary>
+    public void ApplyTurnState(bool highlight)
+    {
+        if (background) background.color = highlight ? highlightBgColor : normalBgColor;
+        var textColor = highlight ? highlightTextColor : normalTextColor;
+        if (nameText)
+        {
+            nameText.color = textColor;
+            nameText.fontStyle = highlight ? FontStyles.Bold : FontStyles.Normal;
+        }
+        if (goScoreText) goScoreText.color = textColor;
+        if (moneyText) moneyText.color = textColor;
+    }
 
     /// <summary>이 좌석이 이번 판 배지 표시 대상이 아닐 때(쉬는 좌석, 빈
     /// 슬롯) 전부 꺼진 상태로 되돌린다. 예전엔 배지 영역 자체를

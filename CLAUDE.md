@@ -3249,6 +3249,34 @@ Card의 정확한 자식(OverlayTitle/OverlayScore/.../TertiaryBtn/L)을
 `GameUI.prefab`(7개 게임 공용)의 `Overlay/Card`는 이번에 안 건드렸다 —
 같은 요청이 그쪽에도 해당하면 별도로 요청할 것.
 
+### StatusBox 기본/현재턴 배경·글자색을 SerializeField로 (2026-08-24)
+
+"GoStopStatusBoxView에 백그라운드, 폰트등의 기본 컬러와 현재 턴 표시
+컬러를 내가 설정할수있게 해줘. Serialize Field로 하면 될듯" — 예전엔
+`GoStop3PGame.FillSlot`이 배경(`#1B2244`/`#EDBA2E`)·글자색(흰색/어두운
+남색)을 코드에 직접 박아 넣고 있었다. `GoStopStatusBoxView`에
+`normalBgColor`/`normalTextColor`/`highlightBgColor`/`highlightTextColor`
+4개 `[SerializeField]`를 추가하고(기본값은 기존 하드코딩 값과 동일하게
+맞춰서 색을 아직 안 바꾼 기존 씬은 시각적으로 그대로다), 새 공개 메서드
+`ApplyTurnState(bool highlight)`가 이 값으로 배경·이름/고점수/금액 글자색을
+한 번에 전환한다(이름 라벨만 강조 시 볼드 — 기존 동작 유지). `FillSlot`은
+이제 각 색을 직접 계산하지 않고 `statusBoxView[slot]?.ApplyTurnState(highlight)`
+한 줄만 부른다 — **프리팹(`StatusBoxView.prefab`)을 열어 이 4개 필드
+값만 바꾸면 4개 좌석(상단/좌/우/하단) 전부에 반영된다.**
+
+goScore 라벨이 평소엔 흰색 alpha 0.82로 살짝 흐렸던 미세한 차이는
+`normalTextColor` 하나로 이름/고점수/금액을 통일하면서 없어졌다 —
+사용자가 "기본 색"을 하나로 설정하고 싶어하는 취지에 맞춰 의도적으로
+단순화했다(필요하면 나중에 라벨별로 다시 나눌 수 있다).
+
+검증: 라이브 Play에서 4개 색 필드의 기본값이 기존 하드코딩 값과
+정확히 일치하는 것 확인 → `ApplyTurnState(false)`/`ApplyTurnState(true)`로
+배경색이 정상 전환되는 것 확인 → `normalBgColor`를 리플렉션으로 빨강으로
+바꾼 뒤 `ApplyTurnState(false)`를 다시 불러 실제로 빨강이 적용되는 것
+확인(진짜로 그 필드를 읽고 있다는 증거) → 4인 새 게임을 실제로 시작해
+내 턴(`currentSeat==0`)일 때 `FillSlot`을 거친 실제 배경색이 강조색으로
+정확히 나오는 것까지 확인. 컴파일 클린, 콘솔 예외 0건.
+
 ## UI 리스킨 — Kenney "샘플 느낌" Depth 스킨 (진행 중, 2026-08-18)
 
 "UI가 너무 투박하다, `Assets/Art/Kenney/ui-pack`의 `Sample.png` 느낌으로 바꿔줄
