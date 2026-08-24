@@ -11,14 +11,6 @@ using TMPro;
 /// 스프라이트·색·폰트 크기 등을 직접 바꿀 수 있다(팝업·이펙트 프리팹화와
 /// 같은 이유).
 ///
-/// 좌석마다 박스 폭이 다르다(내 정보=700, 상단=520, 좌우=400) — 프리팹
-/// 자체는 폭을 고정하지 않고, <see cref="Configure"/>가 인스턴스마다
-/// 자식들을 그 폭에 맞춰 다시 배치한다. 세로 배치(칸 높이·간격)는 폭과
-/// 무관하게 고정이라 Configure가 안 건드린다 — 그 값을 바꾸고 싶으면
-/// 프리팹을 직접 열어 <see cref="nameRect"/> 등의 sizeDelta.y를 조정하면
-/// 된다(다만 그 경우 이 스크립트의 계산과 어긋나지 않도록 <see cref="NAME_H"/>
-/// 등 상수도 같이 맞춰야 한다).
-///
 /// 2026-08-24(2차) — 배지(선/광박/멍박/피박/흔들기/뻑)도 이 프리팹 안에
 /// 고정 슬롯으로 넣었다. 예전엔 <c>GoStop3PGame.DrawBadgeStrip</c>이 매턴
 /// <c>HwatuUI.ClearChildren</c>으로 배지 영역을 통째로 지우고 <see
@@ -28,14 +20,18 @@ using TMPro;
 /// 프리팹을 열면 텅 빈 BadgeArea만 보였다). 지금은 6개 슬롯을 프리팹에
 /// 미리 구워두고, <see cref="SetDealer"/>/<see cref="SetRisk"/>/
 /// <see cref="SetCountBadge"/>로 상태만 갱신한다.
-/// <br/><br/>
-/// **레이아웃 단순화 — 선(先) 아이콘은 숨겨져도 자리를 계속 차지한다.**
-/// 예전 동적 배치는 선이 없으면(딜러가 아니면) 광이 그 자리로 당겨져
-/// 왔다("가변 개수를 순서대로 흘려 넣는" 방식) — 고정 슬롯에서는 이걸
-/// 그대로 재현하려면 매턴 위치를 다시 계산해야 해서 "고정 슬롯" 취지와
-/// 어긋난다. 대신 선 슬롯은 항상 같은 자리에 있고 <c>SetActive</c>로만
-/// 껐다 켠다 — 딜러가 아닐 때 그 자리가 비어 보이지만(광이 안 당겨짐),
-/// 아이콘이 매턴 위치를 옮겨 다니지 않아 오히려 더 안정적으로 읽힌다.
+///
+/// 2026-08-24(3차) — 사용자가 프리팹 내부를 직접 재설계해서 이름/고점수/
+/// 금액/배지를 <c>Top</c>(이름+금액칩, 폭 전체 스트레치)/<c>Body</c>
+/// (고점수+BadgeArea, HorizontalLayoutGroup)로 재구성하고, BadgeArea
+/// 안의 <c>top</c>(선/광/멍/피)·<c>bot</c>(흔들기/뻑)에도 각각
+/// HorizontalLayoutGroup을 얹어 자동 정렬되게 했다 — 이전 버전의
+/// <see cref="Configure"/>가 모든 자식의 위치·크기를 코드로 직접
+/// 재계산하고 있어서 이 새 레이아웃과 정면으로 충돌했다("코드에서
+/// 포지션이나 크기를 다시 잡나봐" 신고로 발견). 지금은 루트 박스의
+/// 폭만 바꾸고 나머지는 앵커·LayoutGroup에 맡긴다 — 이 프리팹 안의
+/// 정확한 배치(칸 간격·정렬 등)를 바꾸고 싶으면 코드가 아니라 프리팹을
+/// 열어 직접 조정할 것.
 /// </summary>
 public class GoStopStatusBoxView : MonoBehaviour
 {
@@ -66,60 +62,25 @@ public class GoStopStatusBoxView : MonoBehaviour
     public TextMeshProUGUI MoneyText => moneyText;
     public RectTransform BadgeArea => badgeArea;
 
-    // GoStop3PGame.BuildInfoBlock이 예전에 쓰던 것과 동일한 상수 —
-    // 세로 배치(칸 높이·간격)는 폭과 무관하게 고정이다.
-    const float NAME_H = 32f, GOSCORE_H = 28f, MONEY_H = 32f, GAP = 5f;
-    public const float TotalHeight = NAME_H + GOSCORE_H + MONEY_H + GAP * 2f;
+    // GoStop3PGame.BuildInfoBlock이 예전에 쓰던 것과 같은 세로 예산값 —
+    // 루트 박스 높이는 여전히 이 값으로 고정한다(폭과 무관).
+    public const float TotalHeight = 102f;
 
-    // 배지 배치 — GoStop3PGame.DrawBadgeStrip이 예전에 쓰던 것과 동일한
-    // 상수(BADGE_SIZE=34, STEP=BADGE_SIZE+6). 흔듬/뻑 카운트 배지 폭은
-    // GoStopIcons.MakeCountBadge의 고정 공식(labelW=52, pad=4, dotSize=13,
-    // dotGap=4, maxCount=2)에서 그대로 가져왔다.
-    const float BADGE_SIZE = 34f;
-    const float BADGE_STEP = BADGE_SIZE + 6f;
-    const float COUNT_BADGE_W = 52f + 4f + 2 * 13f + 1 * 4f; // 86
-
-    /// <summary>이 박스의 폭만 다시 설정하고 내부 요소(이름/고점수/금액/
-    /// 배지 6종)를 전부 그 폭에 맞춰 재배치한다. 박스 자신의 화면 위치
-    /// (anchoredPosition)는 호출자가 별도로 설정한다 — 이 메서드는 오직
-    /// "내용물이 담기는 폭"만 다룬다.</summary>
+    /// <summary>이 박스의 폭만 다시 설정한다. 2026-08-24(3차) — 사용자가
+    /// 프리팹 안에 앵커 스트레치(Top/Body)+HorizontalLayoutGroup(Body·
+    /// BadgeArea/top·BadgeArea/bot)로 직접 반응형 레이아웃을 구성해 뒀다
+    /// (이전엔 이 메서드가 이름/고점수/금액/배지 6종의 위치·크기를 전부
+    /// 코드로 다시 계산해서, 프리팹에서 사용자가 손으로 잡아둔 배치를
+    /// 매번 덮어쓰는 문제가 있었다 — "코드에서 포지션이나 크기를 다시
+    /// 잡나봐" 신고로 발견). 지금은 루트 폭만 바꾸고, 나머지는 앵커·
+    /// LayoutGroup이 알아서 재배치하게 맡긴다 — 강제 리빌드만 걸어서
+    /// 이번 프레임에 바로 반영되게 한다(안 걸면 다음 레이아웃 패스까지
+    /// 옛 배치로 한 프레임 어긋나 보일 수 있다).</summary>
     public void Configure(float width)
     {
         var rt = (RectTransform)transform;
         rt.sizeDelta = new Vector2(width, TotalHeight);
-
-        float halfW = width * 0.5f;
-        float leftCenterX = -halfW * 0.5f - 4f;
-        float rightCenterX = halfW * 0.5f + 4f;
-        float leftWidth = halfW - 20f;
-
-        SetRect(nameRect, leftCenterX, -7f, leftWidth, NAME_H);
-        SetRect(goScoreRect, leftCenterX, -7f - (NAME_H + GAP), leftWidth, GOSCORE_H);
-
-        float moneyY = -7f - (NAME_H + GAP) - (GOSCORE_H + GAP);
-        var chipSize = moneyChipRect.sizeDelta;
-        SetRect(moneyChipRect, leftCenterX, moneyY, leftWidth, chipSize.y);
-        // 칩 안쪽 아이콘 크기는 고정이고(HwatuUI.BuildMoneyChip과 동일하게
-        // 프리팹에 이미 구워둔 값), 라벨 폭만 칩 폭에 맞춰 다시 늘린다 —
-        // 안 그러면 좁은 좌/우 슬롯에서 금액 텍스트가 잘리거나, 넓은 내
-        // 정보 슬롯에서 라벨 폭이 낭비된다.
-        float iconSize = moneyIconRect.sizeDelta.x;
-        var labelRect = moneyText.rectTransform;
-        labelRect.sizeDelta = new Vector2(leftWidth - iconSize - 8f, labelRect.sizeDelta.y);
-
-        float badgeW = halfW - 12f;
-        SetRect(badgeArea, rightCenterX, -7f, badgeW, TotalHeight);
-
-        // 배지 6종 — badgeArea 로컬 좌표계 기준(badgeArea 자신이 top-center
-        // pivot이라 로컬 (0,0)이 그 상단 중앙). 예전 DrawBadgeStrip의
-        // Place() 누적 좌표 공식을 그대로 고정 슬롯 위치로 옮겼다.
-        float startX = -badgeW * 0.5f + BADGE_SIZE * 0.5f;
-        dealerIcon.anchoredPosition = new Vector2(startX, 0f);
-        for (int i = 0; i < 3; i++)
-            riskIconBg[i].rectTransform.anchoredPosition = new Vector2(startX + BADGE_STEP * (i + 1), 0f);
-        float row2Y = -BADGE_STEP;
-        shakeBadge.anchoredPosition = new Vector2(startX, row2Y);
-        ppeokBadge.anchoredPosition = new Vector2(startX + COUNT_BADGE_W + 8f, row2Y);
+        LayoutRebuilder.ForceRebuildLayoutImmediate(rt);
     }
 
     /// <summary>선(딜러) 여부 — 슬롯 자체는 항상 같은 자리, 표시만 껐다 켠다.</summary>
@@ -162,10 +123,4 @@ public class GoStopStatusBoxView : MonoBehaviour
     // (그 상수들은 이제 이 컴포넌트가 대신 들고 있다).
     public static readonly Color DimBg = new Color(0.106f, 0.133f, 0.267f, 0.95f); // #1B2244 계열 — B안 표면색
     public static readonly Color DimFg = new Color(1f, 1f, 1f, 0.62f);
-
-    static void SetRect(RectTransform r, float x, float y, float w, float h)
-    {
-        r.anchoredPosition = new Vector2(x, y);
-        r.sizeDelta = new Vector2(w, h);
-    }
 }
