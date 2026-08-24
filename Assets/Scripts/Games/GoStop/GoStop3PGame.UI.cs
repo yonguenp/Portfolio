@@ -665,80 +665,46 @@ public partial class GoStop3PGame
     /// 때 그려진 "선" 배지가 그 좌석이 광팔이로 쉬는 지금도 그대로 남아있는
     /// 버그로 나타났다("광팔이한테 선 아이콘이 떠있다" 신고) — 전용 컨테이너를
     /// 두고 매턴 `ClearChildren`하는 것으로 구조적으로 막는다.</summary>
+    /// <summary>2026-08-24: "statusbox 프리펩화해서 디자인 바꾸고 싶다"
+    /// 요청으로, 배경+이름+고점수+금액+배지 영역 전체를 하나의 자기완결형
+    /// 프리팹(<c>GoStopStatusBoxView</c>, <c>Assets/Resources/Prefabs/
+    /// GoStop/UI/StatusBoxView.prefab</c>)으로 교체했다 — 사용자가 그
+    /// 프리팹을 열어 배경 스프라이트·색·폰트를 직접 바꾸면 다음 실행부터
+    /// 바로 반영된다. 씬에 `statusBoxRefs[slot]`이 이미 이 프리팹의
+    /// 인스턴스로 연결돼 있으면 그대로 재사용(위치·너비 우선), 아직
+    /// 프리팹화 이전의 빈 배경 박스만 있으면(과거 세션 산출물) 그 위치만
+    /// 이어받아 새 프리팹 인스턴스로 갈아 끼운다 — 씬을 미리 손보지
+    /// 않아도 자동으로 마이그레이션된다.</summary>
     float BuildInfoBlock(int slot, float centerX, float width, float topY, RectTransform root)
     {
-        // 2026-08-22: "코드로 생성하던 부분(상태창·Cap영역 등)을 씬 기본
-        // 오브젝트로 만들어서 에디터에서 위치/크기를 직접 조정하게 해달라"
-        // 요청 — Back{seat}/Cap{seat}에 이미 있던 "씬에 있으면 재사용,
-        // 없으면 코드로 생성" 패턴을 상태창에도 그대로 확장한다. 씬에
-        // `statusBoxRefs[slot]`이 연결돼 있으면 그 오브젝트의 실제 위치·
-        // 너비를 centerX/width/topY보다 우선한다 — 이후 이 함수 안의 모든
-        // 좌표 계산(이름/고점수/금액/배지 줄)이 그 실제 값을 기준으로 다시
-        // 잡힌다. `MakeStatusBox`가 만드는 박스는 pivot=(0.5,1)(top-center)
-        // 이고 y에 +7 오프셋을 주므로, topY를 역산할 때 그만큼 빼야 한다.
-        var existingBox = statusBoxRefs[slot];
-        if (existingBox != null)
+        var existingBoxRT = statusBoxRefs[slot];
+        var view = existingBoxRT != null ? existingBoxRT.GetComponent<GoStopStatusBoxView>() : null;
+
+        if (existingBoxRT != null)
         {
-            StripStrayLayoutGroup(existingBox);
-            centerX = existingBox.anchoredPosition.x;
-            width = existingBox.sizeDelta.x;
-            topY = existingBox.anchoredPosition.y - 7f;
+            StripStrayLayoutGroup(existingBoxRT);
+            centerX = existingBoxRT.anchoredPosition.x;
+            width = existingBoxRT.sizeDelta.x;
+            topY = existingBoxRT.anchoredPosition.y - 7f; // 프리팹 내부가 -7 오프셋으로 시작하는 것과 대응(GoStopStatusBoxView.Configure 참고)
         }
 
-        const float NAME_H = 32f, GOSCORE_H = 28f, MONEY_H = 32f, GAP = 5f;
-        float totalH = NAME_H + GOSCORE_H + MONEY_H + GAP * 2f;
-        float halfW = width * 0.5f;
-        float leftCenterX = centerX - halfW * 0.5f - 4f;
-        float rightCenterX = centerX + halfW * 0.5f + 4f;
-
-        if (existingBox != null)
+        if (view == null)
         {
-            statusBoxImg[slot] = existingBox.GetComponent<Image>();
-            if (statusBoxImg[slot] == null)
-            {
-                // 사용자가 빈 RectTransform만 놓아뒀을 수 있다 — 배경 이미지가
-                // 없으면 기존 스타일 그대로 붙여준다(위치/크기는 이미 존재하는
-                // 오브젝트의 것을 그대로 쓴다).
-                statusBoxImg[slot] = existingBox.gameObject.AddComponent<Image>();
-                statusBoxImg[slot].sprite = HwatuShapes.RoundedRect(64, 12);
-                statusBoxImg[slot].type = Image.Type.Sliced;
-                statusBoxImg[slot].color = new Color(0.106f, 0.133f, 0.267f, 0.88f);
-                statusBoxImg[slot].raycastTarget = false;
-            }
+            if (existingBoxRT != null) Destroy(existingBoxRT.gameObject); // 프리팹화 이전 산출물 정리
+            view = HwatuUI.InstantiateUIPrefab<GoStopStatusBoxView>("StatusBoxView", root);
+            view.gameObject.name = $"StatusBox{slot}"; // 씬 계층에서 식별 가능하도록(기존 이름 규칙 유지)
+            ((RectTransform)view.transform).anchoredPosition = new Vector2(centerX, topY + 7f);
+            statusBoxRefs[slot] = (RectTransform)view.transform;
         }
-        else
-        {
-            statusBoxImg[slot] = HwatuUI.MakeStatusBox(root, new Vector2(centerX, topY), totalH - 14f, width);
-            statusBoxImg[slot].gameObject.name = $"StatusBox{slot}"; // 다음 실행에서 재사용 가능하도록, 씬 계층에서도 식별 가능하도록
-        }
+        view.Configure(width);
 
-        float cursor = topY;
-        statusText[slot] = HwatuUI.MakeLabel(root, new Vector2(leftCenterX, cursor), new Vector2(halfW - 20f, NAME_H), 21f, Color.white);
-        statusText[slot].textWrappingMode = TextWrappingModes.NoWrap;
-        statusText[slot].alignment = TextAlignmentOptions.MidlineLeft;
-        cursor -= NAME_H + GAP;
+        statusBoxImg[slot] = view.Background;
+        statusText[slot] = view.NameText;
+        goScoreText[slot] = view.GoScoreText;
+        moneyText[slot] = view.MoneyText;
+        badgeArea[slot] = view.BadgeArea;
 
-        goScoreText[slot] = HwatuUI.MakeLabel(root, new Vector2(leftCenterX, cursor), new Vector2(halfW - 20f, GOSCORE_H), 17f, new Color(1f, 1f, 1f, 0.82f));
-        goScoreText[slot].textWrappingMode = TextWrappingModes.NoWrap;
-        goScoreText[slot].alignment = TextAlignmentOptions.MidlineLeft;
-        cursor -= GOSCORE_H + GAP;
-
-        // 2026-08-19: "보유 금액이 상태 박스 바깥에 표시된다" 버그 —
-        // BuildMoneyChip은 자기 자신의 왼쪽 끝을 기준으로 아이콘+글자를
-        // 그리는데(anchorMin=anchorMax=(0,1)), 그 칩의 중심 좌표(pos.x)를
-        // 이름/고점수 줄과 같은 leftCenterX가 아니라 거기서 한 번 더
-        // 왼쪽으로 옮긴 값을 넘기고 있었다 — 칩 전체가 그만큼 왼쪽으로
-        // 밀려나 배경 박스(centerX 기준 width 폭) 밖으로 삐져나왔다.
-        // 이름/고점수와 같은 leftCenterX를 그대로 써야 세 줄의 왼쪽
-        // 끝이 정확히 맞는다.
-        moneyText[slot] = HwatuUI.BuildMoneyChip(root, new Vector2(leftCenterX, cursor), halfW - 20f, iconSize: 24f, fontSize: 19f);
-
-        // 우측 절반 — 상태 아이콘 전용 컨테이너. 세로 예산(totalH) 전체를
-        // 그대로 준다(가로로 다 안 들어가면 DrawBadgeStrip이 알아서 다음
-        // 줄로 감싼다).
-        badgeArea[slot] = HwatuUI.MakeRect($"BadgeArea{slot}", root, new Vector2(halfW - 12f, totalH), new Vector2(rightCenterX, topY));
-
-        return topY - totalH;
+        return topY - GoStopStatusBoxView.TotalHeight;
     }
 
     // 상태 아이콘 크기·색(전 슬롯 공통) — "아이콘이 작고 대비가 약해 안

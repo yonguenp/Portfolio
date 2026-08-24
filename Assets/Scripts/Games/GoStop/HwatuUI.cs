@@ -299,6 +299,17 @@ public static class HwatuUI
         return go.GetComponent<T>();
     }
 
+    /// <summary>좌석 정보 박스 등 팝업·이펙트가 아닌 나머지 UI 프리팹 —
+    /// <see cref="InstantiatePopup{T}"/>/<see cref="InstantiateEffect{T}"/>와
+    /// 같은 패턴, 별도 폴더(UI)만 다르다.</summary>
+    public static T InstantiateUIPrefab<T>(string prefabName, Transform parent) where T : Component
+    {
+        var prefab = Resources.Load<GameObject>("Prefabs/GoStop/UI/" + prefabName);
+        if (prefab == null) { Debug.LogError($"[HwatuUI] UI 프리팹 없음: {prefabName}"); return null; }
+        var go = Object.Instantiate(prefab, parent, false);
+        return go.GetComponent<T>();
+    }
+
     public static void ClearChildren(Transform t)
     {
         for (int i = t.childCount - 1; i >= 0; i--)

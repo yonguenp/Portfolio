@@ -7232,6 +7232,89 @@ constraint였다). 실제로 겹치지는 않지만 여유가 완전히 없어�
 > 실제 와이파이 재연결 시나리오, 재접속한 게스트 화면이 실제로 매끄럽게
 > 복원되는지는 실사용 확인이 필요하다.
 
+## 고스톱 4인판 — 좌석 정보 박스(StatusBox) 프리팹화 + Hand 하단 클리핑 수정 (2026-08-24)
+
+두 가지 요청을 한 세션에서 처리했다 — (1) "MySeat Hand 오브젝트 위치가
+밑으로 처짐, -400 정도로 올려야 할 듯한데 올리면 Cap이랑 겹침", (2)
+"statusbox 프리팹화해서 저장, 디자인 바꾸고 싶음".
+
+### Hand 하단 클리핑 — 실측으로 원인 확정
+
+`GetWorldCorners()`로 재보니 `handArea.bottom = -30`, `ContentArea.bottom = 0`
+— **Hand 컨테이너의 아래쪽 30px가 화면(세이프에어리어) 밖으로 실제로
+잘려나가고 있었다.** `PlayerCap.bottom`이 `Hand.top`과 정확히 0px로 맞닿아
+있어서(이전 세션의 Field 이동 여파로 이미 여유가 소진된 상태), Hand만
+단독으로 올리면 그대로 Cap과 겹친다는 사용자의 진단이 정확했다.
+
+**고친 방법 — StatusBox0/PlayerCap/Hand를 한 덩어리로 46px 위로 밀었다.**
+셋 다 이미 `[[고스톱 4인판 — 오브젝트 참조를 Find()에서 SerializeField로
+전환]]` 세션에서 씬 오브젝트로 구워둔 상태라, `anchoredPosition.y`에
+`+46`만 더해 저장하는 것으로 끝났다(코드 변경 없음, 순수 씬 편집).
+Field/DrawPile/LeftSeat/RightSeat/TopSeat 등 나머지는 전혀 안 건드렸다 —
+사용자가 "myseat hand" 하나만 짚었으므로 범위를 그쪽으로 좁혔다.
+
+- StatusBox0: y=-131 → **-85**
+- PlayerCap: y=-246 → **-200**
+- Hand: y=-446 → **-400**(사용자가 제시한 목표값과 정확히 일치)
+
+검증(`GetWorldCorners()`): `Hand.bottom`이 -30→**16**(양수, 클리핑 해소),
+`Cap.bottom`(-400)과 `Hand.top`(-400)은 여전히 정확히 맞닿아(0px, 겹침
+없음) 셋의 상대 배치 자체는 안 흔들렸다. `Field.bottom`(545)과
+`StatusBox0.top`(새 위치 기준 505) 사이 여유도 40px로 양수 유지.
+
+### StatusBox 프리팹화 — `GoStopStatusBoxView`
+
+예전엔 `BuildInfoBlock`이 매 좌석마다 배경(`HwatuUI.MakeStatusBox`)·이름/
+고점수 라벨(`MakeLabel`)·금액 칩(`BuildMoneyChip`)·배지 영역을 **서로
+다른 GameObject로, 심지어 같은 부모 밑 형제(sibling)로 흩어서** 코드로
+직접 조립했다 — 사용자가 씬에서 "그 박스"를 하나로 선택해 디자인을 바꿀
+방법이 없었다.
+
+**새 자기완결형 프리팹 — `Assets/Resources/Prefabs/GoStop/UI/
+StatusBoxView.prefab`** (+ `GoStopStatusBoxView` 컴포넌트,
+`Assets/Scripts/Games/GoStop/UI/`). 배경+이름+고점수+금액칩+배지영역을
+전부 **이 프리팹 하나의 자식**으로 묶었다(로컬 좌표는 예전 절대좌표
+공식을 박스 중심 기준 상대좌표로 그대로 옮겨 재구성 — 시각 결과는
+동일하다). `Configure(width)` 하나로 좌석마다 다른 폭(내 정보=700,
+상단=520, 좌우=400)에 맞춰 자식들을 다시 배치한다 — 세로 배치(칸 높이·
+간격)는 폭과 무관한 고정 상수(`NAME_H`/`GOSCORE_H`/`MONEY_H`/`GAP`)라
+`Configure`가 안 건드린다.
+
+`HwatuUI`에 `InstantiateUIPrefab<T>`(기존 `InstantiatePopup`/
+`InstantiateEffect`와 같은 패턴, `Resources/Prefabs/GoStop/UI/` 폴더만
+다름)를 추가했다.
+
+`BuildInfoBlock`을 다시 짰다 — `statusBoxRefs[slot]`이 이미
+`GoStopStatusBoxView` 프리팹 인스턴스면 그대로 재사용(`Configure`만
+다시 호출), **프리팹화 이전의 옛 빈 배경 박스만 있으면 그 위치를
+이어받아 파괴하고 새 프리팹 인스턴스로 자동 교체**한다 — 씬을 미리
+손보지 않아도 다음 실행에서 스스로 마이그레이션된다(방어적 폴백).
+
+**씬 자체도 실제 프리팹 인스턴스로 교체해서 저장했다.** 런타임 자동
+교체만으로는 "게임을 실행해야만" 새 오브젝트가 생기고, Edit 모드의
+씬 파일 자체는 여전히 옛 산출물을 들고 있어 프리팹을 열어 고쳐도 씬에
+반영되는지 확인할 길이 없었다 — `PrefabUtility.InstantiatePrefab`(단순
+`Object.Instantiate`가 아니라 이걸 써야 프리팹 연결이 진짜로 유지된
+"파란 아이콘" 인스턴스가 된다)로 MySeat/LeftSeat/RightSeat/TopSeat의
+StatusBox0~3을 전부 실제 프리팹 인스턴스로 교체하고, 기존 위치를
+그대로 이어받은 뒤 `GoStop3PGame.statusBoxRefs` 배열도 새 오브젝트로
+재연결해서 저장했다. 씬 파일에서 `PrefabInstance:` 블록 안에
+`value: StatusBox1` 같은 오버라이드 항목이 생긴 것으로 실제 프리팹
+연결을 확인했다(일반 `GameObject: m_Name:` 라인이 아니라 프리팹 인스턴스
+전용 직렬화 형식으로 바뀌어 있다 — 이제 프리팹을 열어 배경색·폰트 등을
+바꾸면 이 네 인스턴스에 그대로 반영된다).
+
+**검증.** 컴파일 클린 확인 후 라이브 Play 세션에서: 4개 슬롯 전부
+`GetComponent<GoStopStatusBoxView>() != null`(마이그레이션/재연결 확인),
+2인/4인 모드 전환 시 이름·고점수·금액 텍스트가 정상 표시(`나`/`AI-A`/
+`100,000` 등), Hand/Cap 경계 재확인(클리핑 해소 유지), 실제 카드 플레이
+1회씩(2인·4인) 콘솔 예외 없이 완주 + 카드 총량 50 보존까지 확인했다.
+
+> 2인 맞고(`GoStopGame.cs`)는 이번에 안 건드렸다 — `HwatuUI.MakeStatusBox`/
+> `MakeLabel`/`BuildMoneyChip`은 그 파일이 아직 쓰고 있어서 그대로 뒀다
+> (죽은 코드 아님). 2인판도 같은 프리팹화를 원하면 별도로 요청할 것 —
+> 구조가 이미 갖춰져 있어 포팅 자체는 기계적이다.
+
 ## 설정 팝업 · 라이선스 정보
 
 `Assets/Scripts/UI/GameAudioSettings.cs` + `TitleOptionsUI.cs`.
