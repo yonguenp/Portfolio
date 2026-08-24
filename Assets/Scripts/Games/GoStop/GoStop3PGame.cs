@@ -892,6 +892,19 @@ public partial class GoStop3PGame : MonoBehaviour
         }
         else
         {
+            // 2026-08-24: "모드 선택할 때 left/right/top/my seat를 전부
+            // 끈 상태에서 시작해달라, 초기 UI가 데이터 없이 세팅되니
+            // 어색하다" 요청 — 이 시점엔 아직 BuildStaticUI()/
+            // ApplySeatVisibility()가 한 번도 안 불려서, 씬에 저장된
+            // 기본 활성 상태(대개 넷 다 켜짐)가 그대로 노출돼 카드도
+            // 이름도 없는 빈 좌석 상자들이 모드 선택 팝업 뒤에 보이고
+            // 있었다. 인원수를 고르기 전까지는 넷 다 명시적으로 꺼둔다 —
+            // BeginWithSeatCount가 부르는 BuildStaticUI/ApplySeatVisibility가
+            // 실제 인원수에 맞게 다시 켠다.
+            if (leftSeatRef)  leftSeatRef.gameObject.SetActive(false);
+            if (rightSeatRef) rightSeatRef.gameObject.SetActive(false);
+            if (topSeatRef)   topSeatRef.gameObject.SetActive(false);
+            if (mySeatRef)    mySeatRef.gameObject.SetActive(false);
             ShowModeSelectPopup();
         }
     }

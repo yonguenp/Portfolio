@@ -514,7 +514,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: -8823573466675411108, guid: 59a3a575107b14f38a89de209b4e5d6a, type: 3}
+  m_Sprite: {fileID: 21300000, guid: dad3e3be48bf14dce9fbd8e46a2ea3de, type: 3}
   m_Type: 1
   m_PreserveAspect: 0
   m_FillCenter: 1
@@ -2299,6 +2299,10 @@ MonoBehaviour:
   moneyIconRect: {fileID: 4238372647553213435}
   moneyText: {fileID: 1442138010823739926}
   badgeArea: {fileID: 7451217241328975899}
+  normalBgColor: {r: 0.106, g: 0.133, b: 0.267, a: 0.88}
+  normalTextColor: {r: 1, g: 1, b: 1, a: 1}
+  highlightBgColor: {r: 0.929, g: 0.729, b: 0.18, a: 0.95}
+  highlightTextColor: {r: 0.106, g: 0.133, b: 0.267, a: 1}
   dealerIcon: {fileID: 2134398903194371754}
   riskIconBg:
   - {fileID: 2535756611534187384}

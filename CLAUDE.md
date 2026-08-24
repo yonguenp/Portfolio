@@ -3326,6 +3326,29 @@ GameObject SpawnGhostCard(HwatuCard card, Vector3 worldLandingPos)
 > 대입할 것** — `InverseTransformPoint` + `anchoredPosition` 조합은
 > 부모·자식의 피벗이 정확히 같다는 걸 미리 확인하지 않는 한 피할 것.
 
+### 모드 선택 화면에서 4개 좌석을 전부 끄기 (2026-08-24)
+
+"게임시작전 모드선택할때는 left, right, top, my seat를 전부 끈상태에서
+시작해줘. 초기 UI가 데이터없이 세팅되니 어색하다" — 씬을 직접 열었을 때
+(로비/타이틀을 안 거친 테스트 경로)만 뜨는 `ShowModeSelectPopup()` 얘기다.
+LeftSeat/RightSeat/TopSeat/MySeat 4개는 [[고스톱 4인판 — 오브젝트 참조를
+Find()에서 SerializeField로 전환]] 이후 실제 씬 오브젝트라, `Start()`가
+`ApplySeatVisibility()`(=`BuildStaticUI()` 안에서만 호출됨)를 아직 한 번도
+안 부른 이 시점엔 **씬 파일에 저장된 기본 활성 상태**(대개 넷 다 켜짐)가
+그대로 노출돼 있었다 — 카드도 이름도 없는 빈 좌석 상자들이 모드 선택
+팝업 뒤로 보이는 게 "데이터 없이 세팅되니 어색하다"는 지적의 정체.
+
+`Start()`의 `else` 분기(`ShowModeSelectPopup()` 직전)에 4개 seat 참조를
+명시적으로 `SetActive(false)`하는 코드를 추가했다 — 인원수를 고르면
+`BeginWithSeatCount(n)` → `BuildStaticUI()` → `ApplySeatVisibility()`가
+실제 인원수에 맞는 좌석만 다시 켠다(예: 3인 → Left/Right/My 켬, Top 끔).
+
+검증: 라이브 Play에서 모드 선택 팝업이 떠 있는 동안 4개 좌석 전부
+`active=False`인 것 확인 → 3인 버튼 클릭 → `SEATS=3`, Left/Right/My만
+`active=True`(Top은 여전히 False, 3인 규칙과 일치), `statusText`에
+"나"/"AI-A"/"AI-B" 실제 데이터가 정상 채워진 것까지 확인. 컴파일 클린,
+콘솔 예외 0건.
+
 ## UI 리스킨 — Kenney "샘플 느낌" Depth 스킨 (진행 중, 2026-08-18)
 
 "UI가 너무 투박하다, `Assets/Art/Kenney/ui-pack`의 `Sample.png` 느낌으로 바꿔줄
