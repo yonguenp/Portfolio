@@ -3190,6 +3190,65 @@ Prefab화하고 나머지는 명시적으로 남겨둔 이유다. 더 넓히려�
 2인/4인 두 게임의 카드 렌더링 경로 전체(SlamIn 애니메이션·회전 컨테이너·
 하이라이트 링 포함)를 건드리는 큰 리팩터라 이번 세션 범위 밖으로 남겼다.
 
+## 고스톱 전용 UI — `GoStopUIManager.cs` / `GoStopUI.prefab` (2026-08-22 분리, 문서 누락 발견)
+
+**이 프로젝트의 CLAUDE.md 어디에도 이 분리가 기록돼 있지 않았다** — 2026-08-24
+세션에서 "승리 팝업 Overlay의 card 프리팹화" 작업을 하며 `Assets/Prefabs/
+GameUI.prefab`(7개 게임 공용)을 먼저 고쳤다가, 라이브 테스트에서 GoStop
+씬의 루트 오브젝트가 `GameUIManager`가 아니라 **`GoStopUIManager`**라는
+완전히 다른 컴포넌트를 쓰고 있는 걸 뒤늦게 발견해 되돌린 뒤 다시 작업했다.
+
+`GoStopUIManager.cs`(클래스 문서 주석 자체가 근거) — "고스톱 UI 구조가
+가로뷰 4인판·카드/Cap/판돈 표시 등 다른 게임들과 많이 달라서, 공용
+GameUI를 억지로 겸용하는 대신 독립된 클래스+프리팹으로 뗐다"고 2026-08-22
+날짜로 명시돼 있다. `GameUIManager`와 **필드 이름·공개 API를 의도적으로
+동일하게 유지**해서, `GoStopGame.cs`/`GoStop3PGame.UI.cs`의 `ui.ContentArea`/
+`ui?.ShowOverlay(...)` 등 호출부는 타입만 `GameUIManager`→`GoStopUIManager`로
+바뀌었을 뿐 그대로다 — 이후 고스톱 UI를 고칠 때 다른 7개 게임에 영향을
+줄 걱정이 구조적으로 없다.
+
+`GoStopScene`/`GoStop3PScene` 둘 다 `Assets/Prefabs/GoStopUI.prefab`
+(공용, 각자 인스턴스 하나씩) 인스턴스를 쓴다 — `GameUI.prefab`이 아니다.
+**고스톱 관련 UI 작업(오버레이·HUD·토스트·도움말)은 이제부터 `GoStopUI.prefab`
+쪽을 고칠 것** — `GameUI.prefab`을 고치면 GoStop에는 반영이 안 되고
+나머지 7개 게임만 건드리게 된다(정확히 이번에 걸렸던 실수).
+
+> **교훈 — 어느 프리팹/매니저가 실제로 쓰이는지 가정하지 말고 라이브로
+> 확인할 것.** 클래스 이름이 비슷하고(`GameUIManager`/`GoStopUIManager`)
+> 필드·API가 의도적으로 동일해서 문서(CLAUDE.md)만 보고 "GoStop도 당연히
+> GameUI.prefab을 쓰겠지"라고 넘겨짚기 쉬웠다 — 실제로 씬 계층을
+> `FindObjectOfType`/루트 GameObject 컴포넌트 목록으로 확인하고 나서야
+> 잘못 짚었다는 걸 알았다. 특히 이번처럼 "공용 요소를 프리팹화"하는
+> 작업은 잘못된 대상(다른 7개 게임이 쓰는 자산)을 건드리면 파급 범위가
+> 넓으므로, 손대기 전에 반드시 실제 인스턴스의 컴포넌트로 확인할 것.
+
+### Overlay/Card를 별도 중첩 프리팹으로 분리 (2026-08-24)
+
+"승리 팝업 Overlay의 card도 프리펩화 시켜줘" — `GoStopUI.prefab`의
+`Overlay/Card`(제목·점수·서브텍스트·버튼 3개, 게임오버/승리 오버레이의
+실제 카드 패널)를 `PrefabUtility.SaveAsPrefabAssetAndConnect`로
+`Assets/Prefabs/GoStop/UI/OverlayCard.prefab`이라는 별도 에셋으로
+뽑아냈다 — 원래 GameObject를 그 자리에서 곧바로 중첩 프리팹 인스턴스로
+전환하는 API라, `GoStopUIManager`의 `[SerializeField]` 참조(overlayTitle/
+overlayScore/overlaySub/overlayPrimaryBtn 등 10개, 전부 Card의 자식을
+가리킨다)가 전혀 안 끊기고 그대로 유지된다 — 컴포넌트 참조는 재부모화와
+무관하게 같은 GameObject 인스턴스를 계속 가리키기 때문이다. 이제
+`OverlayCard.prefab`을 열면 승리/게임오버 팝업의 실제 모양을 보며 색·
+스프라이트·폰트 크기 등을 직접 디자인할 수 있다(팝업·StatusBox와 같은
+이유 — "코드가 매번 새로 만드는 게 아니라 씬/프리팹에 있는 걸 재사용해야
+에디터에서 편집 가능하다"는 이 세션의 반복된 패턴).
+
+검증: `PrefabUtility.IsPartOfPrefabInstance`로 Card가 실제 중첩 프리팹
+인스턴스가 된 것 확인, `GoStopUIManager`의 10개 필드가 전부 여전히
+Card의 정확한 자식(OverlayTitle/OverlayScore/.../TertiaryBtn/L)을
+가리키는 것 확인, 컴파일 클린 확인, **Play 모드를 완전히 재시작한 뒤**
+(에셋 수정은 이미 인스턴스화된 씬 오브젝트에 소급 반영되지 않으므로)
+`GoStopUIManager.Instance.ShowOverlay(...)`를 실제로 호출해 제목·점수·
+서브텍스트가 정확히 표시되고 버튼이 정상 상호작용 가능한 것까지 확인했다.
+
+`GameUI.prefab`(7개 게임 공용)의 `Overlay/Card`는 이번에 안 건드렸다 —
+같은 요청이 그쪽에도 해당하면 별도로 요청할 것.
+
 ## UI 리스킨 — Kenney "샘플 느낌" Depth 스킨 (진행 중, 2026-08-18)
 
 "UI가 너무 투박하다, `Assets/Art/Kenney/ui-pack`의 `Sample.png` 느낌으로 바꿔줄
