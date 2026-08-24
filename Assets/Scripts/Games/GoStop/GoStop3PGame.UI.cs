@@ -1154,19 +1154,38 @@ public partial class GoStop3PGame
         // 하단 여백 0) 카드가 테두리에 붙어 보였다. 위/아래 8px씩 안쪽으로 뺐다.
         const float CAP_PAD = 8f;
         float baseline = -(CAP_ROW_PITCH * 2f - CAP_H) + CAP_PAD;
-        DrawZone(gwang, -320f, baseline);
-        DrawZone(ddi, -60f, baseline);
-        DrawZone(yeol, -60f, baseline + CAP_ROW_PITCH);
-        DrawZone(pi, 260f, baseline, weighted: true); // 5장이 아니라 5피(쌍피=2) 기준으로 줄바꿈
+        // maxTopY — 이 존이 위로 올라갈 수 있는 한계(존이 소유한 세로 예산의
+        // 위쪽 끝). 광/피는 컨테이너 전체(두 줄 예산)를 혼자 쓰므로 컨테이너
+        // 상단(로컬 Y=0)에서 CAP_PAD만큼만 남기고, 띠/열끗은 같은 칸(-60)을
+        // 절반씩 나눠 쓰므로 서로의 경계(열끗 baseline)를 넘지 못한다.
+        DrawZone(gwang, -320f, baseline, -CAP_PAD);
+        DrawZone(ddi, -60f, baseline, baseline + CAP_ROW_PITCH - 4f);
+        DrawZone(yeol, -60f, baseline + CAP_ROW_PITCH, -CAP_PAD);
+        DrawZone(pi, 260f, baseline, -CAP_PAD, weighted: true); // 5장이 아니라 5피(쌍피=2) 기준으로 줄바꿈
 
-        void DrawZone(List<HwatuCard> cards, float centerX, float baselineY, bool weighted = false)
+        void DrawZone(List<HwatuCard> cards, float centerX, float baselineY, float maxTopY, bool weighted = false)
         {
             var rows = HwatuUI.GroupIntoRows(cards, CAP_MAX_PER_ROW, weighted);
+            // 2026-08-24: "Cap 높이가 낮아져서 피가 3줄 이상이면 바깥으로
+            // 삐져나간다" 신고 — 줄 간격이 항상 고정(CAP_H+4)이라 이 존이
+            // 가진 세로 예산(maxTopY까지)을 넘는 줄 수가 되면 그대로
+            // 컨테이너 밖으로 넘쳤다. 자연 간격으로 다 못 채우는 경우에만
+            // 줄 간격을 좁혀(카드를 위아래로 살짝 겹쳐) 예산 안에 눌러
+            // 담는다 — 필드의 같은 달 카드를 부채처럼 겹쳐 쌓는 것과 같은
+            // 원리. 완전히 겹쳐 안 보이게 되는 것만 최소 간격으로 막는다.
+            const float normalStep = CAP_H + 4f;
+            float step = normalStep;
+            if (rows.Count > 1)
+            {
+                float naturalTop = baselineY + (rows.Count - 1) * normalStep;
+                if (naturalTop > maxTopY)
+                    step = Mathf.Max((maxTopY - baselineY) / (rows.Count - 1), CAP_H * 0.35f);
+            }
             for (int row = 0; row < rows.Count; row++)
             {
                 var rowCards = rows[row];
                 float rowWidth = (rowCards.Count - 1) * CAP_PITCH + CAP_W;
-                float y = baselineY + row * (CAP_H + 4f);
+                float y = baselineY + row * step;
                 for (int i = 0; i < rowCards.Count; i++)
                 {
                     float x = centerX - rowWidth * 0.5f + CAP_W * 0.5f + i * CAP_PITCH;
