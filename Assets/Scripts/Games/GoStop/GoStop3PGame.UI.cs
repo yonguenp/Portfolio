@@ -1112,13 +1112,22 @@ public partial class GoStop3PGame
     /// 부채꼴 공식(<see cref="FIELD_STACK_OFFSET"/> 기준 ±11px)을
     /// 재사용했는데 "아직 안 되는 것 같다, 너무 적나?"는 피드백을 받아
     /// 폐기하고, 매칭되는 카드의 실제 포지션에서 <b>(x+15, y-15) 고정
-    /// 오프셋</b>으로 바꿨다. 매칭 대상이 없으면(그 달 카드가 필드에
-    /// 없음) 오프셋 없이 슬롯 중심 그대로 착지한다 — 기존 동작과 동일.</summary>
-    Vector2 GhostMatchOffset(int month)
-    {
-        bool hasMatch = field.Any(c => c.month == month);
-        return hasMatch ? new Vector2(15f, -15f) : Vector2.zero;
-    }
+    /// 오프셋</b>으로 바꿨다.
+    /// <br/>
+    /// 2026-08-25 3차 — "뻑이 날 3번째 패는 오프셋 30,-30이 적용되는거
+    /// 맞지?" 확인 요청으로, 카드가 몇 장째 그 슬롯에 쌓이는지에 비례해
+    /// 오프셋이 <b>누적</b>되도록 일반화했다(1장째=0, 2장째=15,-15,
+    /// 3장째=30,-30…). 호출부가 "지금 이 카드 앞에 그 슬롯에 이미 몇
+    /// 장이 있는지"(<paramref name="stackCount"/>)를 넘긴다 — 이 함수
+    /// 자체는 <c>field</c>를 더 이상 직접 조회하지 않는다. <c>field</c>를
+    /// 여기서 조회하던 이전 버전은 "손패는 여전히 오프셋 없이 나온다"는
+    /// 버그가 있었다: <see cref="GoStopRules.Resolve"/>가 매칭된 필드
+    /// 카드를 캡처 커밋 *전에* 곧바로 <c>field</c>에서 Remove해버려서,
+    /// r1을 계산한 뒤 field를 다시 보면 이미 매칭 카드가 사라져 있었다
+    /// — 그래서 호출부가 Resolve 호출 *전*에 미리 스냅샷 뜬 개수를
+    /// 넘겨야 한다.</summary>
+    Vector2 GhostMatchOffset(int stackCount) =>
+        stackCount > 0 ? new Vector2(15f, -15f) * stackCount : Vector2.zero;
 
     /// <summary>필드 — 2026-08-18: "패가 나오고 들어가는 과정에서 계속
     /// 포지션이 바뀐다, 한 번 깔리면 고정돼야 한다"는 신고로 알고리즘을

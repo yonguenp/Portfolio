@@ -1865,6 +1865,14 @@ public partial class GoStop3PGame : MonoBehaviour
         bool wasFirstPlay = isFirstPlayOfRound;
         isFirstPlayOfRound = false;
 
+        // 2026-08-25 버그 수정 — "손패는 여전히 오프셋 없이 나온다" 신고.
+        // GoStopRules.Resolve가 매칭된 필드 카드를 곧바로 field에서
+        // Remove해버리므로(캡처를 실제로 커밋하기 전인데도), r1을 계산한
+        // 뒤에 field를 다시 조회하면 이미 매칭 카드가 사라져 있어 "매칭
+        // 없음"으로 잘못 판정됐다. Resolve를 부르기 *전에* 미리 스냅샷을
+        // 떠 둔다 — 이 값이 "손패가 실제로 마주친 필드 카드 수"의 정답이다.
+        int preTurnCardMonthCount = field.Count(c => c.month == card.month);
+
         var r1 = GoStopRules.ResolveWithBomb(card, h, field, out bool bomb);
 
         // 따닥 — 필드에 같은 달이 2장 있어 손패로 그중 하나를 고른 뒤, 같은
@@ -1971,7 +1979,7 @@ public partial class GoStop3PGame : MonoBehaviour
             // 폭탄은 항상 매칭 상황이라(필드에 그 달 카드 1장 필수) 셋 다
             // 같은 매칭 오프셋으로 착지 — 조커는 폭탄 턴엔 절대 안 나오므로
             // (willDraw=false) handActualLanding 갱신은 필요 없다.
-            Vector3 bombLanding = handLandingWorld + (Vector3)GhostMatchOffset(card.month);
+            Vector3 bombLanding = handLandingWorld + (Vector3)GhostMatchOffset(preTurnCardMonthCount);
             foreach (var hc in r1.captured.Take(3))
             {
                 var ghost = SpawnGhostCard(hc, bombLanding);
@@ -1984,7 +1992,7 @@ public partial class GoStop3PGame : MonoBehaviour
         }
         else
         {
-            Vector3 landing = handLandingWorld + (Vector3)GhostMatchOffset(card.month);
+            Vector3 landing = handLandingWorld + (Vector3)GhostMatchOffset(preTurnCardMonthCount);
             handActualLanding = landing;
             var ghost = SpawnGhostCard(card, landing);
             handGhosts.Add(ghost);
@@ -2015,7 +2023,19 @@ public partial class GoStop3PGame : MonoBehaviour
             }
             else
             {
-                Vector3 slot = FieldSlotWorldPos(drawn.month) + (Vector3)GhostMatchOffset(drawn.month);
+                // 뒷패가 손패와 같은 달이면(=뻑이 형성될 수 있는 경우) 그
+                // 슬롯엔 이미 "원래 필드 카드 + 방금 착지한 손패" 두 장이
+                // 논리적으로 쌓여 있다 — 손패 쪽은 Resolve가 field에서
+                // 이미 지워버려서 직접 조회로는 안 잡히므로, 손패 계산 때
+                // 미리 떠 둔 preTurnCardMonthCount에 +1(손패 자신)을 더한다.
+                // 다른 달이면(가장 흔한 경우) field가 그 달에 대해서는
+                // 손패 처리로 전혀 안 건드려졌으니 그냥 직접 세면 된다
+                // ("뻑이 날 3번째 패는 오프셋 30,-30이 맞지?" 확인 요청 —
+                // preTurn(1) + 손패(1) = 2장째 → 2×(15,-15) = (30,-30)).
+                int deckStackCount = (drawn.month == card.month && r1.captured.Count > 0)
+                    ? preTurnCardMonthCount + 1
+                    : field.Count(c => c.month == drawn.month);
+                Vector3 slot = FieldSlotWorldPos(drawn.month) + (Vector3)GhostMatchOffset(deckStackCount);
                 deckGhost = SpawnGhostCard(drawn, slot);
                 yield return StartCoroutine(SlamDown(deckGhost.transform as RectTransform));
                 flyFrom[drawn] = slot;
