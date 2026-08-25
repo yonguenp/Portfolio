@@ -214,6 +214,11 @@ public partial class GoStop3PGame : MonoBehaviour
     // 다시 뺏기지 않으므로 have==2에서 3으로만 진행하지 되돌아가지
     // 않는다 — 한 번 발동하면 그 판 내내 다시 안 울려도 된다.
     readonly HashSet<(int seat, int setIdx)> emergencyFired = new();
+    // 2026-08-25 — 족보 "완성" 이펙트(비상과 별개)가 이번 판에 이미 한 번
+    // 발동했는지. 뻑/폭탄 등으로 카드 여러 장이 한 번에 들어오면 have가
+    // 2를 거치지 않고 곧장 3으로 뛸 수 있어서(비상이 안 뜬 채로 완성)
+    // emergencyFired에 얹어 계산하지 않고 완전히 독립적으로 추적한다.
+    readonly HashSet<(int seat, int setIdx)> achievedFired = new();
     bool isFirstPlayOfRound;
     int currentSeat;
 
@@ -1199,6 +1204,7 @@ public partial class GoStop3PGame : MonoBehaviour
         ppeokCauser.Clear();
         ppeokBonusPi.Clear();
         emergencyFired.Clear();
+        achievedFired.Clear();
         flyFrom.Clear();
         flyViaField.Clear();
         isFirstPlayOfRound = true;
@@ -1582,13 +1588,24 @@ public partial class GoStop3PGame : MonoBehaviour
 
             for (int i = 0; i < EmergencySets.Length; i++)
             {
-                if (emergencyFired.Contains((seat, i))) continue;
+                bool needEmergency = !emergencyFired.Contains((seat, i));
+                bool needAchieve   = !achievedFired.Contains((seat, i));
+                if (!needEmergency && !needAchieve) continue;
                 theirs ??= ActiveSeats().Where(s => s != seat).SelectMany(s => captured[s]).ToList();
                 var (state, have) = GoStopRules.CheckSet(mine, theirs, EmergencySets[i].pred);
-                if (state == GoStopRules.SetState.Alive && have == 2)
+                if (needEmergency && state == GoStopRules.SetState.Alive && have == 2)
                 {
                     emergencyFired.Add((seat, i));
                     FireEmergency(seat, EmergencySets[i].name);
+                }
+                // 2026-08-25 — "완성" 이펙트는 비상과 완전히 독립적으로 판정한다.
+                // 뻑/폭탄처럼 한 번에 여러 장이 들어오면 have가 2를 거치지
+                // 않고 곧장 3으로 뛸 수 있어서(비상이 안 뜨고 바로 완성),
+                // emergencyFired 발동 여부에 기대면 안 된다.
+                if (needAchieve && state == GoStopRules.SetState.Achieved)
+                {
+                    achievedFired.Add((seat, i));
+                    FireAchievement(seat, EmergencySets[i].name);
                 }
             }
 
@@ -1597,14 +1614,23 @@ public partial class GoStop3PGame : MonoBehaviour
             // 3장뿐인 홍단/청단/초단/고도리에 쓰던 CheckSet의 "상대가 1장만
             // 가져도 막힘" 판정을 그대로 쓰면 오탐(과잉 차단)이 난다 —
             // 전용 판정(CheckGwangEmergency)을 따로 쓴다.
-            if (!emergencyFired.Contains((seat, GwangEmergencyIdx)))
             {
-                theirs ??= ActiveSeats().Where(s => s != seat).SelectMany(s => captured[s]).ToList();
-                var (state, have) = CheckGwangEmergency(mine, theirs);
-                if (state == GoStopRules.SetState.Alive && have == 2)
+                bool needEmergency = !emergencyFired.Contains((seat, GwangEmergencyIdx));
+                bool needAchieve   = !achievedFired.Contains((seat, GwangEmergencyIdx));
+                if (needEmergency || needAchieve)
                 {
-                    emergencyFired.Add((seat, GwangEmergencyIdx));
-                    FireEmergency(seat, "3광");
+                    theirs ??= ActiveSeats().Where(s => s != seat).SelectMany(s => captured[s]).ToList();
+                    var (state, have) = CheckGwangEmergency(mine, theirs);
+                    if (needEmergency && state == GoStopRules.SetState.Alive && have == 2)
+                    {
+                        emergencyFired.Add((seat, GwangEmergencyIdx));
+                        FireEmergency(seat, "3광");
+                    }
+                    if (needAchieve && state == GoStopRules.SetState.Achieved)
+                    {
+                        achievedFired.Add((seat, GwangEmergencyIdx));
+                        FireAchievement(seat, "3광");
+                    }
                 }
             }
         }
@@ -1661,6 +1687,43 @@ public partial class GoStop3PGame : MonoBehaviour
 
         ShowTimedToast($"{SeatName(seat)}이(가) {setName} 완성 직전!");
         GoStopAudio.Instance?.Bonus();
+    }
+
+    /// <summary>족보 "완성" 이펙트 — 비상(2/3 경고)과 별개로, 실제로 3장(광은
+    /// 3장 이상)을 채운 순간 한 번 터진다. 같은 프리팹·같은 색을 재사용하되
+    /// (세트 하나당 색 정체성은 유지) 문구를 "비상!"에서 "완성!"으로 바꾸고,
+    /// 파티클을 더 화려하게(20→30개, 총통/광팔이급) 키우고, 사운드도 경고음
+    /// (Bonus)이 아니라 축하음(Win)을 쓴다 — 같은 프레임에 비상과 완성이
+    /// 동시에 뜨는 경우(뻑/폭탄으로 2/3을 건너뛰고 곧장 3장이 들어온 경우)는
+    /// 없다 — CheckEmergencies가 애초에 별개 조건(have==2 vs Achieved)이라
+    /// 한 세트가 같은 판정 안에서 둘 다를 동시에 만족할 수 없다.</summary>
+    void FireAchievement(int seat, string setName)
+    {
+        string prefabName = setName switch
+        {
+            "고도리" => "EffectGodori",
+            "홍단" => "EffectHongdan",
+            "초단" => "EffectChodan",
+            "청단" => "EffectCheongdan",
+            "3광" => "EffectLight",
+            _ => null,
+        };
+        if (prefabName == null || fieldArea == null) return;
+
+        var canvasRoot = fieldArea.parent.parent.parent as RectTransform;
+        Vector2 local = canvasRoot.InverseTransformPoint(fieldArea.position);
+
+        GoStopIcons.SpawnBurst(canvasRoot, local, EmergencyColor(setName), 30);
+
+        var fx = HwatuUI.InstantiateEffect<GoStopEffectPopup>(prefabName, canvasRoot);
+        if (fx != null)
+        {
+            fx.root.anchoredPosition = local;
+            fx.Play($"{SeatName(seat)} {setName} 완성!", EmergencyColor(setName));
+        }
+
+        ShowTimedToast($"{SeatName(seat)}이(가) {setName} 완성!");
+        GoStopAudio.Instance?.Win();
     }
 
     static Color EmergencyColor(string setName) => setName switch

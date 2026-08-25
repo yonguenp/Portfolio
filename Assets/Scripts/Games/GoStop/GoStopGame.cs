@@ -94,6 +94,9 @@ public partial class GoStopGame : MonoBehaviour
     // 조합이 이번 판에 이미 한 번 발동했는지. 4인판과 같은 이유로 좌석당
     // 세트당 한 번만 울린다.
     readonly HashSet<(bool isPlayerSide, int setIdx)> emergencyFired = new();
+    // 2026-08-25 — 족보 "완성" 이펙트(비상과 별개, 4인판과 같은 이유로
+    // emergencyFired와 완전히 독립 추적).
+    readonly HashSet<(bool isPlayerSide, int setIdx)> achievedFired = new();
     const int PPEOK_MONEY_POINTS = 3; // 첫뻑/연뻑 즉시 획득 금액 = 3점 상당(점수엔 안 들어감)
     bool isFirstPlayOfRound; // 이번 판 첫 카드였는지 — 첫뻑/첫따닥 판정용, 소비되면 false
     int playerPpeokStreak, aiPpeokStreak; // 자기 턴에서 연속으로 뻑을 낸 횟수(뻑이 아니면 0으로 리셋) — "연뻑" 보너스 판정용
@@ -565,6 +568,7 @@ public partial class GoStopGame : MonoBehaviour
         ppeokCauser.Clear();
         ppeokBonusPi.Clear();
         emergencyFired.Clear();
+        achievedFired.Clear();
         playerPpeokStreak = aiPpeokStreak = 0;
         playerPpeokTotal = aiPpeokTotal = 0;
         goLeader = null; goReversalCount = 0;
@@ -1247,12 +1251,22 @@ public partial class GoStopGame : MonoBehaviour
         if (mine.Count == 0) return;
         for (int i = 0; i < EmergencySets.Length; i++)
         {
-            if (emergencyFired.Contains((isPlayerSide, i))) continue;
+            bool needEmergency = !emergencyFired.Contains((isPlayerSide, i));
+            bool needAchieve   = !achievedFired.Contains((isPlayerSide, i));
+            if (!needEmergency && !needAchieve) continue;
             var (state, have) = GoStopRules.CheckSet(mine, theirs, EmergencySets[i].pred);
-            if (state == GoStopRules.SetState.Alive && have == 2)
+            if (needEmergency && state == GoStopRules.SetState.Alive && have == 2)
             {
                 emergencyFired.Add((isPlayerSide, i));
                 FireEmergency(isPlayerSide, EmergencySets[i].name);
+            }
+            // 2026-08-25 — "완성" 이펙트는 비상과 완전히 독립적으로 판정한다.
+            // 뻑/폭탄처럼 한 번에 여러 장이 들어오면 have가 2를 거치지 않고
+            // 곧장 3으로 뛸 수 있어서 emergencyFired 발동 여부에 기대면 안 된다.
+            if (needAchieve && state == GoStopRules.SetState.Achieved)
+            {
+                achievedFired.Add((isPlayerSide, i));
+                FireAchievement(isPlayerSide, EmergencySets[i].name);
             }
         }
 
@@ -1260,13 +1274,22 @@ public partial class GoStopGame : MonoBehaviour
         // 되는 "풀에서 N장" 조건이라 CheckSet의 "상대가 1장만 가져도 막힘"
         // 판정(정확히 3장뿐인 홍단류 전용)을 그대로 못 쓴다 — 4인판과 같은
         // 전용 판정을 쓴다.
-        if (!emergencyFired.Contains((isPlayerSide, GwangEmergencyIdx)))
         {
-            var (state, have) = CheckGwangEmergency(mine, theirs);
-            if (state == GoStopRules.SetState.Alive && have == 2)
+            bool needEmergency = !emergencyFired.Contains((isPlayerSide, GwangEmergencyIdx));
+            bool needAchieve   = !achievedFired.Contains((isPlayerSide, GwangEmergencyIdx));
+            if (needEmergency || needAchieve)
             {
-                emergencyFired.Add((isPlayerSide, GwangEmergencyIdx));
-                FireEmergency(isPlayerSide, "3광");
+                var (state, have) = CheckGwangEmergency(mine, theirs);
+                if (needEmergency && state == GoStopRules.SetState.Alive && have == 2)
+                {
+                    emergencyFired.Add((isPlayerSide, GwangEmergencyIdx));
+                    FireEmergency(isPlayerSide, "3광");
+                }
+                if (needAchieve && state == GoStopRules.SetState.Achieved)
+                {
+                    achievedFired.Add((isPlayerSide, GwangEmergencyIdx));
+                    FireAchievement(isPlayerSide, "3광");
+                }
             }
         }
     }
@@ -1315,12 +1338,46 @@ public partial class GoStopGame : MonoBehaviour
         GoStopAudio.Instance?.Bonus();
     }
 
+    /// <summary>족보 "완성" 이펙트 — 4인판 FireAchievement와 같은 이유(비상과
+    /// 독립 판정, 같은 프리팹·색을 재사용하되 문구를 "완성!"으로, 파티클을
+    /// 더 화려하게, 사운드를 축하음(Win)으로).</summary>
+    void FireAchievement(bool isPlayerSide, string setName)
+    {
+        string prefabName = setName switch
+        {
+            "고도리" => "EffectGodori",
+            "홍단" => "EffectHongdan",
+            "초단" => "EffectChodan",
+            "청단" => "EffectCheongdan",
+            "3광" => "EffectLight",
+            _ => null,
+        };
+        if (prefabName == null || fieldArea == null) return;
+
+        var canvasRoot = fieldArea.parent as RectTransform;
+        Vector2 local = fieldArea.anchoredPosition + new Vector2(0f, -60f);
+
+        GoStopIcons.SpawnBurst(canvasRoot, local, EmergencyColor(setName), 30);
+
+        var fx = HwatuUI.InstantiateEffect<GoStopEffectPopup>(prefabName, canvasRoot);
+        if (fx != null)
+        {
+            fx.root.anchoredPosition = local;
+            string who = isPlayerSide ? "" : "상대 ";
+            fx.Play($"{who}{setName} 완성!", EmergencyColor(setName));
+        }
+
+        ShowTimedToast($"{(isPlayerSide ? "" : "상대가 ")}{setName} 완성!");
+        GoStopAudio.Instance?.Win();
+    }
+
     static Color EmergencyColor(string setName) => setName switch
     {
         "고도리" => new Color(0.949f, 0.718f, 0.020f),
         "홍단"   => new Color(0.906f, 0.298f, 0.235f),
         "초단"   => new Color(0.180f, 0.800f, 0.443f),
         "청단"   => new Color(0.231f, 0.616f, 0.910f),
+        "3광"    => new Color(0.95f, 0.78f, 0.15f), // 4인판과 동일 — 고도리와 톤을 살짝 갈랐다
         _        => Color.white,
     };
 

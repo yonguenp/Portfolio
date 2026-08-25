@@ -8126,3 +8126,48 @@ Overlay와 같은 이유로 손 안 댐), `OverlaySub`는 이미 강조색(#EDBA
 **검증 — Play 모드 라이브.** `GoStopUIManager.Instance.ShowOverlay(...)`를
 직접 호출해 카드/버튼 스프라이트·색·라벨이 기대값과 정확히 일치하는 것을
 확인했다. 콘솔 에러 0건 — C# 변경 없이 프리팹만 수정했다.
+
+## 고스톱 — 족보 "완성" 이펙트 추가 (2026-08-25)
+
+"비상 이펙트(2/3 경고)는 있는데 족보를 완성했을 때 이펙트가 없다"는
+지적으로 추가했다. `CheckSet`/`CheckGwangEmergency`가 이미 `Achieved`
+상태를 돌려주고 있었지만(`have>=need`), 그동안 그 값은 배지 텍스트 색
+(`#7CE38B`)에만 쓰이고 별도 팝업/파티클은 없었다 — 그 자리를 채웠다.
+
+**`emergencyFired`와 완전히 독립된 `achievedFired` 추적 집합을 새로
+뒀다** — 둘을 하나로 묶지 않은 이유: 뻑·폭탄처럼 카드 여러 장이 한
+번에 들어오면 `have`가 2를 거치지 않고 곧장 3으로 뛸 수 있어서, "비상이
+이미 떴어야 완성도 뜬다"는 전제를 걸면 그 경우(가장 극적인 순간인데도)
+완성 이펙트가 아예 안 뜬다. `CheckEmergencies()`(4인판)/
+`CheckEmergencySide()`(2인판, GoStop3PGame으로 통합되기 전 레거시)
+양쪽에서 세트별로 `CheckSet`/`CheckGwangEmergency`를 **한 번만** 호출해
+그 결과로 비상(`Alive && have==2`)과 완성(`Achieved`) 두 조건을
+동시에 검사하도록 재구성했다 — 호출 두 번으로 안 갈랐다.
+
+**`FireAchievement`는 `FireEmergency`와 같은 프리팹·같은 세트별 색을
+재사용**(`EffectGodori`/`Hongdan`/`Chodan`/`Cheongdan`/`Light`,
+`GoStopEffectPopup` 공유) — 새 리소스를 안 늘리고 문구·연출 강도만
+바꿔 "경고"와 "축하"를 구분했다: 문구 "비상!"→"완성!", 파티클
+20→30개(총통/광팔이급으로 더 화려하게), 사운드 `Bonus()`(경고음)→
+`Win()`(축하음).
+
+> **부수 수정 — 2인판(`GoStopGame.cs`) `EmergencyColor`에 "3광" 케이스가
+> 빠져 있었다.** 4인판(`GoStop3PGame.cs`)에는 있는데 2인판엔 없어서
+> 3광 이펙트가 흰색(`default`)으로 나올 뻔했다 — 같은 함수를 이번에
+> `FireAchievement`가 마저 참조하게 되면서 발견해 추가했다(4인판과
+> 동일한 값). 기존 3광 비상 이펙트에도 소급 적용되는 수정이다.
+
+**검증 — Play 모드 라이브, 4인판·2인판(레거시 `GoStopScene`) 둘 다.**
+초단 3장/고도리 3장/3광 3장을 강제로 채운 뒤 `CheckEmergencies()`를
+직접 호출해: (1) `achievedFired`에 정확히 기록되는 것, (2) 재호출해도
+중복 발동 안 하는 것, (3) 이펙트 팝업 라벨이 "완성!"으로, 토스트도
+동일 문구로 뜨는 것, (4) 색이 `EmergencyColor`와 정확히 일치하는 것을
+확인했다. 별도로 `have==2`(아직 미완성) 케이스에서는 `emergencyFired`만
+기록되고 `achievedFired`는 그대로 0인 것도 확인해 — 두 조건이 서로
+잘못 새지 않는 것까지 검증했다. 콘솔 에러 0건.
+
+> **함정 재확인 — Play 모드 테스트 후 `EffectCheongdan.prefab`이 또
+> 원인 불명으로 변경돼 있었다**(이전 세션에도 같은 파일에서 겪은
+> 것과 동일 패턴). 이번 세션에서 그 프리팹을 전혀 안 건드렸으므로
+> `git checkout --`로 되돌렸다 — 이 프로젝트에서 반복 확인된 환경
+> 특성이지 실제 변경이 아니다.
