@@ -8102,3 +8102,27 @@ CLAUDE.md 기록상 사용자가 최근 세션에 Unity 에디터에서 직접 �
 BrickBreaker3D 조준 UI, GoStop StatusBox까지 프로젝트 전역에 적용됐다.
 3D 렌더링(BrickBreaker)과 카드 아트·펠트 배경(GoStop)만 장르 특성상
 의도적으로 예외로 남겼다.
+
+## UI 전면 통일 — Kenney 밝은 Depth 스킨 (2026-08-25, Phase 5: GoStop Overlay/Card)
+
+"overlay에 card도 다른 팝업과 비슷한 디자인으로 고쳐줄래" 요청. Phase 4에서
+StatusBox는 바꿨지만 승패 오버레이(`Assets/Prefabs/GoStop/UI/OverlayCard.prefab`,
+`GoStopUIManager.ShowOverlay`가 띄우는 그 카드)는 여전히 예전 B안 다크 톤
+(`panel` 어두운 남색 + `button` 틴트)이었다 — GoStop의 다른 팝업 7개
+(ShakeConfirmPopup 등, `Body=panel_body`/버튼=`button_depth_*`)와 스타일이
+안 맞았다.
+
+**변경.** `OverlayCard` 배경 `panel`→`PanelBody`(흰색). `PrimaryBtn`/
+`SecondaryBtn`/`TertiaryBtn` `button`→`DepthButton`(초록/회색/노랑, 다른
+7개 게임의 공용 `GameUI.prefab` Overlay와 동일한 역할별 배색 — Phase 1
+때 이미 정한 규칙을 그대로 재사용). 버튼 라벨은 Depth 버튼 위라 흰색
+고정. `OverlayScore`는 어두운 남색으로 뒤집었다. **`OverlayTitle`/
+`OverlaySub`는 그대로 뒀다** — `OverlayTitle`은 승리(금)/패배(빨강) 등
+게임 상태를 매 호출마다 동적으로 전달받는 색이라(Phase 1의 GameUI.prefab
+Overlay와 같은 이유로 손 안 댐), `OverlaySub`는 이미 강조색(#EDBA2E,
+금액 표시용)이라 흰 카드 위에서도 대비가 충분해서 "강조색은 하나" 원칙에
+맞게 그대로 유지했다.
+
+**검증 — Play 모드 라이브.** `GoStopUIManager.Instance.ShowOverlay(...)`를
+직접 호출해 카드/버튼 스프라이트·색·라벨이 기대값과 정확히 일치하는 것을
+확인했다. 콘솔 에러 0건 — C# 변경 없이 프리팹만 수정했다.
