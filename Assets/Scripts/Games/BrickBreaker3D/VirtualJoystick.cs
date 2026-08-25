@@ -110,8 +110,14 @@ public class VirtualJoystick : MonoBehaviour
         var bRT    = baseGO.AddComponent<RectTransform>();
         baseGO.transform.SetParent(canvas.transform, false);
 
+        // 2026-08-25 함정 발견 — MakeRingSprite(size, color, thickness)의
+        // color 인자는 UISkin 통합 이전 잔재라 실제로는 무시된다(UISkin.
+        // CircleLine만 돌려줌). 그래서 .color를 따로 안 세팅하면 Image
+        // 기본값(불투명 흰색)으로 남아 반투명 오버레이여야 할 베이스 링이
+        // 불투명하게 그려지고 있었다 — 명시적으로 세팅해서 고쳤다.
         var baseImg = baseGO.AddComponent<Image>();
         baseImg.sprite        = MakeRingSprite(160, new Color(1f, 1f, 1f, 0.55f), 0.12f);
+        baseImg.color         = new Color(1f, 1f, 1f, 0.55f);
         baseImg.raycastTarget = false;
         bRT.sizeDelta = new Vector2(baseSize, baseSize);
         bRT.anchorMin = bRT.anchorMax = new Vector2(0.5f, 0.5f);
@@ -121,8 +127,12 @@ public class VirtualJoystick : MonoBehaviour
         var kRT    = knobGO.AddComponent<RectTransform>();
         knobGO.transform.SetParent(baseGO.transform, false);
 
+        // 2026-08-25 — 놉은 위치만 바뀌는 고정 단일 상태(원형)라 Depth로
+        // 전환. 베이스 링은 외곽선 도넛 모양이라 Depth 세트에 대응 스프라이트가
+        // 없어(RoundDepthButton은 꽉 찬 원) 기존 CircleLine 틴트를 그대로 둔다.
         var knobImg = knobGO.AddComponent<Image>();
-        knobImg.sprite        = MakeCircleSprite(128, new Color(1f, 1f, 1f, 0.55f));
+        knobImg.sprite        = UISkin.RoundDepthButton(UISkin.Accent.Grey);
+        knobImg.color         = new Color(1f, 1f, 1f, 0.55f);
         knobImg.raycastTarget = false;
         kRT.sizeDelta        = new Vector2(knobSize, knobSize);
         kRT.anchoredPosition = Vector2.zero;

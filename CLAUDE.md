@@ -7998,3 +7998,49 @@ CLAUDE.md에 이미 문서화된 값과 일치, 1to50은 이번에 처음 실측
 프레임/셀 스프라이트·색이 기대값과 일치하는지, 상태 전환(1to50 정답
 탭, 1010 슬롯 선택, ColorSort 튜브 선택)이 실제로 스프라이트를
 바꾸는지 직접 호출해 확인했다. 4개 씬 전부 콘솔 에러 0건.
+
+## UI 전면 통일 — Kenney 밝은 Depth 스킨 (2026-08-25, Phase 3: BrickBreaker3D 조준 UI)
+
+3D 월드 렌더링(브릭·공·터널·그림자)은 명시적으로 예외 — 화면 위에 얹힌
+2D 스크린스페이스 컨트롤(조준 모드 토글·깊이 슬라이더·발사 버튼·
+게임모드/파워업 칩·가상 조이스틱)만 대상이다. `BrickBreakerRankUI.cs`는
+Phase 1에서 이미 끝났다.
+
+**"몇 가지 고정 상태" vs "연속값" 기준을 여기서도 그대로 적용했다.**
+
+| 요소 | 파일 | 전환 |
+|---|---|---|
+| 모드 토글 세그먼트(터치/패드) | `BrickBreakerAimUI.cs` | 선택된 쪽만 `DepthButton(Blue)`로 강하게, 안 선택된 쪽은 기존 반투명 흰색 오버레이 유지 — 스프라이트를 상태별로 교체(틴트 아님) |
+| 발사 버튼 | 〃 | `RoundDepthButton(Red)`, 오렌지 틴트 대신 흰색+알파(평시 0.75/눌림 1.0)로 눌림 표시 |
+| 깊이 슬라이더 핸들 | 〃 | `RoundDepthButton(Grey)` — 위치만 바뀌는 고정 단일 상태라 전환. 트랙·필은 연속값(깊이 0~1)이라 기존 틴트 유지 |
+| 조이스틱 놉 | `VirtualJoystick.cs` | `RoundDepthButton(Grey)` — 원형 고정 상태. 베이스 링은 도넛(외곽선) 모양이라 Depth 세트에 대응 스프라이트가 없어(`RoundDepthButton`은 꽉 찬 원) `CircleLine` 틴트 유지 |
+| 게임모드/파워업 칩, 모드 토글 배경, 슬라이더 트랙/필 | 〃 | 정보 표시용 반투명 오버레이라 변경 없음(아래 버그 수정만 적용) |
+
+새 `SetSprite(Image, Sprite)` 헬퍼를 `AimUI.AddImage`에서 뽑아 재사용 —
+`raycastTarget`은 이 파일 전체가 raw 입력 방식(HUD 레이캐스트를 안
+가로채야 함)이라 **절대 안 건드리고** 스프라이트·색만 상태별로
+교체한다.
+
+> **버그 발견 — Depth 전환과 무관하게 이미 있던 함정.** 이번 작업
+> 도중 `ModeToggle`/`ZTrack`/`ZFill`/`GameModeChip`/`StatChip`(AimUI)와
+> 조이스틱 베이스 링(`VirtualJoystick`)이 전부 **의도한 반투명이 아니라
+> 불투명 흰색으로 그려지고 있었다**는 걸 리플렉션 검증 중 발견했다.
+> 원인: `RoundedSprite(size, color)`/`MakeCircleSprite(size, color)`/
+> `MakeRingSprite(size, color, thickness)` 같은 로컬 헬퍼들이 예전
+> UISkin 통합 리팩터 때 `UISkin.Panel`/`UISkin.Circle`/`UISkin.CircleLine`을
+> 그냥 돌려주는 한 줄로 축소되면서 **`color` 매개변수 자체가 조용히
+> 무시되게** 됐는데, 호출부는 여전히 `AddImage(rt, RoundedSprite(48,
+> 원하는색))`처럼 그 색을 "전달했다고" 믿고 있었다 — 실제로는 `AddImage`가
+> `.color`를 따로 세팅하지 않아 `Image` 기본값(불투명 흰색)이 그대로
+> 남았다. 스크린샷 검증이 이 프로젝트에서 신뢰할 수 없다는 게 왜
+> 문제였는지 보여주는 사례 — 육안으로는 "반투명 오버레이가 잘 떠
+> 있다"고 착각하기 쉬운데, 실제로는 불투명 흰 판이 3D 게임 위를 덮고
+> 있었을 것이다. **`AddImage(...)`.color = 원래 의도한 값을 명시적으로
+> 다시 세팅해서 고쳤다** — Depth 전환 대상이 아닌 요소들도 전부 포함
+> (모드 토글 배경 0.14, 트랙 0.16, 필 0.5 파랑, 게임모드 칩 0.13, 스탯
+> 칩 0.11, 조이스틱 베이스 링 0.55).
+
+**검증 — Play 모드 라이브 리플렉션.** `GetComponentsInChildren<Image>`로
+AimUI/조이스틱 전체를 훑어 스프라이트·색·`raycastTarget`을 확인했고,
+`SetMode(Pad)`를 직접 호출해 토글 세그먼트가 실제로 스프라이트를
+교체하는 것까지 확인했다. 콘솔 에러 0건.

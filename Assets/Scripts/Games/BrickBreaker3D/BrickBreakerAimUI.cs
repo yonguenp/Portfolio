@@ -154,7 +154,12 @@ public class BrickBreakerAimUI : MonoBehaviour
         toggleRT.pivot            = new Vector2(1f, 0.5f);
         toggleRT.sizeDelta        = new Vector2(TOGGLE_W, TOGGLE_H);
         toggleRT.anchoredPosition = new Vector2(-330f, -58f);   // HUD 세로 중앙
-        AddImage(toggleRT, RoundedSprite(48, new Color(1f, 1f, 1f, 0.14f)));
+        // 2026-08-25 함정 발견 — RoundedSprite(size, color)의 color 인자는
+        // UISkin 통합 이전 잔재라 실제로는 무시된다(UISkin.Panel만 돌려줌).
+        // 그래서 여기 AddImage들이 전부 불투명 흰색으로 나오고 있었다(반투명
+        // 오버레이였어야 할 배경들이 전부 opaque white였던 것) — 원래 의도한
+        // 값을 AddImage 반환값에 명시적으로 다시 세팅해서 고쳤다.
+        AddImage(toggleRT, RoundedSprite(48, new Color(1f, 1f, 1f, 0.14f))).color = new Color(1f, 1f, 1f, 0.14f);
 
         touchSegRT = MakeRect("SegTouch", toggleRT, new Vector2(0f, 0f), new Vector2(0.5f, 1f));
         touchSegRT.offsetMin = new Vector2(5f, 5f);
@@ -175,18 +180,21 @@ public class BrickBreakerAimUI : MonoBehaviour
         trackRT.pivot            = new Vector2(1f, 0.5f);
         trackRT.sizeDelta        = new Vector2(TRACK_W, TRACK_H);
         trackRT.anchoredPosition = new Vector2(-34f, 170f);
-        AddImage(trackRT, RoundedSprite(48, new Color(1f, 1f, 1f, 0.16f)));
+        AddImage(trackRT, RoundedSprite(48, new Color(1f, 1f, 1f, 0.16f))).color = new Color(1f, 1f, 1f, 0.16f);
 
         fillRT = MakeRect("ZFill", trackRT, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
         fillRT.pivot            = new Vector2(0.5f, 0f);
         fillRT.sizeDelta        = new Vector2(TRACK_W - 26f, TRACK_H * 0.45f);
         fillRT.anchoredPosition = Vector2.zero;
-        AddImage(fillRT, RoundedSprite(48, new Color(0.45f, 0.75f, 1f, 0.5f)));
+        AddImage(fillRT, RoundedSprite(48, new Color(0.45f, 0.75f, 1f, 0.5f))).color = new Color(0.45f, 0.75f, 1f, 0.5f);
 
         handleRT = MakeRect("ZHandle", trackRT, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
         handleRT.pivot     = new Vector2(0.5f, 0.5f);
         handleRT.sizeDelta = new Vector2(TRACK_W + 22f, 54f);
-        AddImage(handleRT, RoundedSprite(48, new Color(1f, 1f, 1f, 0.92f)));
+        // 2026-08-25 — 핸들은 위치만 바뀌는 고정 단일 상태라 Depth로 전환.
+        // 트랙/필은 연속값(깊이 0~1)을 나타내야 해서 기존 틴트 체계 유지.
+        var handleImg = AddImage(handleRT, UISkin.RoundDepthButton(UISkin.Accent.Grey));
+        handleImg.color = new Color(1f, 1f, 1f, 0.92f);
 
         var zl = MakeLabel(trackRT, L("js_label_depth", "깊이"), 26f);
         // 트랙 위에 두면 HUD의 BEST와 겹친다 → 아래로
@@ -200,8 +208,11 @@ public class BrickBreakerAimUI : MonoBehaviour
         fireRT.pivot            = new Vector2(0.5f, 0f);
         fireRT.sizeDelta        = new Vector2(FIRE_D, FIRE_D);
         fireRT.anchoredPosition = new Vector2(0f, 78f);
-        fireImg = AddImage(fireRT, CircleSprite(160, Color.white));
-        fireImg.color = new Color(1f, 0.42f, 0.20f, 0.75f);
+        // 2026-08-25 — 발사 버튼은 눌림/평시 2상태뿐이라 RoundDepthButton으로
+        // 전환. Depth 스프라이트는 색이 이미 구워져 있어 오렌지 틴트 대신
+        // 흰색+알파로 눌림(1.0)/평시(0.75)를 구분한다(기존 알파 패턴 유지).
+        fireImg = AddImage(fireRT, UISkin.RoundDepthButton(UISkin.Accent.Red));
+        fireImg.color = new Color(1f, 1f, 1f, 0.75f);
         var fl = MakeLabel(fireRT, L("btn_fire", "발사"), 32f);
         Stretch(fl.rectTransform);
 
@@ -211,7 +222,7 @@ public class BrickBreakerAimUI : MonoBehaviour
         gameModeRT.pivot            = new Vector2(0f, 1f);
         gameModeRT.sizeDelta        = new Vector2(196f, 52f);
         gameModeRT.anchoredPosition = new Vector2(22f, -132f);
-        AddImage(gameModeRT, RoundedSprite(48, new Color(1f, 1f, 1f, 0.13f)));
+        AddImage(gameModeRT, RoundedSprite(48, new Color(1f, 1f, 1f, 0.13f))).color = new Color(1f, 1f, 1f, 0.13f);
         gameModeTxt = MakeLabel(gameModeRT, "", 24f);
         Stretch(gameModeTxt.rectTransform);
         RefreshGameModeChip();
@@ -221,7 +232,7 @@ public class BrickBreakerAimUI : MonoBehaviour
         statRT.pivot            = new Vector2(0f, 1f);
         statRT.sizeDelta        = new Vector2(370f, 46f);
         statRT.anchoredPosition = new Vector2(22f, -192f);   // 모드 칩(-132, 높이 52) 아래
-        AddImage(statRT, RoundedSprite(48, new Color(1f, 1f, 1f, 0.11f)));
+        AddImage(statRT, RoundedSprite(48, new Color(1f, 1f, 1f, 0.11f))).color = new Color(1f, 1f, 1f, 0.11f);
         statTxt = MakeLabel(statRT, "", 23f);
         Stretch(statTxt.rectTransform);
         statRT.gameObject.SetActive(false);
@@ -238,12 +249,16 @@ public class BrickBreakerAimUI : MonoBehaviour
         trackRT.gameObject.SetActive(pad);
         fireRT.gameObject.SetActive(pad);
 
-        var on  = new Color(1f, 1f, 1f, 0.85f);
+        // 2026-08-25 — Kenney 밝은 Depth 스킨: 선택된 세그먼트만 DepthButton
+        // 파랑으로 강하게 표시하고, 선택 안 된 쪽은 기존처럼 거의 안 보이는
+        // 반투명 흰색 오버레이로 남겨 "안 눌림"을 자연스럽게 표현한다.
         var off = new Color(1f, 1f, 1f, 0.08f);
-        touchSegImg.color = pad ? off : on;
-        padSegImg.color   = pad ? on  : off;
-        touchSegTxt.color = pad ? new Color(1f, 1f, 1f, 0.75f) : new Color(0.05f, 0.06f, 0.12f, 1f);
-        padSegTxt.color   = pad ? new Color(0.05f, 0.06f, 0.12f, 1f) : new Color(1f, 1f, 1f, 0.75f);
+        SetSprite(touchSegImg, pad ? UISkin.Panel : UISkin.DepthButton(UISkin.Accent.Blue));
+        touchSegImg.color = pad ? off : Color.white;
+        SetSprite(padSegImg, pad ? UISkin.DepthButton(UISkin.Accent.Blue) : UISkin.Panel);
+        padSegImg.color = pad ? Color.white : off;
+        touchSegTxt.color = pad ? new Color(1f, 1f, 1f, 0.75f) : Color.white;
+        padSegTxt.color   = pad ? Color.white : new Color(1f, 1f, 1f, 0.75f);
 
         RefreshBlockedZones();
     }
@@ -359,7 +374,7 @@ public class BrickBreakerAimUI : MonoBehaviour
             if (fireScreen.Contains(pos)) FireRequested = true;
         }
 
-        fireImg.color = new Color(1f, 0.42f, 0.20f, FireRequested ? 1f : 0.75f);
+        fireImg.color = new Color(1f, 1f, 1f, FireRequested ? 1f : 0.75f);
     }
 
     void SetZFromScreen(Vector2 screenPos, Rect track)
@@ -403,11 +418,18 @@ public class BrickBreakerAimUI : MonoBehaviour
     static Image AddImage(RectTransform rt, Sprite sprite)
     {
         var img = rt.gameObject.AddComponent<Image>();
-        img.sprite        = sprite;
-        img.type          = sprite != null && sprite.border.sqrMagnitude > 0f
-                          ? Image.Type.Sliced : Image.Type.Simple;
+        SetSprite(img, sprite);
         img.raycastTarget = false;
         return img;
+    }
+
+    /// <summary>기존 raycastTarget은 손대지 않고 스프라이트만 갈아끼운다
+    /// (상태별 Depth 스프라이트 교체용 — <see cref="ApplyMode"/> 등).</summary>
+    static void SetSprite(Image img, Sprite sprite)
+    {
+        img.sprite = sprite;
+        img.type   = sprite != null && sprite.border.sqrMagnitude > 0f
+                   ? Image.Type.Sliced : Image.Type.Simple;
     }
 
     static TextMeshProUGUI MakeLabel(Transform parent, string text, float size)
