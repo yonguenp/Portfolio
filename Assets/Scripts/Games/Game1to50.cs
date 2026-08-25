@@ -28,6 +28,16 @@ public class Game1to50 : MonoBehaviour
     {
         foreach (Transform c in gridContainer) Destroy(c.gameObject);
 
+        // 2026-08-25 — Kenney 밝은 Depth 스킨 통일(Phase 2). 이 게임은 셀
+        // 색상이 데이터(숫자)를 안 나타내고 상태(기본/정답)만 나타내므로
+        // Depth 스프라이트로 완전히 전환할 수 있었다(2048/1010과 다른 점).
+        var frameGo = new GameObject("Frame");
+        frameGo.transform.SetParent(gridContainer, false);
+        var frameRT = frameGo.AddComponent<RectTransform>();
+        frameRT.anchorMin = Vector2.zero; frameRT.anchorMax = Vector2.one;
+        frameRT.offsetMin = Vector2.zero; frameRT.offsetMax = Vector2.zero;
+        UISkin.Apply(frameGo.AddComponent<Image>(), UISkin.PanelBody);
+
         var nums = Enumerable.Range(1, 50).ToList();
         for (int i = 49; i > 0; i--)
         {
@@ -42,8 +52,8 @@ public class Game1to50 : MonoBehaviour
             var go = new GameObject($"N{n}");
             go.transform.SetParent(gridContainer, false);
 
-            cellByNum[n] = UISkin.Apply(go.AddComponent<Image>(), UISkin.Panel);
-            cellByNum[n].color = new Color(.13f, .18f, .38f);
+            cellByNum[n] = UISkin.Apply(go.AddComponent<Image>(), UISkin.DepthButton(UISkin.Accent.Grey));
+            cellByNum[n].color = Color.white;
 
             go.AddComponent<Button>().onClick.AddListener(() => OnTap(num));
 
@@ -70,13 +80,13 @@ public class Game1to50 : MonoBehaviour
         ui?.SetBest(best < float.MaxValue ? $"최고 {best:F1}s" : "-");
         UpdateHint();
         for (int i = 1; i <= 50; i++)
-            if (cellByNum[i]) cellByNum[i].color = new Color(.13f, .18f, .38f);
+            if (cellByNum[i]) UISkin.Apply(cellByNum[i], UISkin.DepthButton(UISkin.Accent.Grey));
     }
 
     void OnTap(int number)
     {
         if (!running || number != nextTarget) return;
-        cellByNum[number].color = new Color(.18f, .70f, .35f);
+        UISkin.Apply(cellByNum[number], UISkin.DepthButton(UISkin.Accent.Green));
         nextTarget++;
         if (nextTarget > 50) { running = false; ShowResult(); }
         else UpdateHint();

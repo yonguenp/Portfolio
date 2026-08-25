@@ -51,6 +51,17 @@ public class Game2048 : MonoBehaviour
 
     void BuildBoard()
     {
+        // 2026-08-25 — Kenney 밝은 Depth 스킨 통일(Phase 2). 타일 자체는 값별로
+        // 12색 그라데이션을 써야 해서(Depth 액센트는 5색뿐이라 표현 불가) 기존
+        // UISkin.Panel 틴트 체계를 그대로 유지한다 — 대신 보드 전체에 밝은
+        // PanelBody 프레임을 깔아 "카드 위에 놓인 보드"라는 새 톤에 맞춘다.
+        var frameGo = new GameObject("Frame");
+        frameGo.transform.SetParent(boardContainer, false);
+        var frameRT = frameGo.AddComponent<RectTransform>();
+        frameRT.anchorMin = Vector2.zero; frameRT.anchorMax = Vector2.one;
+        frameRT.offsetMin = Vector2.zero; frameRT.offsetMax = Vector2.zero;
+        UISkin.Apply(frameGo.AddComponent<Image>(), UISkin.PanelBody);
+
         tileBg    = new Image[SIZE, SIZE];
         tileLabel = new TextMeshProUGUI[SIZE, SIZE];
         var fnt = Resources.Load<TMP_FontAsset>("TextMesh Pro/Fonts/ONE Mobile POP SDF");

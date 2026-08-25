@@ -103,9 +103,11 @@ public class ColorSortGame : MonoBehaviour
             shr.anchoredPosition = new Vector2(3, -3);
             sh.AddComponent<Image>().color = new Color(0, 0, 0, 0.45f);
 
-            // Body
-            tubeBg[i] = UISkin.Apply(go.AddComponent<Image>(), UISkin.Panel);
-            tubeBg[i].color = new Color(.09f, .12f, .26f);
+            // Body — 2026-08-25 Kenney 밝은 Depth 스킨 통일(Phase 2). 튜브
+            // 자체는 기본/선택 2상태뿐이라(액체 색은 blockSlots가 따로
+            // 담당) Depth 스프라이트로 완전히 전환한다.
+            tubeBg[i] = UISkin.Apply(go.AddComponent<Image>(), UISkin.DepthButton(UISkin.Accent.Grey));
+            tubeBg[i].color = Color.white;
 
             // Block slots (j=0 bottom)
             blockSlots[i] = new Image[CAP];
@@ -298,11 +300,11 @@ public class ColorSortGame : MonoBehaviour
             pos.y = tubeOrigY[i] + (sel ? 30f : 0f);
             tubeRects[i].anchoredPosition = pos;
 
-            // 튜브 배경색으로 선택 상태 표시 (블록을 가리지 않음)
+            // 튜브 배경 스프라이트로 선택 상태 표시 (블록을 가리지 않음).
+            // Depth 스프라이트는 색이 구워져 있어 틴트 대신 스프라이트를
+            // 상태별로 교체한다(선택=파랑, 기본=회색).
             if (tubeBg[i] != null)
-                tubeBg[i].color = sel
-                    ? new Color(.14f, .22f, .48f)   // 선택 시 밝은 파란 배경
-                    : new Color(.09f, .12f, .26f);   // 기본 어두운 배경
+                UISkin.Apply(tubeBg[i], UISkin.DepthButton(sel ? UISkin.Accent.Blue : UISkin.Accent.Grey));
         }
     }
 

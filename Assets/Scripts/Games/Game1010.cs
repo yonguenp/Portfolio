@@ -63,6 +63,17 @@ public class Game1010 : MonoBehaviour
 
     void BuildBoard()
     {
+        // 2026-08-25 — Kenney 밝은 Depth 스킨 통일(Phase 2). 보드 셀은 놓인
+        // 조각의 7색 무지개 팔레트를 그대로 써야 해서(Depth 액센트 5색으로는
+        // 표현 불가) 기존 UISkin.Panel 틴트 체계를 유지 — 대신 보드 전체에
+        // 밝은 PanelBody 프레임을 깔아 "카드 위에 놓인 보드" 톤에 맞춘다.
+        var frameGo = new GameObject("Frame");
+        frameGo.transform.SetParent(boardContainer, false);
+        var frameRT = frameGo.AddComponent<RectTransform>();
+        frameRT.anchorMin = Vector2.zero; frameRT.anchorMax = Vector2.one;
+        frameRT.offsetMin = Vector2.zero; frameRT.offsetMax = Vector2.zero;
+        UISkin.Apply(frameGo.AddComponent<Image>(), UISkin.PanelBody);
+
         boardCells = new Image[BOARD, BOARD];
         for (int r = 0; r < BOARD; r++)
         for (int c = 0; c < BOARD; c++)
@@ -94,8 +105,7 @@ public class Game1010 : MonoBehaviour
             slotRT.anchorMin = slotRT.anchorMax = new Vector2(.5f, .5f);
             slotRT.sizeDelta = new Vector2(slotW, slotH);
             slotRT.anchoredPosition = new Vector2(0, startY - i * (slotH + slotGap));
-            slotBg[i] = UISkin.Apply(slotGo.AddComponent<Image>(), UISkin.Panel);
-            slotBg[i].color = new Color(.10f, .14f, .30f);
+            slotBg[i] = UISkin.Apply(slotGo.AddComponent<Image>(), UISkin.DepthButton(UISkin.Accent.Grey));
             slotGo.AddComponent<Button>().onClick.AddListener(() => OnPieceTap(idx));
 
             var pvGo = new GameObject("Preview");
@@ -238,7 +248,12 @@ public class Game1010 : MonoBehaviour
         for (int i = 0; i < PIECE_SLOTS; i++)
         {
             bool sel = i == selectedPiece, used = pieceUsed[i];
-            slotBg[i].color = used ? new Color(.08f,.10f,.22f) : sel ? new Color(.20f,.28f,.55f) : new Color(.10f,.14f,.30f);
+            // Depth 스프라이트는 색이 이미 구워져 있어 틴트 대신 스프라이트
+            // 자체를 상태별로 교체한다(선택=파랑, 기본=회색). used는 회색
+            // 스프라이트에 알파만 낮춰 "비활성"을 표시 — 색조 자체를 죽이지
+            // 않으면서 눌린 느낌을 유지한다.
+            UISkin.Apply(slotBg[i], UISkin.DepthButton(sel ? UISkin.Accent.Blue : UISkin.Accent.Grey));
+            slotBg[i].color = used ? new Color(1f, 1f, 1f, 0.45f) : Color.white;
             for (int j = 0; j < 25; j++) piecePreviewCells[i][j].color = new Color(0,0,0,0);
             if (used) continue;
             foreach (var off in currentShapes[i])
