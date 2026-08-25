@@ -831,7 +831,26 @@ public partial class GoStop3PGame : MonoBehaviour
         // 영향이 없다. 세로 참조(1080×1920)를 가로 물리 화면에 그대로 쓰면
         // matchWidthOrHeight 계산이 어긋나 스케일이 크게 틀어진다.
         var scaler = ui ? ui.GetComponent<CanvasScaler>() : null;
-        if (scaler) scaler.referenceResolution = new Vector2(1920f, 1080f);
+        if (scaler)
+        {
+            scaler.referenceResolution = new Vector2(1920f, 1080f);
+            // 2026-08-25 — "다른 해상도에서 화면 밖으로 나가거나 겹친다"
+            // 신고로 발견: 기본 MatchWidthOrHeight 모드는 화면비가 16:9에서
+            // 벗어나면 캔버스의 *논리적* 크기 자체가 1920×1080에서 어긋난다
+            // (실측: 2587×1227 화면에서 논리 캔버스가 2118×979로 나왔다 —
+            // 세로가 1080보다 좁아짐). 이 필드/좌석/Cap 레이아웃은 전부
+            // "캔버스가 정확히 1920×1080"이라는 전제로 절대 픽셀 좌표를
+            // 하드코딩해 뒀으므로, 세로가 줄어드는 화면비에서는 아래쪽
+            // 요소가 겹치거나 화면 밖으로 밀려난다.
+            // Expand 모드는 반대로 "캔버스가 절대 기준보다 작아지지 않는다"
+            // (width/height 스케일 중 더 작은 쪽을 쓴다)를 보장한다 —
+            // 즉 어떤 화면비든 논리 캔버스가 항상 1920×1080 *이상*이라
+            // 이 레이아웃이 가정한 공간보다 여유가 부족해질 수 없다.
+            // 트레이드오프: 16:9가 아닌 화면에서는 좌우(넓은 화면) 또는
+            // 상하(좁은 화면)에 배경이 조금 더 보인다 — 화면을 완전히
+            // 꽉 채우진 않지만, 겹침·화면 밖 이탈은 구조적으로 불가능해진다.
+            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.Expand;
+        }
         // "상단 UI가 공간을 많이 차지한다, 나가기 버튼만 있으면 된다" 요청 —
         // 공용 HUD(제목·점수·NEW·뒤로 버튼 바)를 통째로 끄고 ContentArea가
         // 그 116px까지 전부 쓰도록 늘린다. 나가기는 BuildStaticUI에서 직접
