@@ -19,11 +19,16 @@ public class TitleOptionsUI : MonoBehaviour
     RectTransform licenseRT;   // 라이선스 정보 서브패널 (설정 카드 위에 덮인다)
     Slider bgmSlider, sfxSlider;
 
-    static readonly Color Surface  = new Color(0.137f, 0.169f, 0.322f, 1f); // #232B52 계열(타이틀 컨테이너와 통일)
-    static readonly Color Surface2 = new Color(0.169f, 0.208f, 0.376f, 1f); // #2B3560
-    static readonly Color Accent   = new Color(0.929f, 0.729f, 0.180f, 1f); // #EDBA2E
-    static readonly Color T95 = new Color(1f, 1f, 1f, 0.95f);
-    static readonly Color T70 = new Color(1f, 1f, 1f, 0.70f);
+    // 2026-08-25 — Kenney 밝은 Depth 스킨 전면 통일: 카드 배경이 어두운
+    // Surface에서 밝은 PanelBody로 바뀌어서, 그 위에 놓이는 텍스트는
+    // 전부 밝은색(T95/T70)에서 어두운 남색으로 뒤집었다(이름은 유지해
+    // 호출부를 안 건드렸다 — 값만 바뀜). 버튼 라벨은 Depth 버튼(색이
+    // 이미 구워져 있음) 위에 놓이므로 반대로 항상 흰색이어야 한다 —
+    // 아래 각 버튼 라벨 호출에서 명시적으로 Color.white를 쓴다.
+    static readonly Color Surface2 = new Color(0.85f, 0.87f, 0.90f, 1f); // 슬라이더 트랙(밝은 회색)
+    static readonly Color Accent   = new Color(0.929f, 0.729f, 0.180f, 1f); // #EDBA2E — 슬라이더 채움만 유지
+    static readonly Color T95 = new Color(0.106f, 0.133f, 0.267f, 0.95f);
+    static readonly Color T70 = new Color(0.106f, 0.133f, 0.267f, 0.70f);
 
     public static TitleOptionsUI Create(RectTransform canvasRT, RectTransform safeAreaRT, RectTransform placeLeftOf)
     {
@@ -46,8 +51,8 @@ public class TitleOptionsUI : MonoBehaviour
         btnRT.sizeDelta = new Vector2(100f, 60f);
         float gap = placeLeftOf.sizeDelta.x + 12f;
         btnRT.anchoredPosition = placeLeftOf.anchoredPosition - new Vector2(gap, 0f);
-        AddImg(btnRT, UISkin.Button, Color.white, true);
-        AddLabel(btnRT, "설정", 22f, T95).rectTransform.anchoredPosition = Vector2.zero;
+        AddImg(btnRT, UISkin.DepthButton(UISkin.Accent.Grey), Color.white, true);
+        AddLabel(btnRT, "설정", 22f, Color.white).rectTransform.anchoredPosition = Vector2.zero;
         Stretch(((RectTransform)btnRT.GetChild(btnRT.childCount - 1)));
         btnRT.gameObject.AddComponent<Button>().onClick.AddListener(Open);
 
@@ -60,7 +65,7 @@ public class TitleOptionsUI : MonoBehaviour
 
         var card = MakeRect("Card", panelRT, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
         card.sizeDelta = new Vector2(760f, 900f);
-        var cardImg = AddImg(card, UISkin.Panel, Surface, true);
+        var cardImg = AddImg(card, UISkin.PanelBody, Color.white, true);
         cardImg.raycastTarget = true;   // 카드 안을 눌러도 바깥 탭으로 안 닫히게
 
         AddLabel(card, "설정", 44f, T95).rectTransform.anchoredPosition = new Vector2(0f, 380f);
@@ -84,8 +89,8 @@ public class TitleOptionsUI : MonoBehaviour
         // 이미지를 그냥 통과해 카드 배경(cardImg, 핸들러 없음)을 거쳐 Panel의
         // "바깥 탭 닫기" 핸들러까지 뚫고 올라간다 — "라이선스 정보를 눌러도
         // 그냥 설정이 닫힌다"는 형태로 나타나는, 눈에 잘 안 띄는 버그였다.
-        AddImg(licBtn, UISkin.ButtonLine, Color.white, true).raycastTarget = true;
-        AddLabel(licBtn, "라이선스 정보", 26f, T95);
+        AddImg(licBtn, UISkin.DepthButton(UISkin.Accent.Blue), Color.white, true).raycastTarget = true;
+        AddLabel(licBtn, "라이선스 정보", 26f, Color.white);
         licBtn.gameObject.AddComponent<Button>().onClick.AddListener(OpenLicense);
 
         // 닫기
@@ -93,8 +98,8 @@ public class TitleOptionsUI : MonoBehaviour
         closeBtn.pivot = new Vector2(0.5f, 0f);
         closeBtn.sizeDelta = new Vector2(340f, 88f);
         closeBtn.anchoredPosition = new Vector2(0f, 30f);
-        AddImg(closeBtn, UISkin.Button, Color.white, true);
-        AddLabel(closeBtn, "닫기", 28f, T95);
+        AddImg(closeBtn, UISkin.DepthButton(UISkin.Accent.Grey), Color.white, true);
+        AddLabel(closeBtn, "닫기", 28f, Color.white);
         closeBtn.gameObject.AddComponent<Button>().onClick.AddListener(Close);
 
         BuildLicensePanel(card);
@@ -107,7 +112,7 @@ public class TitleOptionsUI : MonoBehaviour
         // 설정 카드와 같은 자리를 완전히 덮는 서브패널. 뒤로가기를 누르면 다시 설정으로.
         licenseRT = MakeRect("LicensePanel", panelRT, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
         licenseRT.sizeDelta = new Vector2(760f, 900f);
-        var bg = AddImg(licenseRT, UISkin.Panel, Surface, true);
+        var bg = AddImg(licenseRT, UISkin.PanelBody, Color.white, true);
         bg.raycastTarget = true;
 
         AddLabel(licenseRT, "라이선스 정보", 36f, T95).rectTransform.anchoredPosition = new Vector2(0f, 380f);
@@ -142,8 +147,8 @@ public class TitleOptionsUI : MonoBehaviour
         // 거쳐 Panel의 "바깥 탭 닫기"까지 뚫고 올라가는 자리라 더 심각했다:
         // "라이선스에서 뒤로를 누르면 설정 카드로 안 돌아가고 팝업 전체가
         // 닫힌다"는 형태로 나타난다.
-        AddImg(back, UISkin.Button, Color.white, true).raycastTarget = true;
-        AddLabel(back, "뒤로", 28f, T95);
+        AddImg(back, UISkin.DepthButton(UISkin.Accent.Grey), Color.white, true).raycastTarget = true;
+        AddLabel(back, "뒤로", 28f, Color.white);
         back.gameObject.AddComponent<Button>().onClick.AddListener(() => licenseRT.gameObject.SetActive(false));
 
         licenseRT.gameObject.SetActive(false);

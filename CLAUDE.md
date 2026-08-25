@@ -7907,3 +7907,63 @@ Touchscreen.current?.primaryTouch.press.wasPressedThisFrame
 - TMP Pro는 이모지 렌더링 안 됨 → 이모지 제거
 - 씬 계층: 높은 sibling index = 위에 렌더링 (HUD > 콘텐츠 순서 필수)
 - `using System.Linq` 없으면 `.Count()` 컴파일 에러
+
+## UI 전면 통일 — Kenney 밝은 Depth 스킨 (2026-08-25, Phase 1: 공용 크롬)
+
+"UI가 전체적으로 통일성이 없다"는 지적에, 이미 GoStop에서만 쓰던
+Kenney 밝은 Depth 스킨(`UISkin.cs`의 `DepthButton(Accent)`/`HeaderBar`/
+`PanelBody`, "UI 리스킨 — Kenney 샘플 느낌 Depth 스킨" 섹션 참고)을
+**프로젝트 전체(공용 크롬 → 각 게임 보드까지 전부)**로 넓히기로 했다.
+사용자가 `AskUserQuestion`으로 "전부 다" 적용을 확정했다 — BrickBreaker3D의
+3D 렌더링과 GoStop 화투 카드 아트는 장르 특성상 예외로 남긴다.
+
+**Phase 1(공용 크롬)은 완료, 커밋 완료.** 5개 파일:
+
+| 파일 | 변경 |
+|---|---|
+| `GameUI.prefab` | Overlay/Card·HelpPanel/Card·Toast → `panel_body`+흰색. 버튼 3종(Primary=초록/Secondary=회색/Tertiary=노랑)+HelpCloseBtn → `button_depth_*`. HUD Bar 배경 어두운 남색→밝은 중립색. 카드/바 위 텍스트 전부 어두운 남색으로 반전(`OverlayTitle`은 동적 컬러라 예외). |
+| `TitleScene.unity` | `HeaderBox`/`GamesBox` → `panel_body`+흰색. `AppTitle`/`Sub`/`Label` 텍스트 어두운 남색. `TopBar`/`BotBar`(반투명 노랑 액센트 바)·`LangBtn`/`Random`(다른 스프라이트 체계)은 의도적으로 안 건드림 — 게임 카드 5종 리스킨은 Phase 2. |
+| `TitleOptionsUI.cs` | 설정 카드·라이선스 서브패널 → `PanelBody`. 옵션/라이선스/닫기/뒤로 버튼 → `DepthButton`(회색/파랑/회색/회색), 라벨 흰색. |
+| `GoStopModeChoiceUI.cs` | 카드 → `PanelBody`. 2인/3인/네트워크 선택 버튼 → `DepthButton`(파랑/초록/노랑), 닫기 → 회색. |
+| `BrickBreakerRankUI.cs` | 카드/칩/닫기만 `PanelBody`/`DepthButton`(파랑 칩, 회색 닫기)로 전환. 탭·행 배경(`Rounded()`)은 상태별 동적 틴트(선택된 탭·내 기록 강조 등)가 필요해 기존 `UISkin.Panel` 틴트 체계를 그대로 유지 — 이 파일만 부분 전환. |
+
+**전략 — "가벼운 손대기": 레이아웃·좌표는 그대로 두고 스프라이트+색만
+교체했다.** 텍스트 3단계(`T95`/`T70`/`T40`) 상수 이름은 그대로 두고
+**값만 뒤집었다** — 어두운 배경 위 흰 텍스트(`#FFFFFF` alpha 조절)에서
+밝은 배경 위 어두운 남색 텍스트(`#1B2244` alpha 조절)로. Depth 버튼
+위의 라벨은 이 상수를 안 쓰고 **항상 흰색을 직접 지정**한다 — Depth
+스프라이트는 이미 진한 색이 구워져 있어 그 위엔 밝은 텍스트가 맞다.
+
+> **함정 재확인 — 노란 배경 + 흰 텍스트는 여전히 안 읽힌다.**
+> `BrickBreakerRankUI`의 닫기 버튼이 원래 `Surface2`(선택 탭 강조,
+> 이번에 골드로 재정의)를 배경으로 쓰고 있었다 — 그대로 뒀으면 이
+> 프로젝트가 이미 여러 번 겪은 "노란 배경 위 흰 글자" 함정을 새
+> 스킨에서 또 재현했을 것이다. `DepthButton(Accent.Grey)`로 바꿔 피했다.
+
+**검증 — 스크린샷 대신 Play 모드 라이브 리플렉션(이 프로젝트 확립된
+방식).** `GameUI.prefab`은 `Game2048Scene`에서 `ShowOverlay(...)` 호출
+결과를(스프라이트 이름·색상) 직접 확인. `TitleOptionsUI`/`GoStopModeChoiceUI`는
+`TitleScene` Play 모드에서 `Open()`을 리플렉션으로 호출해 카드/버튼/칩
+스프라이트와 색을 확인. `BrickBreakerRankUI`는 `GameBrickBreakerScene`
+Play 모드에서 같은 방식으로 카드·칩·닫기 버튼을 확인. 4개 파일
+전부 콘솔 에러 0건.
+
+> **함정 — Play 모드 테스트 세션 중 씬/프리팹 파일이 원인 불명으로
+> 대량 변경된 적이 있었다(이번 세션 2회 재현).** `git status`가
+> `GoStop3PScene.unity`(11670줄 diff)·`DealerDrawPopup.prefab`·
+> `DeclarePopup.prefab`·`StatusBoxView.prefab`을 이 작업과 무관하게
+> 수정된 것으로 보여준 적이 있다 — 이 작업에서 건드리지 않은 파일들이고
+> diff 크기도 비정상적으로 커서, 원인을 규명하지 못한 채 `git checkout --`
+> 로 되돌렸다. **Play 모드 테스트를 많이 하는 세션에서는 커밋 전
+> `git status`/`git diff --stat`으로 의도치 않은 파일이 없는지 반드시
+> 확인할 것** — 이번처럼 원인 불명의 대량 변경이 섞여 들어올 수 있다.
+
+**남은 Phase (아직 미착수):**
+- **Phase 2** — 2048/1010/1to50/ColorSort 보드 자체(타일 색상·모양)를
+  Kenney Depth 스타일로.
+- **Phase 3** — BrickBreaker3D의 HUD·조준 UI(3D 월드 렌더링 자체는
+  예외)를 Kenney Depth 스타일로.
+- **Phase 4** — GoStop 중 아직 안 바뀐 나머지 조각.
+
+사용자가 "이어서 계속, 중간 확인 없이" 진행을 명시적으로 확정했다 —
+각 Phase 완료 시 라이브 검증 후 바로 다음 Phase로 넘어간다.

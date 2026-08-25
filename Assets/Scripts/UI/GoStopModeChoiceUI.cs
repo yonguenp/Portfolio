@@ -14,11 +14,12 @@ public class GoStopModeChoiceUI : MonoBehaviour
     RectTransform panelRT;
     GoStopNetLobbyUI netLobby;
 
-    static readonly Color Surface  = new Color(0.137f, 0.169f, 0.322f, 1f); // #232B52
-    static readonly Color Surface2 = new Color(0.169f, 0.208f, 0.376f, 1f); // #2B3560
-    static readonly Color Accent   = new Color(0.929f, 0.729f, 0.180f, 1f); // #EDBA2E
-    static readonly Color T95 = new Color(1f, 1f, 1f, 0.95f);
-    static readonly Color T70 = new Color(1f, 1f, 1f, 0.70f);
+    // 2026-08-25 — Kenney 밝은 Depth 스킨 통일(TitleOptionsUI와 같은 이유·
+    // 같은 패턴). 카드 배경이 밝아져서 T95/T70(이름 유지, 값만 어두운
+    // 남색으로)이 카드 위 텍스트를 담당하고, Depth 버튼(선택지 행·닫기)
+    // 위의 라벨은 항상 흰색을 직접 넘긴다.
+    static readonly Color T95 = new Color(0.106f, 0.133f, 0.267f, 0.95f);
+    static readonly Color T70 = new Color(0.106f, 0.133f, 0.267f, 0.70f);
 
     public static GoStopModeChoiceUI Create(RectTransform canvasRT)
     {
@@ -43,7 +44,7 @@ public class GoStopModeChoiceUI : MonoBehaviour
 
         var card = MakeRect("Card", panelRT, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
         card.sizeDelta = new Vector2(760f, 700f);
-        var cardImg = AddImg(card, UISkin.Panel, Surface, true);
+        var cardImg = AddImg(card, UISkin.PanelBody, Color.white, true);
         cardImg.raycastTarget = true;
 
         AddLabel(card, "고스톱", 44f, T95).rectTransform.anchoredPosition = new Vector2(0f, 290f);
@@ -54,23 +55,23 @@ public class GoStopModeChoiceUI : MonoBehaviour
         // PendingOfflineSeatCount를 미리 세팅해 두면 그 씬의 Awake()가
         // 읽어서 좌석 수를 맞춘다(네트워크 로비가 없는 오프라인 경로라
         // 로비 인스턴스 대신 이 static 값으로 전달한다).
-        MakeChoiceButton(card, new Vector2(0f, 110f), "2인 (맞고)", "손패 10장 · 필드 8장 · 부가 규칙 전부",
+        MakeChoiceButton(card, new Vector2(0f, 110f), UISkin.Accent.Blue, "2인 (맞고)", "손패 10장 · 필드 8장 · 부가 규칙 전부",
             () => { GoStop3PGame.PendingOfflineSeatCount = 2; SceneManager.LoadScene("GoStop3PScene"); });
-        MakeChoiceButton(card, new Vector2(0f, -20f), "3인 (고스톱)", "손패 7장 · 필드 6장 · 독박·개인별 광박/피박",
+        MakeChoiceButton(card, new Vector2(0f, -20f), UISkin.Accent.Green, "3인 (고스톱)", "손패 7장 · 필드 6장 · 독박·개인별 광박/피박",
             () => { GoStop3PGame.PendingOfflineSeatCount = 3; SceneManager.LoadScene("GoStop3PScene"); });
         // 2026-08-19: 로컬 네트워크(같은 와이파이) 대전 — IP 입력 없이 자동으로
         // 방을 찾는다(사용자 확인 요청). 이 버튼은 씬을 바로 안 열고 로비
         // 팝업(GoStopNetLobbyUI)을 연다 — 실제 씬 전환은 그 팝업이 호스트가
         // "시작"을 누른 뒤 GoStopNetLobby.OnGameStarting을 받아서 한다.
-        MakeChoiceButton(card, new Vector2(0f, -150f), "네트워크 대전", "같은 와이파이 · 자동으로 방을 찾습니다",
+        MakeChoiceButton(card, new Vector2(0f, -150f), UISkin.Accent.Yellow, "네트워크 대전", "같은 와이파이 · 자동으로 방을 찾습니다",
             () => { Close(); netLobby?.Open(); });
 
         var closeBtn = MakeRect("Close", card, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
         closeBtn.pivot = new Vector2(0.5f, 0f);
         closeBtn.sizeDelta = new Vector2(300f, 76f);
         closeBtn.anchoredPosition = new Vector2(0f, 24f);
-        AddImg(closeBtn, UISkin.Button, Color.white, true);
-        AddLabel(closeBtn, "닫기", 24f, T95);
+        AddImg(closeBtn, UISkin.DepthButton(UISkin.Accent.Grey), Color.white, true);
+        AddLabel(closeBtn, "닫기", 24f, Color.white);
         closeBtn.gameObject.AddComponent<Button>().onClick.AddListener(Close);
 
         panelRT.gameObject.SetActive(false);
@@ -80,12 +81,12 @@ public class GoStopModeChoiceUI : MonoBehaviour
         netLobby = GoStopNetLobbyUI.Create(canvasRT);
     }
 
-    void MakeChoiceButton(Transform parent, Vector2 pos, string title, string sub, UnityEngine.Events.UnityAction onClick)
+    void MakeChoiceButton(Transform parent, Vector2 pos, UISkin.Accent accent, string title, string sub, UnityEngine.Events.UnityAction onClick)
     {
         var btn = MakeRect("Choice", parent, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
         btn.sizeDelta = new Vector2(660f, 116f);
         btn.anchoredPosition = pos;
-        var btnImg = AddImg(btn, UISkin.ButtonLine, Surface2, true);
+        var btnImg = AddImg(btn, UISkin.DepthButton(accent), Color.white, true);
         // AddImg는 기본 raycastTarget=false다(장식용 이미지 전제) — 이 버튼은
         // 자기 이미지 위에서 직접 클릭을 받아야 하는데, false로 두면 클릭이
         // 이 위를 그냥 통과해 버려서 밑에 깔린 카드 배경(핸들러 없음)을 거쳐
@@ -93,9 +94,11 @@ public class GoStopModeChoiceUI : MonoBehaviour
         // 눌러도 팝업만 닫힌다"는 신고의 원인이었다.
         btnImg.raycastTarget = true;
 
-        var titleLbl = AddLabel(btn, title, 28f, T95);
+        // 2026-08-25 — Depth 버튼은 색이 이미 구워져 있어 라벨은 항상
+        // 흰색(카드 위 어두운 T95/T70과 반대).
+        var titleLbl = AddLabel(btn, title, 28f, Color.white);
         titleLbl.rectTransform.anchoredPosition = new Vector2(0f, 20f);
-        var subLbl = AddLabel(btn, sub, 16f, T70);
+        var subLbl = AddLabel(btn, sub, 16f, new Color(1f, 1f, 1f, 0.85f));
         subLbl.rectTransform.anchoredPosition = new Vector2(0f, -22f);
         subLbl.rectTransform.sizeDelta = new Vector2(600f, 40f);
 

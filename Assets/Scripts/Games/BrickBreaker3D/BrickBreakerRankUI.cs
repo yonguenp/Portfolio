@@ -56,13 +56,17 @@ public class BrickBreakerRankUI : MonoBehaviour
 
     public bool IsOpen => panelRT != null && panelRT.gameObject.activeSelf;
 
-    // ── B안 디자인 시스템 ────────────────────────────────
-    static readonly Color Surface  = new Color(0.106f, 0.133f, 0.267f, 1f);   // #1B2244
-    static readonly Color Surface2 = new Color(0.169f, 0.208f, 0.376f, 1f);   // #2B3560
+    // 2026-08-25 — Kenney 밝은 Depth 스킨 통일. 카드/칩 바깥 틀은
+    // PanelBody(밝은 바탕)로 바꾸고, 안쪽 줄·탭처럼 상태에 따라 색이
+    // 바뀌어야 하는 요소는 계속 틴트 가능한 Panel(회색 원본)을 쓴다 —
+    // 그래서 그 배경 톤도 어두운 Surface에서 밝은 회색조로 같이 뒤집었다.
+    // T95/T70/T40은 이름을 유지하되 값을 어두운 남색 계열로 바꿨다.
+    static readonly Color Surface  = new Color(0.90f, 0.91f, 0.94f, 1f);   // 밝은 줄 배경(예전 #1B2244)
+    static readonly Color Surface2 = new Color(0.929f, 0.729f, 0.180f, 1f); // 선택된 탭 = 강조색(예전 #2B3560)
     static readonly Color Accent   = new Color(0.929f, 0.729f, 0.180f, 1f);   // #EDBA2E
-    static readonly Color T95 = new Color(1f, 1f, 1f, 0.95f);
-    static readonly Color T70 = new Color(1f, 1f, 1f, 0.70f);
-    static readonly Color T40 = new Color(1f, 1f, 1f, 0.40f);
+    static readonly Color T95 = new Color(0.106f, 0.133f, 0.267f, 0.95f);
+    static readonly Color T70 = new Color(0.106f, 0.133f, 0.267f, 0.70f);
+    static readonly Color T40 = new Color(0.106f, 0.133f, 0.267f, 0.40f);
 
     static string L(string key, string fallback)
     {
@@ -118,11 +122,12 @@ public class BrickBreakerRankUI : MonoBehaviour
         chipRT.sizeDelta        = new Vector2(196f, 52f);
         chipRT.anchoredPosition = new Vector2(22f, -252f);
 
-        var img = AddImage(chipRT, Rounded());
-        img.color         = Surface;
+        var img = AddImage(chipRT, UISkin.DepthButton(UISkin.Accent.Blue));
+        img.color         = Color.white;
         img.raycastTarget = true;
 
         var lbl = MakeLabel(chipRT, L("bb_rank", "랭킹"), 24f);
+        lbl.color = Color.white;
         Stretch(lbl.rectTransform);
 
         chipRT.gameObject.AddComponent<Button>().onClick.AddListener(Open);
@@ -142,11 +147,12 @@ public class BrickBreakerRankUI : MonoBehaviour
         var card = cardRT;
         card.sizeDelta        = new Vector2(920f, CARD_H_MAX);
         card.anchoredPosition = Vector2.zero;
-        var cardImg = AddImage(card, Rounded());
-        cardImg.color         = Surface;
+        var cardImg = AddImage(card, UISkin.PanelBody);
+        cardImg.color         = Color.white;
         cardImg.raycastTarget = true;    // 카드 안을 눌러 실수로 닫히지 않게
 
         var title = MakeLabel(card, L("bb_rank", "랭킹"), 56f);
+        title.color = T95;
         title.rectTransform.anchorMin        = new Vector2(0f, 1f);
         title.rectTransform.anchorMax        = new Vector2(1f, 1f);
         title.rectTransform.pivot            = new Vector2(0.5f, 1f);
@@ -241,10 +247,15 @@ public class BrickBreakerRankUI : MonoBehaviour
         close.pivot            = new Vector2(0.5f, 0f);
         close.sizeDelta        = new Vector2(340f, 88f);
         close.anchoredPosition = new Vector2(0f, 28f);
-        var ci = AddImage(close, Rounded());
-        ci.color         = Surface2;
+        // 2026-08-25 — Surface2가 이제 강조색(골드)이라 그 위에 기본 흰 글자를
+        // 얹으면 "노란 배경 위 흰 글자는 안 읽힌다"는 이 프로젝트의 반복된
+        // 함정에 또 걸린다. 닫기는 중립 회색 Depth 버튼으로 분리했다.
+        var ci = AddImage(close, UISkin.DepthButton(UISkin.Accent.Grey));
+        ci.color         = Color.white;
         ci.raycastTarget = true;
-        Stretch(MakeLabel(close, L("btn_close", "닫기"), 32f).rectTransform);
+        var closeLbl = MakeLabel(close, L("btn_close", "닫기"), 32f);
+        closeLbl.color = Color.white;
+        Stretch(closeLbl.rectTransform);
         close.gameObject.AddComponent<Button>().onClick.AddListener(Close);
     }
 
