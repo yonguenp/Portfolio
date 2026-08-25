@@ -8171,3 +8171,66 @@ Overlay와 같은 이유로 손 안 댐), `OverlaySub`는 이미 강조색(#EDBA
 > 것과 동일 패턴). 이번 세션에서 그 프리팹을 전혀 안 건드렸으므로
 > `git checkout --`로 되돌렸다 — 이 프로젝트에서 반복 확인된 환경
 > 특성이지 실제 변경이 아니다.
+
+## 고스톱 — 비상/완성 이펙트 프리팹 완전 분리 + 광 완성 4단계 (2026-08-25)
+
+"이펙트 디자인 작업을 직접 할 거니까 비상 이펙트와 완성 이펙트 프리팹을
+완전히 나눠달라, 광 이펙트는 비3광/3광/4광/5광으로 나눠달라"는 요청.
+예전엔 `EffectGodori`/`EffectHongdan`/`EffectChodan`/`EffectCheongdan`/
+`EffectLight` 5개 프리팹을 비상과 완성이 **공유**했다(문구·색·파티클
+수만 코드에서 바꿔치기) — 사용자가 각각 따로 디자인하려면 프리팹
+자체가 별개 에셋이어야 한다.
+
+**"비3광"의 정확한 의미를 먼저 확인했다** — 이 프로젝트 점수표에 이미
+있는 "비삼광"(3광인데 12월 비광이 껴서 2점, 비광 없는 일반 3광은 3점)을
+가리키는 게 맞는지 사용자에게 확인받고 진행했다. 뒤이어 "추가되는
+광 이펙트들은 완성만 추가하면 된다"는 정정도 받아 — 광의 **비상**은
+기존처럼 하나(`EffectGwangEmergency`)로 남기고, **완성**만 4단계로
+나눴다.
+
+**프리팹 재구성 — 13개.**
+
+| 역할 | 프리팹 |
+|---|---|
+| 비상(5개, 세트당 하나) | `EffectGodoriEmergency`/`EffectHongdanEmergency`/`EffectChodanEmergency`/`EffectCheongdanEmergency`/`EffectGwangEmergency` |
+| 완성 — 고도리·홍단·초단·청단(4개) | `EffectGodoriAchieved`/`EffectHongdanAchieved`/`EffectChodanAchieved`/`EffectCheongdanAchieved` |
+| 완성 — 광(4개, 실제 정산 점수표와 동일 기준) | `EffectBiSamGwang`(비삼광, 2점) / `EffectSamGwang`(3광, 3점) / `EffectSaGwang`(4광, 4점) / `EffectOGwang`(5광, 15점) |
+
+기존 5개(`EffectGodori`/`EffectHongdan`/`EffectChodan`/`EffectCheongdan`/
+`EffectLight`)는 **삭제 후 재생성이 아니라 `AssetDatabase.RenameAsset`으로
+비상 버전에 재활용**했다 — 파일 자체는 그대로 이어지고(Resources 문자열
+로드 방식이라 GUID 보존 자체는 무의미하지만, 굳이 지웠다 새로 만들
+이유가 없었다), 완성용 8개만 그 파일들을 템플릿으로 복제해 새로
+만들었다. 전부 `GoStopEffectPopup` 컴포넌트 하나를 공유하는 기존 구조
+그대로(root/label/CanvasGroup) — 프리팹마다 기본 문구·색만 다르게
+구워뒀다(호출부가 항상 `Play(text, color)`로 덮어써서 기본값은
+Project 창에서 미리보기 용도일 뿐).
+
+**코드 변경.** `FireEmergency`의 프리팹 스위치를 `*Emergency` 이름으로,
+`FireAchievement`의 스위치를 `*Achieved` 이름으로 바꾸고, 광은
+`FireAchievement`에서 완전히 빼서 새 `FireGwangAchievement(seat, mine)`
+(2인판은 `(isPlayerSide, mine)`)로 옮겼다 — 이 함수가 `mine`의 실제
+광 카드 구성(`count`, `month==12` 포함 여부)을 직접 보고 4개 프리팹
+중 하나를 고른다:
+```csharp
+if (count >= 5)      → EffectOGwang    (5광)
+else if (count == 4) → EffectSaGwang   (4광)
+else if (hasBiGwang) → EffectBiSamGwang(비삼광)
+else                 → EffectSamGwang  (3광)
+```
+`achievedFired`는 세트 단위(광 전체 1개 슬롯)로 여전히 한 판에 한 번만
+막는다 — 3광으로 먼저 완성한 뒤 나중에 4·5광으로 늘어나도 재발동하지
+않는다("완성 그 순간"의 구성으로 어느 프리팹인지 정해진다는 뜻, 사용자가
+이 튜닝을 요청하면 다음에 단계별 재발동으로 바꿀 것).
+
+**검증 — Play 모드 라이브, 4인판·2인판(레거시) 둘 다.** 인스턴스화된
+GameObject 이름이 `{프리팹}(Clone)` 형태로 남는 것을 이용해 실제로
+어느 프리팹이 로드됐는지 직접 확인했다 — 3광(비광 없음)→
+`EffectSamGwang(Clone)`, 3광(12월 포함)→`EffectBiSamGwang(Clone)`,
+4광→`EffectSaGwang(Clone)`, 5광→`EffectOGwang(Clone)` 전부 정확히
+일치. 고도리 비상/완성도 각각 `EffectGodoriEmergency(Clone)`/
+`EffectGodoriAchieved(Clone)`로 갈리는 것 확인. 콘솔 에러 0건.
+
+`AssetDatabase.RenameAsset`을 반복 호출하는 `for` 루프가 이번에도
+멈춰서(이 프로젝트에 여러 번 기록된 exec 함정과 같은 계열), 5번의
+개별 호출로 나눠 처리해서 우회했다.

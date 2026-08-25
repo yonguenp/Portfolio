@@ -149,7 +149,7 @@ GameObject:
   - component: {fileID: 1421435793669324839}
   - component: {fileID: 5540212296880451049}
   m_Layer: 0
-  m_Name: EffectGodori
+  m_Name: EffectGodoriEmergency
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

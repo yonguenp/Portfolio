@@ -1629,7 +1629,7 @@ public partial class GoStop3PGame : MonoBehaviour
                     if (needAchieve && state == GoStopRules.SetState.Achieved)
                     {
                         achievedFired.Add((seat, GwangEmergencyIdx));
-                        FireAchievement(seat, "3광");
+                        FireGwangAchievement(seat, mine);
                     }
                 }
             }
@@ -1651,10 +1651,14 @@ public partial class GoStop3PGame : MonoBehaviour
     }
 
     /// <summary>비상 이펙트 발동 — 필드 중앙에 큼직하게, 어느 좌석이 어떤
-    /// 족보에 근접했는지 알려준다. 프리팹은 EffectGodori/EffectHongdan/
-    /// EffectChodan/EffectCheongdan(GoStopEffectPopup 공유, 캡처 이펙트와
-    /// 같은 구조 — Assets/Resources/Prefabs/GoStop/Effects/) — 기본 문구에
-    /// 좌석 이름을 앞에 붙여서 덮어쓴다.
+    /// 족보에 근접했는지 알려준다. 프리팹은 EffectGodoriEmergency/
+    /// EffectHongdanEmergency/EffectChodanEmergency/EffectCheongdanEmergency/
+    /// EffectGwangEmergency(GoStopEffectPopup 공유 — Assets/Resources/
+    /// Prefabs/GoStop/Effects/) — 기본 문구에 좌석 이름을 앞에 붙여서 덮어쓴다.
+    /// <br/>2026-08-25 — 완성 이펙트(<see cref="FireAchievement"/>/
+    /// <see cref="FireGwangAchievement"/>)와 프리팹을 완전히 분리했다
+    /// (예전엔 같은 프리팹을 문구·색·파티클 수만 다르게 재사용했는데, 사용자가
+    /// 각각 따로 디자인하려면 별개 에셋이어야 한다).
     /// <br/>네트워크 동기화는 이번엔 안 걸었다 — 호스트 화면에서만 보인다
     /// (게스트에게 안 뜬다). Toast처럼 EventMsg로 실어 보내려면 게스트
     /// 쪽 수신 핸들러가 이 라벨 형식을 알아야 하는데, 아직 검증 안 된
@@ -1664,11 +1668,11 @@ public partial class GoStop3PGame : MonoBehaviour
     {
         string prefabName = setName switch
         {
-            "고도리" => "EffectGodori",
-            "홍단" => "EffectHongdan",
-            "초단" => "EffectChodan",
-            "청단" => "EffectCheongdan",
-            "3광" => "EffectLight", // 2026-08-23(design.md §26/§27 확정)
+            "고도리" => "EffectGodoriEmergency",
+            "홍단" => "EffectHongdanEmergency",
+            "초단" => "EffectChodanEmergency",
+            "청단" => "EffectCheongdanEmergency",
+            "3광" => "EffectGwangEmergency", // 2026-08-23(design.md §26/§27 확정)
             _ => null,
         };
         if (prefabName == null || fieldArea == null) return;
@@ -1689,23 +1693,25 @@ public partial class GoStop3PGame : MonoBehaviour
         GoStopAudio.Instance?.Bonus();
     }
 
-    /// <summary>족보 "완성" 이펙트 — 비상(2/3 경고)과 별개로, 실제로 3장(광은
-    /// 3장 이상)을 채운 순간 한 번 터진다. 같은 프리팹·같은 색을 재사용하되
-    /// (세트 하나당 색 정체성은 유지) 문구를 "비상!"에서 "완성!"으로 바꾸고,
-    /// 파티클을 더 화려하게(20→30개, 총통/광팔이급) 키우고, 사운드도 경고음
-    /// (Bonus)이 아니라 축하음(Win)을 쓴다 — 같은 프레임에 비상과 완성이
-    /// 동시에 뜨는 경우(뻑/폭탄으로 2/3을 건너뛰고 곧장 3장이 들어온 경우)는
-    /// 없다 — CheckEmergencies가 애초에 별개 조건(have==2 vs Achieved)이라
-    /// 한 세트가 같은 판정 안에서 둘 다를 동시에 만족할 수 없다.</summary>
+    /// <summary>족보(광 제외) "완성" 이펙트 — 비상(2/3 경고)과 별개로, 실제로
+    /// 3장을 채운 순간 한 번 터진다. 프리팹은 EffectGodoriAchieved/
+    /// EffectHongdanAchieved/EffectChodanAchieved/EffectCheongdanAchieved —
+    /// 비상 프리팹과 완전히 분리된 별개 에셋이라 서로 다르게 디자인할 수
+    /// 있다. 파티클을 비상보다 화려하게(20→30개, 총통/광팔이급) 키우고,
+    /// 사운드도 경고음(Bonus)이 아니라 축하음(Win)을 쓴다 — 같은 프레임에
+    /// 비상과 완성이 동시에 뜨는 경우(뻑/폭탄으로 2/3을 건너뛰고 곧장
+    /// 3장이 들어온 경우)는 없다 — CheckEmergencies가 애초에 별개 조건
+    /// (have==2 vs Achieved)이라 한 세트가 같은 판정 안에서 둘 다를 동시에
+    /// 만족할 수 없다. 광은 3/4/5장·비삼광 여부에 따라 프리팹이 4개로
+    /// 더 갈리므로 <see cref="FireGwangAchievement"/>가 따로 담당한다.</summary>
     void FireAchievement(int seat, string setName)
     {
         string prefabName = setName switch
         {
-            "고도리" => "EffectGodori",
-            "홍단" => "EffectHongdan",
-            "초단" => "EffectChodan",
-            "청단" => "EffectCheongdan",
-            "3광" => "EffectLight",
+            "고도리" => "EffectGodoriAchieved",
+            "홍단" => "EffectHongdanAchieved",
+            "초단" => "EffectChodanAchieved",
+            "청단" => "EffectCheongdanAchieved",
             _ => null,
         };
         if (prefabName == null || fieldArea == null) return;
@@ -1723,6 +1729,46 @@ public partial class GoStop3PGame : MonoBehaviour
         }
 
         ShowTimedToast($"{SeatName(seat)}이(가) {setName} 완성!");
+        GoStopAudio.Instance?.Win();
+    }
+
+    /// <summary>광 완성 이펙트 — 사용자 확인(2026-08-25)에 따라 <b>완성만</b>
+    /// 4단계로 나눈다(비상은 그대로 하나, <see cref="FireEmergency"/>의
+    /// "3광" 케이스). 실제 정산 점수표(광 점수표 정정 문서 참고: 비삼광=2점,
+    /// 3광=3점, 4광=4점, 5광=15점)와 정확히 같은 기준(광 5장 중 몇 장을
+    /// 가졌는지, 3장일 때 12월 비광 포함 여부)으로 프리팹을 고른다 —
+    /// EffectBiSamGwang/EffectSamGwang/EffectSaGwang/EffectOGwang.
+    /// 한 판에 한 번만 발동하므로(achievedFired) 3광으로 먼저 완성한 뒤
+    /// 나중에 4·5광으로 늘어나도 재발동하지 않는다 — "완성 그 순간"의
+    /// 구성으로 어느 프리팹인지 정해진다.</summary>
+    void FireGwangAchievement(int seat, List<HwatuCard> mine)
+    {
+        var gwangCards = mine.Where(c => c.kind == HwatuKind.Gwang).ToList();
+        int count = gwangCards.Count;
+        bool hasBiGwang = gwangCards.Any(c => c.month == 12);
+
+        string prefabName, label;
+        if (count >= 5)      { prefabName = "EffectOGwang";     label = "5광"; }
+        else if (count == 4) { prefabName = "EffectSaGwang";    label = "4광"; }
+        else if (hasBiGwang) { prefabName = "EffectBiSamGwang"; label = "비삼광"; }
+        else                 { prefabName = "EffectSamGwang";   label = "3광"; }
+
+        if (fieldArea == null) return;
+
+        var canvasRoot = fieldArea.parent.parent.parent as RectTransform;
+        Vector2 local = canvasRoot.InverseTransformPoint(fieldArea.position);
+        var color = EmergencyColor("3광"); // 광 계열 톤 — 4개 프리팹은 각자 기본색이 이미 갈려 있다
+
+        GoStopIcons.SpawnBurst(canvasRoot, local, color, 30);
+
+        var fx = HwatuUI.InstantiateEffect<GoStopEffectPopup>(prefabName, canvasRoot);
+        if (fx != null)
+        {
+            fx.root.anchoredPosition = local;
+            fx.Play($"{SeatName(seat)} {label} 완성!", color);
+        }
+
+        ShowTimedToast($"{SeatName(seat)}이(가) {label} 완성!");
         GoStopAudio.Instance?.Win();
     }
 

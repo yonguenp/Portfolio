@@ -1288,7 +1288,7 @@ public partial class GoStopGame : MonoBehaviour
                 if (needAchieve && state == GoStopRules.SetState.Achieved)
                 {
                     achievedFired.Add((isPlayerSide, GwangEmergencyIdx));
-                    FireAchievement(isPlayerSide, "3광");
+                    FireGwangAchievement(isPlayerSide, mine);
                 }
             }
         }
@@ -1304,19 +1304,22 @@ public partial class GoStopGame : MonoBehaviour
         return (GoStopRules.SetState.Alive, have);
     }
 
-    /// <summary>비상 이펙트 발동 — 4인판과 같은 프리팹(EffectGodori/
-    /// EffectHongdan/EffectChodan/EffectCheongdan, GoStopEffectPopup 공유)을
-    /// 그대로 재사용한다 — 2인판 자체 ShowActionPopup(코드 생성 텍스트)
-    /// 대신 프리팹 쪽을 택했다(디자인 리소스 교체가 쉽도록).</summary>
+    /// <summary>비상 이펙트 발동 — 4인판과 같은 프리팹(EffectGodoriEmergency/
+    /// EffectHongdanEmergency/EffectChodanEmergency/EffectCheongdanEmergency/
+    /// EffectGwangEmergency, GoStopEffectPopup 공유)을 그대로 재사용한다 —
+    /// 2인판 자체 ShowActionPopup(코드 생성 텍스트) 대신 프리팹 쪽을
+    /// 택했다(디자인 리소스 교체가 쉽도록).
+    /// <br/>2026-08-25 — 완성 이펙트와 프리팹을 완전히 분리했다(4인판과
+    /// 같은 이유 — FireEmergency 문서 참고).</summary>
     void FireEmergency(bool isPlayerSide, string setName)
     {
         string prefabName = setName switch
         {
-            "고도리" => "EffectGodori",
-            "홍단" => "EffectHongdan",
-            "초단" => "EffectChodan",
-            "청단" => "EffectCheongdan",
-            "3광" => "EffectLight", // 2026-08-23(design.md §26/§27 확정)
+            "고도리" => "EffectGodoriEmergency",
+            "홍단" => "EffectHongdanEmergency",
+            "초단" => "EffectChodanEmergency",
+            "청단" => "EffectCheongdanEmergency",
+            "3광" => "EffectGwangEmergency", // 2026-08-23(design.md §26/§27 확정)
             _ => null,
         };
         if (prefabName == null || fieldArea == null) return;
@@ -1338,18 +1341,20 @@ public partial class GoStopGame : MonoBehaviour
         GoStopAudio.Instance?.Bonus();
     }
 
-    /// <summary>족보 "완성" 이펙트 — 4인판 FireAchievement와 같은 이유(비상과
-    /// 독립 판정, 같은 프리팹·색을 재사용하되 문구를 "완성!"으로, 파티클을
-    /// 더 화려하게, 사운드를 축하음(Win)으로).</summary>
+    /// <summary>족보(광 제외) "완성" 이펙트 — 4인판 FireAchievement와 같은
+    /// 이유(비상과 독립 판정, 프리팹은 EffectGodoriAchieved/
+    /// EffectHongdanAchieved/EffectChodanAchieved/EffectCheongdanAchieved —
+    /// 비상 프리팹과 완전히 분리된 별개 에셋, 문구 "완성!", 파티클 더
+    /// 화려하게, 사운드 축하음(Win)). 광은 <see cref="FireGwangAchievement"/>가
+    /// 따로 담당한다(4단계로 더 갈리므로).</summary>
     void FireAchievement(bool isPlayerSide, string setName)
     {
         string prefabName = setName switch
         {
-            "고도리" => "EffectGodori",
-            "홍단" => "EffectHongdan",
-            "초단" => "EffectChodan",
-            "청단" => "EffectCheongdan",
-            "3광" => "EffectLight",
+            "고도리" => "EffectGodoriAchieved",
+            "홍단" => "EffectHongdanAchieved",
+            "초단" => "EffectChodanAchieved",
+            "청단" => "EffectCheongdanAchieved",
             _ => null,
         };
         if (prefabName == null || fieldArea == null) return;
@@ -1368,6 +1373,42 @@ public partial class GoStopGame : MonoBehaviour
         }
 
         ShowTimedToast($"{(isPlayerSide ? "" : "상대가 ")}{setName} 완성!");
+        GoStopAudio.Instance?.Win();
+    }
+
+    /// <summary>광 완성 이펙트 — 4인판과 같은 규칙(비삼광=2점/3광=3점/
+    /// 4광=4점/5광=15점 정산 기준과 정확히 같은 조건)으로 4개 프리팹
+    /// (EffectBiSamGwang/EffectSamGwang/EffectSaGwang/EffectOGwang) 중
+    /// 하나를 고른다.</summary>
+    void FireGwangAchievement(bool isPlayerSide, List<HwatuCard> mine)
+    {
+        var gwangCards = mine.Where(c => c.kind == HwatuKind.Gwang).ToList();
+        int count = gwangCards.Count;
+        bool hasBiGwang = gwangCards.Any(c => c.month == 12);
+
+        string prefabName, label;
+        if (count >= 5)      { prefabName = "EffectOGwang";     label = "5광"; }
+        else if (count == 4) { prefabName = "EffectSaGwang";    label = "4광"; }
+        else if (hasBiGwang) { prefabName = "EffectBiSamGwang"; label = "비삼광"; }
+        else                 { prefabName = "EffectSamGwang";   label = "3광"; }
+
+        if (fieldArea == null) return;
+
+        var canvasRoot = fieldArea.parent as RectTransform;
+        Vector2 local = fieldArea.anchoredPosition + new Vector2(0f, -60f);
+        var color = EmergencyColor("3광");
+
+        GoStopIcons.SpawnBurst(canvasRoot, local, color, 30);
+
+        var fx = HwatuUI.InstantiateEffect<GoStopEffectPopup>(prefabName, canvasRoot);
+        if (fx != null)
+        {
+            fx.root.anchoredPosition = local;
+            string who = isPlayerSide ? "" : "상대 ";
+            fx.Play($"{who}{label} 완성!", color);
+        }
+
+        ShowTimedToast($"{(isPlayerSide ? "" : "상대가 ")}{label} 완성!");
         GoStopAudio.Instance?.Win();
     }
 

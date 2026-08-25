@@ -149,7 +149,7 @@ GameObject:
   - component: {fileID: 7629483958455033506}
   - component: {fileID: 179889684243239198}
   m_Layer: 0
-  m_Name: EffectLight
+  m_Name: EffectGwangEmergency
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
