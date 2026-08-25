@@ -1100,32 +1100,24 @@ public partial class GoStop3PGame
     const float FIELD_COL_PITCH = 133f; // BuildStaticUI의 FIELD_AREA_W(800)/6 — 같이 맞출 것
     const int FIELD_COLS = 6;
 
-    // 필드의 같은 달 카드 부채꼴 간격 — DrawField와 슬램다운 고스트 착지
-    // 계산(GhostFanOffsetX)이 반드시 공유해야 한다(2026-08-25, 아래 참고).
+    // 필드의 같은 달 카드 부채꼴 간격 — DrawField(실제 필드 카드)에서만
+    // 쓴다. 슬램다운 고스트 착지 오프셋은 별도로 GhostMatchOffset이
+    // 담당한다(2026-08-25, 아래 참고 — 처음엔 이 상수를 공유했었는데
+    // 사용자 피드백으로 고정값(15,-15) 방식으로 바뀌었다).
     const float FIELD_STACK_OFFSET = 22f;
 
-    /// <summary>손패/뒷패가 필드에 슬램다운으로 착지할 때 쓰는 x축 부채꼴
-    /// 오프셋 — "필드에 매칭되는 패에 완벽하게 겹쳐서 어색하다" 신고로
-    /// 추가했다. 예전엔 고스트가 항상 <see cref="FieldSlotWorldPos"/>
-    /// (그 달의 고정 슬롯 중심)에 그대로 착지해서, 이미 그 달 카드가
-    /// 필드에 있으면(=매칭 상황, 가장 흔한 케이스) 완전히 겹쳐 보였다.
-    /// DrawField가 같은 달 여러 장을 부채꼴로 벌리는 것과 같은 공식
-    /// (<see cref="FIELD_STACK_OFFSET"/>)을 재사용해서, 새로 착지하는
-    /// 카드를 "이미 있는 카드들 옆에 나란히 놓인다면" 위치로 미리
-    /// 오프셋한다 — 기존 필드 카드는 그대로 두고(제자리 유지) 새로
-    /// 들어오는 고스트만 옆으로 비켜 착지하므로, 매칭 안 되는 빈 슬롯
-    /// (existingFieldCount=0)에서는 오프셋이 0이라 기존 동작과 동일하다.</summary>
-    /// <param name="month">착지할 달.</param>
-    /// <param name="newCardOrdinal">이번에 같이 착지하는 새 카드들 중 이
-    /// 카드의 0-based 순번(폭탄 3장이면 0,1,2).</param>
-    /// <param name="totalNewCards">이번에 같이 착지하는 새 카드 총 수
-    /// (폭탄이면 3, 그 외 1).</param>
-    float GhostFanOffsetX(int month, int newCardOrdinal, int totalNewCards)
+    /// <summary>손패/뒷패가 필드에 슬램다운으로 착지할 때 쓰는 오프셋 —
+    /// "필드에 매칭되는 패에 완벽하게 겹쳐서 어색하다" 신고로 추가했다.
+    /// 2026-08-25 2차 정정(사용자 확인 값) — 1차 시도는 DrawField의
+    /// 부채꼴 공식(<see cref="FIELD_STACK_OFFSET"/> 기준 ±11px)을
+    /// 재사용했는데 "아직 안 되는 것 같다, 너무 적나?"는 피드백을 받아
+    /// 폐기하고, 매칭되는 카드의 실제 포지션에서 <b>(x+15, y-15) 고정
+    /// 오프셋</b>으로 바꿨다. 매칭 대상이 없으면(그 달 카드가 필드에
+    /// 없음) 오프셋 없이 슬롯 중심 그대로 착지한다 — 기존 동작과 동일.</summary>
+    Vector2 GhostMatchOffset(int month)
     {
-        int existingCount = field.Count(c => c.month == month);
-        int groupSize = existingCount + totalNewCards;
-        int index = existingCount + newCardOrdinal;
-        return index * FIELD_STACK_OFFSET - (groupSize - 1) * FIELD_STACK_OFFSET * 0.5f;
+        bool hasMatch = field.Any(c => c.month == month);
+        return hasMatch ? new Vector2(15f, -15f) : Vector2.zero;
     }
 
     /// <summary>필드 — 2026-08-18: "패가 나오고 들어가는 과정에서 계속

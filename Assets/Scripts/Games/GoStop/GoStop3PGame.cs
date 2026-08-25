@@ -1954,35 +1954,38 @@ public partial class GoStop3PGame : MonoBehaviour
         }
 
         // --- ① 손패 카드 슬램다운 ---
-        // handLandingWorld는 "그 달 슬롯의 중심"(오프셋 없음) — 아래
-        // ResolveBonusJoker 등 다른 곳에서도 "손패가 대략 착지한 자리"로
-        // 참조하므로 원래 값 그대로 둔다. 실제 고스트는 GhostFanOffsetX로
-        // 살짝 옆으로 비켜 착지한다("필드에 매칭되는 패에 완벽하게
-        // 겹쳐서 어색하다" 신고, 2026-08-25 — DrawField가 같은 달 카드를
-        // 부채꼴로 벌리는 것과 같은 원리를 슬램다운에도 적용).
+        // handLandingWorld는 "그 달 슬롯의 중심"(오프셋 없음). 실제
+        // 고스트는 GhostMatchOffset으로 매칭 시에만 (x+15,y-15) 비켜
+        // 착지한다("필드에 매칭되는 패에 완벽하게 겹쳐서 어색하다" 신고,
+        // 2026-08-25 — 1차로 시도한 부채꼴 공식(±11px)은 "너무 적다"는
+        // 피드백으로 폐기하고 사용자가 직접 지정한 고정 오프셋으로
+        // 바꿨다). handActualLanding(실제 착지 지점, 오프셋 포함)은 뒤이어
+        // ②에서 조커가 나올 때 "손패 필드 포지션"으로 그대로 재사용한다.
         Vector3 handLandingWorld = FieldSlotWorldPos(card.month);
+        Vector3 handActualLanding = handLandingWorld; // 조커 착지 참조용 — 아래에서 실제 값으로 갱신
         var handGhosts = new List<GameObject>();
         if (bomb)
         {
             // r1.captured = [card, partner1, partner2, fieldMatch] — 앞 3장이
-            // 손패에서 나온 카드다. 파파팍 — 짧은 간격으로 하나씩 착지하며
-            // 부채꼴로 벌어진다(0,1,2번째 순서대로).
-            int bi = 0;
+            // 손패에서 나온 카드다. 파파팍 — 짧은 간격으로 하나씩 착지한다.
+            // 폭탄은 항상 매칭 상황이라(필드에 그 달 카드 1장 필수) 셋 다
+            // 같은 매칭 오프셋으로 착지 — 조커는 폭탄 턴엔 절대 안 나오므로
+            // (willDraw=false) handActualLanding 갱신은 필요 없다.
+            Vector3 bombLanding = handLandingWorld + (Vector3)GhostMatchOffset(card.month);
             foreach (var hc in r1.captured.Take(3))
             {
-                Vector3 landing = handLandingWorld + new Vector3(GhostFanOffsetX(card.month, bi, 3), 0f, 0f);
-                var ghost = SpawnGhostCard(hc, landing);
+                var ghost = SpawnGhostCard(hc, bombLanding);
                 handGhosts.Add(ghost);
                 StartCoroutine(SlamDown(ghost.transform as RectTransform));
-                flyFrom[hc] = landing;
-                bi++;
+                flyFrom[hc] = bombLanding;
                 yield return new WaitForSeconds(0.07f);
             }
             yield return new WaitForSeconds(0.10f); // 마지막 카드가 실제로 착지할 여유
         }
         else
         {
-            Vector3 landing = handLandingWorld + new Vector3(GhostFanOffsetX(card.month, 0, 1), 0f, 0f);
+            Vector3 landing = handLandingWorld + (Vector3)GhostMatchOffset(card.month);
+            handActualLanding = landing;
             var ghost = SpawnGhostCard(card, landing);
             handGhosts.Add(ghost);
             flyFrom[card] = landing;
@@ -2000,22 +2003,19 @@ public partial class GoStop3PGame : MonoBehaviour
 
             if (drawn.isJoker)
             {
-                // 2026-08-25 정정 — "보너스패가 필드 어정쩡한 위치에
-                // 생성된다" 신고. 예전엔 "손패가 착지한 자리 바로 위"였는데,
-                // 손패가 어느 달에 놓였는지에 따라 위치가 매번 달라지고
-                // (필드 그리드 6열×2행 중 아무 데나) 화면 밖으로 밀려나거나
-                // 다른 카드와 겹칠 수 있었다. 조커는 월이 없어 애초에 고정
-                // 슬롯이 없으므로, 손패 위치와 무관하게 **필드 정중앙 상단**
-                // (달 3/4월 슬롯 사이 빈 틈, fieldArea 로컬 (0,0))으로
-                // 고정했다 — 항상 예측 가능하고 다른 카드와 안 겹친다.
-                Vector3 jokerLanding = fieldArea.position;
+                // 2026-08-25 2차 정정(사용자 지시) — "뒷패에서 조커가
+                // 나오면 내가 낸 손패 필드 포지션에 일단 놔줘." 필드
+                // 정중앙 고정안은 폐기하고, 방금 낸 손패가 실제로 착지한
+                // 자리(handActualLanding — 매칭이었으면 그 오프셋까지 포함된
+                // 실제 위치)에 그대로 놓는다.
+                Vector3 jokerLanding = handActualLanding;
                 deckGhost = SpawnGhostCard(drawn, jokerLanding);
                 yield return StartCoroutine(SlamDown(deckGhost.transform as RectTransform, dropHeight: 90f));
                 flyFrom[drawn] = jokerLanding;
             }
             else
             {
-                Vector3 slot = FieldSlotWorldPos(drawn.month) + new Vector3(GhostFanOffsetX(drawn.month, 0, 1), 0f, 0f);
+                Vector3 slot = FieldSlotWorldPos(drawn.month) + (Vector3)GhostMatchOffset(drawn.month);
                 deckGhost = SpawnGhostCard(drawn, slot);
                 yield return StartCoroutine(SlamDown(deckGhost.transform as RectTransform));
                 flyFrom[drawn] = slot;
