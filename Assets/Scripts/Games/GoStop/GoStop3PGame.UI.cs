@@ -1100,6 +1100,34 @@ public partial class GoStop3PGame
     const float FIELD_COL_PITCH = 133f; // BuildStaticUI의 FIELD_AREA_W(800)/6 — 같이 맞출 것
     const int FIELD_COLS = 6;
 
+    // 필드의 같은 달 카드 부채꼴 간격 — DrawField와 슬램다운 고스트 착지
+    // 계산(GhostFanOffsetX)이 반드시 공유해야 한다(2026-08-25, 아래 참고).
+    const float FIELD_STACK_OFFSET = 22f;
+
+    /// <summary>손패/뒷패가 필드에 슬램다운으로 착지할 때 쓰는 x축 부채꼴
+    /// 오프셋 — "필드에 매칭되는 패에 완벽하게 겹쳐서 어색하다" 신고로
+    /// 추가했다. 예전엔 고스트가 항상 <see cref="FieldSlotWorldPos"/>
+    /// (그 달의 고정 슬롯 중심)에 그대로 착지해서, 이미 그 달 카드가
+    /// 필드에 있으면(=매칭 상황, 가장 흔한 케이스) 완전히 겹쳐 보였다.
+    /// DrawField가 같은 달 여러 장을 부채꼴로 벌리는 것과 같은 공식
+    /// (<see cref="FIELD_STACK_OFFSET"/>)을 재사용해서, 새로 착지하는
+    /// 카드를 "이미 있는 카드들 옆에 나란히 놓인다면" 위치로 미리
+    /// 오프셋한다 — 기존 필드 카드는 그대로 두고(제자리 유지) 새로
+    /// 들어오는 고스트만 옆으로 비켜 착지하므로, 매칭 안 되는 빈 슬롯
+    /// (existingFieldCount=0)에서는 오프셋이 0이라 기존 동작과 동일하다.</summary>
+    /// <param name="month">착지할 달.</param>
+    /// <param name="newCardOrdinal">이번에 같이 착지하는 새 카드들 중 이
+    /// 카드의 0-based 순번(폭탄 3장이면 0,1,2).</param>
+    /// <param name="totalNewCards">이번에 같이 착지하는 새 카드 총 수
+    /// (폭탄이면 3, 그 외 1).</param>
+    float GhostFanOffsetX(int month, int newCardOrdinal, int totalNewCards)
+    {
+        int existingCount = field.Count(c => c.month == month);
+        int groupSize = existingCount + totalNewCards;
+        int index = existingCount + newCardOrdinal;
+        return index * FIELD_STACK_OFFSET - (groupSize - 1) * FIELD_STACK_OFFSET * 0.5f;
+    }
+
     /// <summary>필드 — 2026-08-18: "패가 나오고 들어가는 과정에서 계속
     /// 포지션이 바뀐다, 한 번 깔리면 고정돼야 한다"는 신고로 알고리즘을
     /// 완전히 바꿨다. 예전엔 매 RebuildUI마다 "지금 필드에 있는 달들"만
@@ -1113,7 +1141,6 @@ public partial class GoStop3PGame
     /// STACK_OFFSET만큼 겹쳐 쌓는다 — 그룹핑 자체는 그대로다.</summary>
     void DrawField()
     {
-        const float STACK_OFFSET = 22f;
         float fieldRowH = FIELD_H + 10f;
 
         var groups = field.GroupBy(c => c.month)
@@ -1130,7 +1157,7 @@ public partial class GoStop3PGame
 
             for (int i = 0; i < g.Count; i++)
             {
-                float x = slotX + i * STACK_OFFSET - (g.Count - 1) * STACK_OFFSET * 0.5f;
+                float x = slotX + i * FIELD_STACK_OFFSET - (g.Count - 1) * FIELD_STACK_OFFSET * 0.5f;
                 var go = HwatuUI.MakeCard(g[i], fieldArea, new Vector2(x, slotY), FIELD_W, FIELD_H, null, false);
                 if (flyFrom.TryGetValue(g[i], out var from))
                     StartCoroutine(SlamIn(go.transform as RectTransform, from));

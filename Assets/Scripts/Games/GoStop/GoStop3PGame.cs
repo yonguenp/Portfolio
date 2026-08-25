@@ -1954,27 +1954,38 @@ public partial class GoStop3PGame : MonoBehaviour
         }
 
         // --- ① 손패 카드 슬램다운 ---
+        // handLandingWorld는 "그 달 슬롯의 중심"(오프셋 없음) — 아래
+        // ResolveBonusJoker 등 다른 곳에서도 "손패가 대략 착지한 자리"로
+        // 참조하므로 원래 값 그대로 둔다. 실제 고스트는 GhostFanOffsetX로
+        // 살짝 옆으로 비켜 착지한다("필드에 매칭되는 패에 완벽하게
+        // 겹쳐서 어색하다" 신고, 2026-08-25 — DrawField가 같은 달 카드를
+        // 부채꼴로 벌리는 것과 같은 원리를 슬램다운에도 적용).
         Vector3 handLandingWorld = FieldSlotWorldPos(card.month);
         var handGhosts = new List<GameObject>();
         if (bomb)
         {
             // r1.captured = [card, partner1, partner2, fieldMatch] — 앞 3장이
-            // 손패에서 나온 카드다. 파파팍 — 짧은 간격으로 하나씩 착지.
+            // 손패에서 나온 카드다. 파파팍 — 짧은 간격으로 하나씩 착지하며
+            // 부채꼴로 벌어진다(0,1,2번째 순서대로).
+            int bi = 0;
             foreach (var hc in r1.captured.Take(3))
             {
-                var ghost = SpawnGhostCard(hc, handLandingWorld);
+                Vector3 landing = handLandingWorld + new Vector3(GhostFanOffsetX(card.month, bi, 3), 0f, 0f);
+                var ghost = SpawnGhostCard(hc, landing);
                 handGhosts.Add(ghost);
                 StartCoroutine(SlamDown(ghost.transform as RectTransform));
-                flyFrom[hc] = handLandingWorld;
+                flyFrom[hc] = landing;
+                bi++;
                 yield return new WaitForSeconds(0.07f);
             }
             yield return new WaitForSeconds(0.10f); // 마지막 카드가 실제로 착지할 여유
         }
         else
         {
-            var ghost = SpawnGhostCard(card, handLandingWorld);
+            Vector3 landing = handLandingWorld + new Vector3(GhostFanOffsetX(card.month, 0, 1), 0f, 0f);
+            var ghost = SpawnGhostCard(card, landing);
             handGhosts.Add(ghost);
-            flyFrom[card] = handLandingWorld;
+            flyFrom[card] = landing;
             yield return StartCoroutine(SlamDown(ghost.transform as RectTransform));
         }
 
@@ -1989,16 +2000,22 @@ public partial class GoStop3PGame : MonoBehaviour
 
             if (drawn.isJoker)
             {
-                // "유저가 뒷패 이전 선택한 손패 위 포지션" — 손패가 착지한
-                // 자리 바로 위에 살짝 띄워서 보너스패임을 구분되게 보여준다.
-                Vector3 above = handLandingWorld + new Vector3(0f, FIELD_H * 0.55f, 0f);
-                deckGhost = SpawnGhostCard(drawn, above);
+                // 2026-08-25 정정 — "보너스패가 필드 어정쩡한 위치에
+                // 생성된다" 신고. 예전엔 "손패가 착지한 자리 바로 위"였는데,
+                // 손패가 어느 달에 놓였는지에 따라 위치가 매번 달라지고
+                // (필드 그리드 6열×2행 중 아무 데나) 화면 밖으로 밀려나거나
+                // 다른 카드와 겹칠 수 있었다. 조커는 월이 없어 애초에 고정
+                // 슬롯이 없으므로, 손패 위치와 무관하게 **필드 정중앙 상단**
+                // (달 3/4월 슬롯 사이 빈 틈, fieldArea 로컬 (0,0))으로
+                // 고정했다 — 항상 예측 가능하고 다른 카드와 안 겹친다.
+                Vector3 jokerLanding = fieldArea.position;
+                deckGhost = SpawnGhostCard(drawn, jokerLanding);
                 yield return StartCoroutine(SlamDown(deckGhost.transform as RectTransform, dropHeight: 90f));
-                flyFrom[drawn] = above;
+                flyFrom[drawn] = jokerLanding;
             }
             else
             {
-                Vector3 slot = FieldSlotWorldPos(drawn.month);
+                Vector3 slot = FieldSlotWorldPos(drawn.month) + new Vector3(GhostFanOffsetX(drawn.month, 0, 1), 0f, 0f);
                 deckGhost = SpawnGhostCard(drawn, slot);
                 yield return StartCoroutine(SlamDown(deckGhost.transform as RectTransform));
                 flyFrom[drawn] = slot;
