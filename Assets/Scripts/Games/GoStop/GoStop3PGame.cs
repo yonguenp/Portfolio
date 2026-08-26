@@ -342,10 +342,13 @@ public partial class GoStop3PGame : MonoBehaviour
     // 요청. ShakeConfirmPopup과 같은 프리팹(범용 2버튼 모달)을 재사용한다.
     ModalTwoButtonPopup exitConfirmPopup;
 
-    // 선 뽑기 — 매판 시작마다 4명이 화투 한 장씩 뽑아 가장 높은 패가 선이
-    // 된다(사용자 확인 규칙). 플레이어 입력이 필요 없는 연출용 팝업이라
-    // 별도의 pending 변수는 없다.
+    // 선 뽑기 — 2026-08-26 재설계(사용자 확인 규칙): 8장을 Dim 배경 위에
+    // 뒷면으로 깔아두고 좌석마다 한 장씩 순서대로 고른다. 이제 실제 클릭이
+    // 필요해서(내 좌석 차례일 때) pendingFieldChoice와 같은 패턴의 대기
+    // 변수가 필요하다 — 카드 값은 고를 때 아직 안 보이므로 카드 객체가
+    // 아니라 "몇 번째 슬롯을 골랐는지"(인덱스)로 받는다.
     DealerDrawPopupView dealerDrawPopup;
+    int pendingDealerPickIndex = -1;
 
     // 광팔이 결과 — 어떤 패로 팔았는지·총액·누가 내는지를 화면에 보여준다.
     // 연출용 팝업이라(선 뽑기와 마찬가지로) 플레이어 입력은 없다.

@@ -227,44 +227,112 @@ public partial class GoStop3PGame
         BuildScoreDetailUI(canvasRoot);
     }
 
-    /// <summary>선 뽑기 연출 팝업 — 좌석 4개 자리에 카드를 한 장씩 순서대로
-    /// 뒤집어 보여주고, 가장 높은 패를 뽑은 좌석을 강조한다.</summary>
+    /// <summary>선 뽑기 팝업 — 프리팹은 빈 pool 컨테이너만 갖고 있고, 실제
+    /// 8장 카드는 매판 <see cref="DetermineDealerSeq"/>가 직접 그렸다 지운다.</summary>
     void BuildDealerDrawUI(RectTransform canvasRoot)
     {
         dealerDrawPopup = HwatuUI.InstantiatePopup<DealerDrawPopupView>("DealerDrawPopup", canvasRoot);
-        string[] seatNames = { SeatName(0), SeatName(1), SeatName(2), SeatName(3) };
-        for (int s = 0; s < SEATS; s++) dealerDrawPopup.seatLabels[s].text = seatNames[s];
     }
 
-    /// <summary>4장을 순서대로 공개하고 가장 높은 패(월이 우선, 같은 월이면
-    /// 광→열끗→띠→피 순)를 뽑은 좌석을 선으로 정한다.</summary>
+    const float DRAW_CARD_W = 150f, DRAW_CARD_H = 170f;
+    const float DRAW_COL_PITCH = 150f;
+    const float DRAW_ROW_PITCH = 210f; // 카드(170)+태그(26)+여백 — 겹치지 않을 만큼
+
+    /// <summary>2026-08-26 재설계(사용자 확인 규칙) — 8장을 Dim 배경 위에
+    /// 뒷면으로 깔아두고 좌석마다 한 장씩 순서대로 고르게 한다. 다 고르면
+    /// 한꺼번에 뒤집어 가장 높은 패(월이 우선, 같은 월이면 광→열끗→띠→피
+    /// 순)를 고른 좌석을 선으로 정한다.
+    /// <br/>8장은 반드시 서로 다른 <b>월</b>에서 한 장씩 뽑는다 — 화투
+    /// 종류(광/열끗/띠/피)는 4가지뿐이라 8장 전부를 종류까지 다르게 만들
+    /// 수는 없고, 실제로 동률을 막아주는 건 월이다: <see cref="DrawRank"/>가
+    /// month*10+종류보너스(0~3)로 비교하므로 월이 다르면 종류 보너스가
+    /// 아무리 커도 월 차이 1을 못 뒤집는다 — 월만 겹치지 않으면 그 8장
+    /// 사이에서 동률이 수학적으로 나올 수 없다. "8개의 패는 종류가 겹치지
+    /// 않게(동률 방지)" 요청을 이렇게 구현했다.
+    /// <br/>이 연출은 호스트 화면 전용이다(이 코루틴 자체가 NewGameSeq를
+    /// 실제로 돌리는 호스트/싱글플레이에서만 실행되고, 게스트는 애초에
+    /// NewGameSeq를 안 밟는다) — 그래서 내 좌석(PLAYER_SEAT) 차례만 실제
+    /// 클릭을 기다리고, 나머지 좌석(AI든 원격 좌석이든)은 호스트 화면에서
+    /// 자동으로 대신 뽑는다. 정보가 전혀 없는 순수 운이라 대리로 뽑아도
+    /// 공정성이 깨지지 않는다 — 이 파일이 다른 연출용 시퀀스에서도 이미
+    /// 써 온 스코프 축소(원격 좌석까지 실제 클릭을 받으려면 새 네트워크
+    /// 메시지 타입이 필요한데, 검증 안 된 경로를 여기 얹는 리스크를
+    /// 피했다).</summary>
     IEnumerator DetermineDealerSeq()
     {
         dealerDrawPopup.Show();
         dealerDrawPopup.resultText.text = "";
-        for (int s = 0; s < SEATS; s++) HwatuUI.ClearChildren(dealerDrawPopup.cardSlots[s]);
+        HwatuUI.ClearChildren(dealerDrawPopup.pool);
 
         var deck = GoStopDeck.BuildFull();
-        GoStopDeck.Shuffle(deck);
-        var draws = new HwatuCard[SEATS];
+        var months = Enumerable.Range(1, 12).OrderBy(_ => Random.value).Take(8).ToList();
+        var pool = months
+            .Select(m => { var cands = deck.Where(c => c.month == m).ToList(); return cands[Random.Range(0, cands.Count)]; })
+            .OrderBy(_ => Random.value) // 화면에서 월 순서로 안 읽히게 한 번 더 섞는다
+            .ToList();
+
+        var slots = new GameObject[8];
+        for (int i = 0; i < 8; i++)
+        {
+            int col = i % 4, row = i / 4;
+            var pos = new Vector2(-225f + col * DRAW_COL_PITCH, -row * DRAW_ROW_PITCH);
+            var backRT = HwatuUI.MakeCardBack(dealerDrawPopup.pool, pos, DRAW_CARD_W, DRAW_CARD_H);
+            var img = backRT.GetComponent<Image>();
+            img.raycastTarget = true;
+            var btn = backRT.gameObject.AddComponent<Button>();
+            btn.targetGraphic = img;
+            int captured = i;
+            btn.onClick.AddListener(() => pendingDealerPickIndex = captured);
+            slots[i] = backRT.gameObject;
+        }
+
+        var pickedBy = new int[8];
+        for (int i = 0; i < 8; i++) pickedBy[i] = -1;
 
         for (int s = 0; s < SEATS; s++)
         {
-            draws[s] = deck[s];
-            HwatuUI.MakeCard(draws[s], dealerDrawPopup.cardSlots[s], Vector2.zero, FIELD_W, FIELD_H, null, false);
-            // 2026-08-19: "사운드가 빠진 부분" — 선 뽑기 4장 공개가 완전히
-            // 무음이었다. 카드 내는 소리(CardPlay)를 그대로 재사용해 한
-            // 장씩 뒤집힐 때마다 틱을 준다.
+            dealerDrawPopup.promptText.text = $"{SeatName(s)} 차례 — 카드를 고르세요";
+            int chosen;
+            if (s == PLAYER_SEAT)
+            {
+                pendingDealerPickIndex = -1;
+                yield return new WaitUntil(() => pendingDealerPickIndex >= 0);
+                chosen = pendingDealerPickIndex;
+            }
+            else
+            {
+                yield return new WaitForSeconds(0.5f); // "생각하는 척"
+                var avail = Enumerable.Range(0, 8).Where(i => pickedBy[i] == -1).ToList();
+                chosen = avail[Random.Range(0, avail.Count)];
+            }
+            pickedBy[chosen] = s;
+            slots[chosen].GetComponent<Button>().interactable = false; // 재선택 방지 + 기본 disabled 틴트로 살짝 어두워짐
             GoStopAudio.Instance?.CardPlay();
-            yield return new WaitForSeconds(0.22f); // 한 장씩 순서대로 뒤집히는 느낌
         }
 
-        int best = 0;
-        for (int s = 1; s < SEATS; s++)
-            if (DrawRank(draws[s]) > DrawRank(draws[best])) best = s;
+        dealerDrawPopup.promptText.text = "";
+        yield return new WaitForSeconds(0.3f);
 
-        dealerSeat = best;
-        dealerDrawPopup.resultText.text = $"{SeatName(best)}이(가) 선입니다!";
+        // 고른 카드만 순서대로 뒤집어 공개(안 고른 나머지는 뒷면 그대로 방치)
+        for (int i = 0; i < 8; i++)
+        {
+            if (pickedBy[i] == -1) continue;
+            var pos = (slots[i].transform as RectTransform).anchoredPosition;
+            Object.Destroy(slots[i]);
+            HwatuUI.MakeCard(pool[i], dealerDrawPopup.pool, pos, DRAW_CARD_W, DRAW_CARD_H, null, false);
+            var tag = HwatuUI.MakeLabel(dealerDrawPopup.pool, pos + new Vector2(0f, -DRAW_CARD_H - 4f), new Vector2(DRAW_CARD_W, 26f), 18f, Color.white);
+            tag.text = SeatName(pickedBy[i]);
+            GoStopAudio.Instance?.CardPlay();
+            yield return new WaitForSeconds(0.25f);
+        }
+
+        int best = -1;
+        for (int i = 0; i < 8; i++)
+            if (pickedBy[i] != -1 && (best == -1 || DrawRank(pool[i]) > DrawRank(pool[best])))
+                best = i;
+
+        dealerSeat = pickedBy[best];
+        dealerDrawPopup.resultText.text = $"{SeatName(dealerSeat)}이(가) 선입니다!";
         GoStopAudio.Instance?.Bonus(); // 결과가 정해지는 순간의 반짝이는 차임
         yield return new WaitForSeconds(1.1f);
 
