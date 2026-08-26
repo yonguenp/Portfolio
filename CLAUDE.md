@@ -70,8 +70,7 @@ boardRT.anchoredPosition = new Vector2(0, -10); // HUD 아래 10px
 | Game1010Scene | Game1010.cs | 보드 좌측 600×600 (55px, 10열), 피스 우측 세로 420×800 |
 | GameScene | ColorSort 게임 |  |
 | GameBrickBreakerScene | BrickBreakerManager.cs | 3D 벽돌깨기. 퍼스펙티브 카메라(-8°), 7열, 공 무한 누적 |
-| GoStopScene | GoStopGame.cs | 고스톱 2인(맞고). 손패 10장, 필드 8장 |
-| GoStop3PScene | GoStop3PGame.cs | 고스톱 3인. 손패 7장×3, 필드 6장. 좌석 0=플레이어 |
+| GoStop3PScene | GoStop3PGame.cs | 고스톱 2~4인 전부(맞고 포함). 좌석 0=플레이어. 2026-08-26에 2인 전용 GoStopScene/GoStopGame.cs를 삭제하고 이 씬 하나로 통합 |
 
 ## 공통 UI 관리 — GameUIManager.cs
 
@@ -8385,3 +8384,65 @@ ResolveBonusJoker는 손패를 낸 게 아니므로 항상 기본값 false)해�
 > 테스트에서 우연히 겹친 것. 손패를 2장(여분 카드 포함)으로 바꾸자
 > 정상적으로 재현됐다. **"첫 턴"과 "마지막 턴" 관련 테스트를 같이 짤
 > 때는 손패 장수를 신경 써서 서로 의도치 않게 겹치지 않게 할 것.**
+
+### GoStopScene(2인 전용) 삭제 — GoStop3PScene 하나로 통합 (2026-08-26)
+
+`GoStop3PGame.cs`가 씬 통합 작업(위 "고스톱 — 씬 통합" 섹션들 참고)으로
+이미 SEATS=2(맞고)부터 4인까지 전부 처리하도록 확장돼 있었는데,
+`GoStopScene`/`GoStopGame.cs`/`GoStopGame.UI.cs`(2인 전용 레거시)가
+그 뒤에도 계속 남아 두 씬이 혼재하고 있었다. `GoStopNetLobbyUI.
+HandleGameStarting`이 인원수와 무관하게 이미 항상 `GoStop3PScene`을
+열고 있어서(라우팅은 이미 통합 완료), 순수 정리 작업으로 삭제했다.
+
+**삭제한 것**: `GoStopScene.unity`, `GoStopGame.cs`, `GoStopGame.UI.cs`,
+`Net/GoStopStateSnapshot2P.cs`(GoStopGame.cs만 참조하던 2인 전용
+스냅샷 — 다른 참조 없음을 확인 후 같이 삭제).
+
+**갱신한 참조 3곳** — 이 프로젝트가 이미 "씬 목록이 실질적으로 3곳에
+분산돼 있다"고 경고해 둔 그대로, 셋 다 각각 고쳐야 했다:
+- `TitleManager.GameScenes` 배열(랜덤 버튼용)에서 `"GoStopScene"` 제거.
+- `EditorBuildSettings.asset`(File → Build Settings)에서 GoStopScene
+  scene 항목 제거.
+- `Assets/Editor/iOSBuilder.cs`의 커스텀 `Scenes` 배열(Build Profiles/
+  EditorBuildSettings와 별개로 관리되는, 실제 iOS 빌드가 참조하는 목록)
+  에서도 제거.
+
+`GoStopModeChoiceUI`/`GoStopNetLobby`/`GoStopUIManager`의 문서 주석에
+남아있던 "GoStopScene 고아 상태로 남겨뒀다"류의 옛 서술도 실제 삭제
+사실에 맞게 정리했다.
+
+**검증** — 컴파일 클린(`editor refresh --force --compile`, `console
+--type error` 0건) 확인 후, `GoStop3PScene`에서 `BeginWithSeatCount(2)`/
+`(3)`/`(4)`를 각각 실제로 호출해 라이브 Play 모드로 재확인했다 — 셋
+다 카드 총량이 정확히 50(48+조커2)으로 보존되고, 좌/우/상단 좌석
+활성화가 인원수별 스펙(2인=상단만, 3인=좌우만, 4인=전부)과 일치하고,
+콘솔 에러 0건인 것까지 확인했다.
+
+> **함정 — 씬을 직접 열고 `SetSeatCount`+`NewGame`을 리플렉션으로 직접
+> 호출하면 `BuildStaticUI()`를 건너뛰어 `NullReferenceException`이
+> 난다.** 씬을 에디터에서 바로 열었을 때(테스트 경로)는 `Start()`가
+> `seatCountPreset==false`라 곧장 게임을 시작하지 않고 인원수 선택
+> 팝업(`ShowModeSelectPopup`)을 띄운다 — 실제 게임 시작은 그 팝업의
+> 버튼이 부르는 `BeginWithSeatCount(n)`(`SetSeatCount` → `BuildStaticUI()`
+> → `NewGame()` 순서)이 담당한다. `SetSeatCount`+`NewGame`만 직접
+> 호출하면 `fieldArea` 등 SerializeField 참조가 아직 준비 안 된 상태로
+> `RebuildUI`/`DetermineDealerSeq`가 돌아 `ClearChildren(fieldArea)` 등에서
+> NRE가 난다 — **테스트용으로 씬을 바로 열어 인원수를 강제할 때는
+> 반드시 `BeginWithSeatCount(n)`을 리플렉션으로 부를 것.**
+
+> **롤백 경고 — 이번 세션 도중 사용자가 "GoStop3PScene 씬과 프리팹을
+> 수정했는데 자꾸 원래대로 돌아온다"고 지적했다.** 조사 결과, 과거
+> 여러 세션에서 Play 모드 테스트 후 `git status`에 뜬 `GoStop3PScene.unity`/
+> `EffectCheongdan.prefab` 등의 diff를 "Play 모드의 무해한 스퓨리어스
+> 드리프트"(이 문서에 이미 여러 번 기록된 패턴)로 단정하고 `git checkout --`
+> 로 반사적으로 되돌린 것이, 실제로는 **사용자가 에디터에서 직접 만든
+> 진짜 편집**을 지운 것이었을 가능성이 매우 높다고 결론 내렸다(diff
+> 내용이 새 GameObject 추가·TMP 색상 변경 등 명백한 실제 콘텐츠였다 —
+> 무해한 직렬화 노이즈가 아니었다). git으로 복구 불가능(사전에 stash를
+> 만든 적이 없었다) — 유일한 가능성은 OS 레벨 백업(Time Machine 등)뿐이며,
+> 사용자에게 이를 명확히 알렸다. **앞으로는 Play 모드 후 발견한 예상 밖의
+> 씬/프리팹 diff를 절대 반사적으로 되돌리지 않는다** — 반드시 diff
+> 내용을 꼼꼼히 살펴보고, 실제 콘텐츠로 보이면 사용자에게 먼저 확인한다.
+> "스퓨리어스 드리프트"라는 개념 자체를 이제 신뢰하지 않는다 — 과거
+> 세션들이 겪었다고 기록한 사례 다수가 실제로는 이런 식으로 사용자의
+> 동시 편집을 지운 것이었을 가능성이 있다.
