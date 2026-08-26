@@ -20,6 +20,7 @@ public class GoStopAudio : MonoBehaviour
     const int SR = 44100;
     const int VOICES = 10;
 
+    float BGM_VOL { get { return GameAudioSettings.Bgm * 0.5f; } }
     enum Wave { Sine, Square, Tri }
 
     AudioSource[] voices;
@@ -146,7 +147,7 @@ public class GoStopAudio : MonoBehaviour
         while (t < BGM_FADE_IN_SEC)
         {
             t += Time.deltaTime;
-            bgmSources[0].volume = Mathf.Lerp(0f, GameAudioSettings.Bgm, t / BGM_FADE_IN_SEC);
+            bgmSources[0].volume = Mathf.Lerp(0f, BGM_VOL, t / BGM_FADE_IN_SEC);
             yield return null;
         }
 
@@ -156,7 +157,7 @@ public class GoStopAudio : MonoBehaviour
             float triggerTime = bgmClip.length - BGM_CROSSFADE_SEC;
             while (cur.isPlaying && cur.time < triggerTime)
             {
-                cur.volume = GameAudioSettings.Bgm; // 옵션 슬라이더를 재생 중에 움직여도 바로 반영
+                cur.volume = BGM_VOL; // 옵션 슬라이더를 재생 중에 움직여도 바로 반영
                 yield return null;
             }
 
@@ -172,12 +173,12 @@ public class GoStopAudio : MonoBehaviour
             {
                 cft += Time.deltaTime;
                 float k = Mathf.Clamp01(cft / BGM_CROSSFADE_SEC);
-                cur.volume     = Mathf.Cos(k * Mathf.PI * 0.5f) * GameAudioSettings.Bgm;
-                nextSrc.volume = Mathf.Sin(k * Mathf.PI * 0.5f) * GameAudioSettings.Bgm;
+                cur.volume     = Mathf.Cos(k * Mathf.PI * 0.5f) * BGM_VOL;
+                nextSrc.volume = Mathf.Sin(k * Mathf.PI * 0.5f) * BGM_VOL;
                 yield return null;
             }
             cur.Stop();
-            nextSrc.volume = GameAudioSettings.Bgm;
+            nextSrc.volume = BGM_VOL;
             bgmActive = next;
         }
     }
