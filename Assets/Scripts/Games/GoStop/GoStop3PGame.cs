@@ -1653,11 +1653,12 @@ public partial class GoStop3PGame : MonoBehaviour
     /// 족보에 근접했는지 알려준다. 프리팹은 EffectGodoriEmergency/
     /// EffectHongdanEmergency/EffectChodanEmergency/EffectCheongdanEmergency/
     /// EffectGwangEmergency(GoStopEffectPopup 공유 — Assets/Resources/
-    /// Prefabs/GoStop/Effects/) — 기본 문구에 좌석 이름을 앞에 붙여서 덮어쓴다.
-    /// <br/>2026-08-25 — 완성 이펙트(<see cref="FireAchievement"/>/
-    /// <see cref="FireGwangAchievement"/>)와 프리팹을 완전히 분리했다
-    /// (예전엔 같은 프리팹을 문구·색·파티클 수만 다르게 재사용했는데, 사용자가
-    /// 각각 따로 디자인하려면 별개 에셋이어야 한다).
+    /// Prefabs/GoStop/Effects/).
+    /// <br/>2026-08-26 — 코드가 넘기는 텍스트는 <b>좌석 이름 하나뿐</b>이다
+    /// (예전엔 "OO 고도리 비상!"처럼 세트 이름·상태 문구까지 코드에서 합쳐
+    /// 넘겨서, 프리팹마다 다르게 디자인해도 텍스트 형식이 한 가지로만
+    /// 고정돼 후졌다는 지적을 받았다). 세트 이름·"비상"/"완성" 문구·이미지는
+    /// 각 프리팹 안에 정적으로 구성한다 — 코드는 그 위에 이름만 얹는다.
     /// <br/>네트워크 동기화는 이번엔 안 걸었다 — 호스트 화면에서만 보인다
     /// (게스트에게 안 뜬다). Toast처럼 EventMsg로 실어 보내려면 게스트
     /// 쪽 수신 핸들러가 이 라벨 형식을 알아야 하는데, 아직 검증 안 된
@@ -1685,7 +1686,9 @@ public partial class GoStop3PGame : MonoBehaviour
         if (fx != null)
         {
             fx.root.anchoredPosition = local;
-            fx.Play($"{SeatName(seat)} {setName} 비상!", EmergencyColor(setName));
+            // "누구"만 라벨로 넘긴다 — 세트 이름·"비상"/"완성" 문구·이미지는
+            // 사용자가 각 프리팹에 직접 구성한다(2026-08-26).
+            fx.Play(SeatName(seat), EmergencyColor(setName));
         }
 
         ShowTimedToast($"{SeatName(seat)}이(가) {setName} 완성 직전!");
@@ -1724,7 +1727,7 @@ public partial class GoStop3PGame : MonoBehaviour
         if (fx != null)
         {
             fx.root.anchoredPosition = local;
-            fx.Play($"{SeatName(seat)} {setName} 완성!", EmergencyColor(setName));
+            fx.Play(SeatName(seat), EmergencyColor(setName));
         }
 
         ShowTimedToast($"{SeatName(seat)}이(가) {setName} 완성!");
@@ -1764,7 +1767,7 @@ public partial class GoStop3PGame : MonoBehaviour
         if (fx != null)
         {
             fx.root.anchoredPosition = local;
-            fx.Play($"{SeatName(seat)} {label} 완성!", color);
+            fx.Play(SeatName(seat), color);
         }
 
         ShowTimedToast($"{SeatName(seat)}이(가) {label} 완성!");
