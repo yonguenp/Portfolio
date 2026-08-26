@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 
 /// <summary>
 /// 고스톱 네트워크 대전(같은 로컬 네트워크, 서버 없이 호스트-클라이언트 P2P)의
@@ -76,6 +77,19 @@ public class GoStopNetMessage
         /// 이거다"를 알린다. 씬 재로딩 없이 <see cref="seat"/>(새 좌석)·
         /// <see cref="playerCount"/>(새 인원수)만 받아 제자리에서 계속한다.</summary>
         SeatReassign,
+        /// <summary>호스트 → 그 좌석 하나(2026-08-26, 선 뽑기 원격 클릭).
+        /// 선 뽑기 8칸 중 그 좌석 차례가 됐다는 신호 — <see cref="text"/>에
+        /// 이미 찜된 칸을 8자리 '0'/'1' 문자열로 담는다("01000010" 식).
+        /// 카드 값은 절대 안 보낸다(블라인드 픽이 규칙이라 값을 미리
+        /// 알려주면 원격 플레이어만 유리해진다) — 어느 칸이 비었는지만
+        /// 알려줘서 그 칸들만 클릭 가능하게 그리게 한다.</summary>
+        DealerDrawPrompt,
+        /// <summary>클라이언트 → 호스트. 선 뽑기에서 고른 칸 번호(0~7) —
+        /// <see cref="seat"/> 필드를 좌석 식별이 아니라 슬롯 인덱스 용도로
+        /// 재사용한다(이 메시지의 발신자 좌석은 트랜스포트가 이미
+        /// 별도로 알고 있어서 <c>WaitForRemoteMessage</c>의 <c>fromSeat</c>
+        /// 매개변수로 구분되므로 헷갈리지 않는다).</summary>
+        DealerDrawPick,
     }
 
     public Type type;
@@ -141,4 +155,6 @@ public class GoStopNetMessage
     public static GoStopNetMessage LobbyUpdateMsg(string[] names) => new GoStopNetMessage { type = Type.LobbyUpdate, playerNames = names };
     public static GoStopNetMessage StartGameMsg(int seat, int playerCount, int pointPrice) => new GoStopNetMessage { type = Type.StartGame, seat = seat, playerCount = playerCount, pointPrice = pointPrice };
     public static GoStopNetMessage SeatReassignMsg(int seat, int playerCount) => new GoStopNetMessage { type = Type.SeatReassign, seat = seat, playerCount = playerCount };
+    public static GoStopNetMessage DealerDrawPrompt(bool[] taken) => new GoStopNetMessage { type = Type.DealerDrawPrompt, text = string.Concat(taken.Select(t => t ? '1' : '0')) };
+    public static GoStopNetMessage DealerDrawPick(int slotIndex) => new GoStopNetMessage { type = Type.DealerDrawPick, seat = slotIndex };
 }

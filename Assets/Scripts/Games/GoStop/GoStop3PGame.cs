@@ -479,6 +479,13 @@ public partial class GoStop3PGame : MonoBehaviour
                         "타이틀", GoToTitle);
                 }
                 break;
+            case GoStopNetMessage.Type.DealerDrawPrompt:
+                // 선 뽑기 — 내 차례가 됐다는 신호. text의 8자리 '0'/'1'로
+                // 이미 찜된 칸을 받는다(값은 안 온다 — 블라인드 픽).
+                var taken = new bool[8];
+                for (int i = 0; i < 8 && i < msg.text.Length; i++) taken[i] = msg.text[i] == '1';
+                ShowDealerDrawPickPopupForGuest(taken);
+                break;
         }
     }
 

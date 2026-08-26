@@ -249,15 +249,17 @@ public partial class GoStop3PGame
     /// 아무리 커도 월 차이 1을 못 뒤집는다 — 월만 겹치지 않으면 그 8장
     /// 사이에서 동률이 수학적으로 나올 수 없다. "8개의 패는 종류가 겹치지
     /// 않게(동률 방지)" 요청을 이렇게 구현했다.
-    /// <br/>이 연출은 호스트 화면 전용이다(이 코루틴 자체가 NewGameSeq를
-    /// 실제로 돌리는 호스트/싱글플레이에서만 실행되고, 게스트는 애초에
-    /// NewGameSeq를 안 밟는다) — 그래서 내 좌석(PLAYER_SEAT) 차례만 실제
-    /// 클릭을 기다리고, 나머지 좌석(AI든 원격 좌석이든)은 호스트 화면에서
-    /// 자동으로 대신 뽑는다. 정보가 전혀 없는 순수 운이라 대리로 뽑아도
-    /// 공정성이 깨지지 않는다 — 이 파일이 다른 연출용 시퀀스에서도 이미
-    /// 써 온 스코프 축소(원격 좌석까지 실제 클릭을 받으려면 새 네트워크
-    /// 메시지 타입이 필요한데, 검증 안 된 경로를 여기 얹는 리스크를
-    /// 피했다).</summary>
+    /// <br/>이 코루틴 자체는 호스트/싱글플레이에서만 실행된다(게스트는
+    /// NewGameSeq를 애초에 안 밟는다). 좌석은 셋으로 갈린다: 내 좌석
+    /// (PLAYER_SEAT)은 로컬 클릭을 기다리고, 원격 좌석(<see cref="IsRemoteSeat"/>)
+    /// 은 <see cref="GoStopNetMessage.Type.DealerDrawPrompt"/>로 "네 차례,
+    /// 이 칸들은 이미 찜됐다"만 보내고 실제 클릭(<see cref="GoStopNetMessage.Type.DealerDrawPick"/>)
+    /// 을 기다린다(2026-08-26, "원격 좌석에도 진짜 클릭을 받게 해달라"
+    /// 요청 — 예전엔 원격 좌석도 호스트가 대신 뽑아줬었다), 나머지(AI)만
+    /// 호스트 화면에서 무작위로 자동 픽한다. 카드 값은 원격 좌석에게
+    /// 절대 미리 안 보낸다 — 블라인드 픽이 규칙이라 값을 미리 알려주면
+    /// 원격 플레이어만 유리해진다(로컬 클릭도 뒷면 상태에서 고르므로
+    /// 형평성이 맞는다).</summary>
     IEnumerator DetermineDealerSeq()
     {
         dealerDrawPopup.Show();
@@ -291,13 +293,30 @@ public partial class GoStop3PGame
 
         for (int s = 0; s < SEATS; s++)
         {
-            dealerDrawPopup.promptText.text = $"{SeatName(s)} 차례 — 카드를 고르세요";
+            dealerDrawPopup.promptText.text = $"{SeatName(s)} 차례 - 카드를 고르세요";
             int chosen;
             if (s == PLAYER_SEAT)
             {
                 pendingDealerPickIndex = -1;
                 yield return new WaitUntil(() => pendingDealerPickIndex >= 0);
                 chosen = pendingDealerPickIndex;
+            }
+            else if (IsRemoteSeat(s))
+            {
+                var taken = new bool[8];
+                for (int k = 0; k < 8; k++) taken[k] = pickedBy[k] != -1;
+                GoStopNetLobby.Instance?.SendToSeat(s, GoStopNetMessage.DealerDrawPrompt(taken));
+                GoStopNetMessage msg = null;
+                yield return StartCoroutine(WaitForRemoteMessage(s,
+                    m => m.type == GoStopNetMessage.Type.DealerDrawPick, m => msg = m));
+                // design.md §50.1과 같은 원칙 — 타임아웃/범위 밖/이미 찜된
+                // 칸이면 나머지 중 무작위로 대신 뽑아 판이 안 멈추게 한다.
+                chosen = msg != null ? msg.seat : -1;
+                if (chosen < 0 || chosen >= 8 || pickedBy[chosen] != -1)
+                {
+                    var avail = Enumerable.Range(0, 8).Where(i => pickedBy[i] == -1).ToList();
+                    chosen = avail[Random.Range(0, avail.Count)];
+                }
             }
             else
             {
@@ -336,6 +355,43 @@ public partial class GoStop3PGame
         GoStopAudio.Instance?.Bonus(); // 결과가 정해지는 순간의 반짝이는 차임
         yield return new WaitForSeconds(1.1f);
 
+        dealerDrawPopup.Hide();
+    }
+
+    /// <summary>게스트 전용 — 호스트가 보낸 <see cref="GoStopNetMessage.Type.DealerDrawPrompt"/>
+    /// 를 받아 내 화면에도 같은 8칸 뒷면 팝업을 그린다. 이미 찜된 칸만
+    /// <paramref name="taken"/>으로 받고 카드 값은 전혀 안 온다(호스트의
+    /// <see cref="DetermineDealerSeq"/> 문서 참고 — 블라인드 픽 형평성).
+    /// 고르면 그 즉시 호스트에 결과를 보내고 내 화면은 바로 닫는다 —
+    /// 다른 좌석이 고르는 과정이나 최종 공개 연출은 호스트 화면 전용으로
+    /// 남겨둔다(이 파일의 다른 타깃 프롬프트들과 같은 원칙 — 참가 선언/
+    /// 필드 선택 팝업도 게스트 쪽은 결과만 보내고 바로 닫힌다).</summary>
+    void ShowDealerDrawPickPopupForGuest(bool[] taken)
+    {
+        HwatuUI.ClearChildren(dealerDrawPopup.pool);
+        dealerDrawPopup.promptText.text = "카드를 고르세요";
+        dealerDrawPopup.resultText.text = "";
+
+        for (int i = 0; i < 8; i++)
+        {
+            int col = i % 4, row = i / 4;
+            var pos = new Vector2(-225f + col * DRAW_COL_PITCH, -row * DRAW_ROW_PITCH);
+            var backRT = HwatuUI.MakeCardBack(dealerDrawPopup.pool, pos, DRAW_CARD_W, DRAW_CARD_H);
+            var img = backRT.GetComponent<Image>();
+            img.raycastTarget = true;
+            var btn = backRT.gameObject.AddComponent<Button>();
+            btn.targetGraphic = img;
+            btn.interactable = !taken[i]; // 이미 찜된 칸은 기본 disabled 틴트로 어두워지고 클릭도 막힌다
+            int captured = i;
+            btn.onClick.AddListener(() => OnDealerDrawPickClicked(captured));
+        }
+
+        dealerDrawPopup.Show();
+    }
+
+    void OnDealerDrawPickClicked(int index)
+    {
+        GoStopNetLobby.Instance.SendToHost(GoStopNetMessage.DealerDrawPick(index));
         dealerDrawPopup.Hide();
     }
 
