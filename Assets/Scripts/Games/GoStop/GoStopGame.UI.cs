@@ -841,7 +841,7 @@ public partial class GoStopGame
 
     void ShowActionPopup(string label)
     {
-        bool moneyEvent = label == "첫뻑" || label == "연뻑" || label == "첫따닥";
+        bool moneyEvent = label == "첫뻑" || label == "연뻑" || label == "첫따닥" || label == "첫뻑먹기";
         Color? color =
             moneyEvent               ? MoneyEventColor :
             label == "따닥"          ? new Color(0.72f, 0.45f, 0.95f) : // exact — "첫따닥"과는 다른 이벤트

@@ -219,7 +219,13 @@ public partial class GoStop3PGame : MonoBehaviour
     // 2를 거치지 않고 곧장 3으로 뛸 수 있어서(비상이 안 뜬 채로 완성)
     // emergencyFired에 얹어 계산하지 않고 완전히 독립적으로 추적한다.
     readonly HashSet<(int seat, int setIdx)> achievedFired = new();
-    bool isFirstPlayOfRound;
+    // 2026-08-26 정정(사용자 확인) — "첫뻑/첫따닥/첫뻑먹기"의 "첫"은 판
+    // 전체의 첫 장(선의 첫 수)이 아니라 **각 유저 자신의 손패 첫 장(1번째로
+    // 내는 카드)**을 가리킨다 — "마지막 턴"을 각자 손패 마지막 장으로
+    // 정정한 것과 같은 원칙. 예전엔 판 전체에 하나뿐인 isFirstPlayOfRound
+    // 플래그라 선 말고는 이 보너스를 받을 기회 자체가 없었다 — 좌석별로
+    // 독립 추적한다.
+    readonly bool[] playedFirstHandCard = new bool[SEATS_MAX];
     int currentSeat;
 
     // 광팔이 — 매판 시작마다 4명이 화투 한 장씩 뽑아 가장 높은 패를 뽑은
@@ -1207,7 +1213,7 @@ public partial class GoStop3PGame : MonoBehaviour
         achievedFired.Clear();
         flyFrom.Clear();
         flyViaField.Clear();
-        isFirstPlayOfRound = true;
+        System.Array.Clear(playedFirstHandCard, 0, playedFirstHandCard.Length);
         actionBusy = false;
         state = State.Turn;
 
@@ -1499,7 +1505,7 @@ public partial class GoStop3PGame : MonoBehaviour
     // 오가는 이벤트라 다른 뻑/따닥과는 다른 색(금전 신호 — 초록)으로
     // 명시적으로 분리한다.
     static readonly Color MoneyEventColor = new Color(0.20f, 0.85f, 0.45f);
-    static bool IsMoneyEventLabel(string label) => label == "첫뻑" || label == "연뻑" || label == "첫따닥";
+    static bool IsMoneyEventLabel(string label) => label == "첫뻑" || label == "연뻑" || label == "첫따닥" || label == "첫뻑먹기";
 
     void ShowActionPopup(string label)
     {
@@ -1990,8 +1996,8 @@ public partial class GoStop3PGame : MonoBehaviour
             Toast(seat, $"{card.month}월 흔들기");
         }
 
-        bool wasFirstPlay = isFirstPlayOfRound;
-        isFirstPlayOfRound = false;
+        bool wasFirstPlay = !playedFirstHandCard[seat];
+        playedFirstHandCard[seat] = true;
 
         // 2026-08-25 버그 수정 — "손패는 여전히 오프셋 없이 나온다" 신고.
         // GoStopRules.Resolve가 매칭된 필드 카드를 곧바로 field에서
@@ -2043,7 +2049,11 @@ public partial class GoStop3PGame : MonoBehaviour
                 yield return StartCoroutine(ContinueChoice(card, r1, seat, res => chosen1 = res));
                 r1 = chosen1;
                 ddadakWatch = candidates.FirstOrDefault(c => !r1.captured.Contains(c));
-                if (wasFirstPlay) { ApplyMoneyBonus(seat, PpeokMoney()); Toast(seat, "첫따닥"); }
+                // 2026-08-26 버그 발견·수정 — 예전엔 여기서 곧장 "첫따닥" 돈을
+                // 줬는데, 이 시점은 필드 2장 중 하나를 "고른" 것뿐이고 진짜
+                // 따닥(나머지 한 장을 뒷패가 마저 잡는 것)은 아직 확정 전이다
+                // — 뒷패가 안 맞으면 그냥 평범한 선택 캡처인데도 "첫따닥"이
+                // 잘못 붙었다. 실제 확정 지점(아래 ddadak 분기)으로 옮겼다.
             }
         }
 
@@ -2232,7 +2242,7 @@ public partial class GoStop3PGame : MonoBehaviour
         // --- ⑤ 피 뺏기는 Cap 배치가 끝난 뒤 별도 비트로 ---
         if (r1.captured.Count > 0)
         {
-            bool stole = ApplyMatchBonus(seat, r1, bomb, allowSweep: bomb || !willDraw);
+            bool stole = ApplyMatchBonus(seat, r1, bomb, allowSweep: bomb || !willDraw, wasFirstHandPlay: wasFirstPlay);
             if (stole)
             {
                 RebuildUI();
@@ -2327,7 +2337,13 @@ public partial class GoStop3PGame : MonoBehaviour
                     else if (ddadak)
                     {
                         StealPiFromEachOther(seat, 1);
-                        Toast(seat, "따닥");
+                        // 2026-08-26 — "첫따닥"(손패 첫 장으로 만든 따닥)은 정확히
+                        // 여기(뒷패가 나머지 한 장을 마저 잡아 따닥이 확정된 시점)
+                        // 에서만 판정한다 — 위 선택 시점에서 옮겨왔다(그때는 아직
+                        // 진짜 따닥인지 몰랐다). 피 뺏기는 원래대로 그대로 일어나고
+                        // (상대에게 피가 있다면), 첫 턴이면 그 위에 판돈을 추가로 얹는다.
+                        if (wasFirstPlay) { ApplyMoneyBonus(seat, PpeokMoney()); Toast(seat, "첫따닥"); }
+                        else Toast(seat, "따닥");
                         stole2 = true;
                         if (r2.sweep)
                         {
@@ -2539,7 +2555,12 @@ public partial class GoStop3PGame : MonoBehaviour
     /// Cap 이동 애니메이션이 끝난 뒤 별도 단계로 보여달라" 요청으로,
     /// 호출자(PlaySeq)가 이 값을 보고 별도 RebuildUI+대기를 걸지 말지
     /// 정한다(아무것도 안 뺏겼으면 빈 대기 시간만 낭비하므로).</summary>
-    bool ApplyMatchBonus(int seat, GoStopRules.CaptureResult r, bool bomb, bool allowSweep = true)
+    /// <param name="wasFirstHandPlay">2026-08-26 — 이 캡처가 그 좌석의
+    /// "손패 첫 장(1번째로 내는 카드)"에서 나온 것인지. r1(손패) 호출에서만
+    /// true를 넘긴다 — r2(뒷패)·DeckOnlySeq·ResolveBonusJoker는 손패를 낸
+    /// 게 아니므로 항상 기본값(false) 그대로 둔다. matchCount==3(뻑 먹기)
+    /// 분기에서만 쓰인다 — "첫뻑먹기" 판돈 보너스 판정용.</param>
+    bool ApplyMatchBonus(int seat, GoStopRules.CaptureResult r, bool bomb, bool allowSweep = true, bool wasFirstHandPlay = false)
     {
         bool did = false;
         if (bomb) { StealPiFromEachOther(seat, 1); Toast(seat, "폭탄"); did = true; }
@@ -2557,7 +2578,11 @@ public partial class GoStop3PGame : MonoBehaviour
             {
                 bool selfPpeok = causer == seat;
                 StealPiFromEachOther(seat, selfPpeok ? 2 : 1);
-                Toast(seat, selfPpeok ? "자뻑" : "뻑 먹기");
+                // 2026-08-26 — "첫뻑먹기"(손패 첫 장이 기존 뻑을 먹은 경우)는
+                // 자뻑/일반 뻑 먹기와 무관하게 항상 같은 판돈 보너스
+                // (PpeokMoney())가 추가로 붙는다 — 첫뻑/첫따닥과 같은 원칙.
+                if (wasFirstHandPlay) { ApplyMoneyBonus(seat, PpeokMoney()); Toast(seat, "첫뻑먹기"); }
+                else Toast(seat, selfPpeok ? "자뻑" : "뻑 먹기");
                 ppeokCauser.Remove(month);
                 did = true;
             }

@@ -98,7 +98,12 @@ public partial class GoStopGame : MonoBehaviour
     // emergencyFired와 완전히 독립 추적).
     readonly HashSet<(bool isPlayerSide, int setIdx)> achievedFired = new();
     const int PPEOK_MONEY_POINTS = 3; // 첫뻑/연뻑 즉시 획득 금액 = 3점 상당(점수엔 안 들어감)
-    bool isFirstPlayOfRound; // 이번 판 첫 카드였는지 — 첫뻑/첫따닥 판정용, 소비되면 false
+    // 2026-08-26 정정(사용자 확인, 4인판과 동일) — "첫뻑/첫따닥/첫뻑먹기"의
+    // "첫"은 판 전체의 첫 장(선의 첫 수)이 아니라 각자 자기 손패 첫 장
+    // (1번째로 내는 카드)을 가리킨다 — 예전엔 판 전체에 하나뿐인 플래그라
+    // 선 말고는 이 보너스를 받을 기회 자체가 없었다. 좌석별(플레이어/AI)로
+    // 독립 추적한다.
+    bool playerPlayedFirstCard, aiPlayedFirstCard;
     int playerPpeokStreak, aiPpeokStreak; // 자기 턴에서 연속으로 뻑을 낸 횟수(뻑이 아니면 0으로 리셋) — "연뻑" 보너스 판정용
     // "쓰리뻑"(뻑을 3번 하면 그 자리에서 즉시 승리)은 구글링으로 확인한
     // 표준 규칙상 연속이 아니라 이번 판 통산 횟수다 — 연속용 스트릭과는
@@ -572,7 +577,7 @@ public partial class GoStopGame : MonoBehaviour
         playerPpeokStreak = aiPpeokStreak = 0;
         playerPpeokTotal = aiPpeokTotal = 0;
         goLeader = null; goReversalCount = 0;
-        isFirstPlayOfRound = true; // stakeMultiplier는 여기서 안 건드린다 — 나가리 다음 판까지 이어져야 한다.
+        playerPlayedFirstCard = aiPlayedFirstCard = false; // stakeMultiplier는 여기서 안 건드린다 — 나가리 다음 판까지 이어져야 한다.
         state = starterIsPlayer ? State.PlayerTurn : State.AiTurn;
 
         ui?.SetScore(playerMoney); // 상단 HUD의 SCORE는 판점이 아니라 내 보유 머니를 보여준다(사용자 요청)
@@ -672,10 +677,12 @@ public partial class GoStopGame : MonoBehaviour
             Toast(isPlayerSide, $"{card.month}월 흔들기");
         }
 
-        // 이번 카드가 이번 판의 첫 수였는지 먼저 기록해 두고 바로 내린다 —
-        // 첫뻑/첫따닥 판정에만 쓰고, 이후 카드들은 "첫"이 아니다.
-        bool wasFirstPlay = isFirstPlayOfRound;
-        isFirstPlayOfRound = false;
+        // 2026-08-26 정정(사용자 확인) — 이 카드가 "이번 판의 첫 수"가
+        // 아니라 "이 좌석 자신의 손패 첫 장"이었는지로 판정한다(4인판과
+        // 동일한 원칙). 첫뻑/첫따닥/첫뻑먹기 판정에만 쓰고, 이후 카드들은
+        // "첫"이 아니다.
+        bool wasFirstPlay = isPlayerSide ? !playerPlayedFirstCard : !aiPlayedFirstCard;
+        if (isPlayerSide) playerPlayedFirstCard = true; else aiPlayedFirstCard = true;
 
         var r1 = GoStopRules.ResolveWithBomb(card, hand, field, out bool bomb);
 
@@ -725,7 +732,12 @@ public partial class GoStopGame : MonoBehaviour
                 yield return StartCoroutine(ContinueChoice(card, r1, isPlayerSide, res => chosen1 = res));
                 r1 = chosen1;
                 ddadakWatch = candidates.FirstOrDefault(c => !r1.captured.Contains(c));
-                if (wasFirstPlay) { ApplyMoneyBonus(isPlayerSide, PpeokMoney()); Toast(isPlayerSide, "첫따닥"); }
+                // 2026-08-26 버그 발견·수정(4인판과 동일) — 예전엔 여기서 곧장
+                // "첫따닥" 돈을 줬는데, 이 시점은 필드 2장 중 하나를 "고른"
+                // 것뿐이고 진짜 따닥(나머지 한 장을 뒷패가 마저 잡는 것)은
+                // 아직 확정 전이다 — 뒷패가 안 맞으면 그냥 평범한 선택
+                // 캡처인데도 "첫따닥"이 잘못 붙었다. 실제 확정 지점(아래
+                // ddadak 분기)으로 옮겼다.
             }
         }
 
@@ -783,7 +795,7 @@ public partial class GoStopGame : MonoBehaviour
                 // 실제로는 싹쓸이가 아니다. 싹쓸이 인정은 (1) 폭탄 턴(이번 턴에
                 // 덱을 안 넘긴다) (2) 덱이 이미 바닥나 더 뒤집을 패가 없는 경우로
                 // 한정한다 — 그 외엔 r2(덱 캡처) 쪽에서 최종 상태를 다시 판정한다.
-                ApplyMatchBonus(isPlayerSide, r1, bomb, allowSweep: bomb || !willDraw);
+                ApplyMatchBonus(isPlayerSide, r1, bomb, allowSweep: bomb || !willDraw, wasFirstHandPlay: wasFirstPlay);
                 RegisterFlyViaField(r1);
                 // isNetworkHost도 같이 확인 — "ai" 쪽 캡처여도 실제로는 접속한
                 // 게스트라 팝업으로 직접 물어봐야 한다(AI는 팝업 없이 나중에
@@ -939,7 +951,13 @@ public partial class GoStopGame : MonoBehaviour
                     else if (ddadak)
                     {
                         GoStopRules.StealPi(opponentCaptured, captured, 1);
-                        Toast(isPlayerSide, "따닥");
+                        // 2026-08-26 — "첫따닥"은 정확히 여기(뒷패가 나머지 한 장을
+                        // 마저 잡아 따닥이 확정된 시점)에서만 판정한다(4인판과 동일—
+                        // 위 선택 시점에서 옮겨왔다). 피 뺏기는 원래대로 그대로
+                        // 일어나고(상대에게 피가 있다면), 첫 턴이면 그 위에 판돈을
+                        // 추가로 얹는다.
+                        if (wasFirstPlay) { ApplyMoneyBonus(isPlayerSide, PpeokMoney()); Toast(isPlayerSide, "첫따닥"); }
+                        else Toast(isPlayerSide, "따닥");
                         if (r2.sweep)
                         {
                             if (isPlayerSide) playerSweeps++; else aiSweeps++;
@@ -1159,8 +1177,12 @@ public partial class GoStopGame : MonoBehaviour
     /// 스킵한다 — 더미의 마지막 한 장은 "남은 패와 반드시 맞게 돼 있다"는
     /// 이유로 싹쓸이(와 쪽)를 인정하지 않는다는 규칙 때문이다. 캡처 자체는
     /// 정상 진행된다.
+    /// <paramref name="wasFirstHandPlay"/> — 2026-08-26(4인판과 동일) 이
+    /// 캡처가 이 좌석의 "손패 첫 장(1번째로 내는 카드)"에서 나온 것인지.
+    /// r1(손패) 호출에서만 true를 넘긴다. matchCount==3(뻑 먹기) 분기에서만
+    /// 쓰인다 — "첫뻑먹기" 판돈 보너스 판정용.
     /// </summary>
-    void ApplyMatchBonus(bool isPlayerSide, GoStopRules.CaptureResult r, bool bomb, bool allowSweep = true)
+    void ApplyMatchBonus(bool isPlayerSide, GoStopRules.CaptureResult r, bool bomb, bool allowSweep = true, bool wasFirstHandPlay = false)
     {
         var captured = isPlayerSide ? playerCaptured : aiCaptured;
         var opponentCaptured = isPlayerSide ? aiCaptured : playerCaptured;
@@ -1174,7 +1196,11 @@ public partial class GoStopGame : MonoBehaviour
             bool selfPpeok = ppeokCauser.TryGetValue(month, out bool causer) && causer == isPlayerSide;
             GoStopRules.StealPi(opponentCaptured, captured, selfPpeok ? 2 : 1);
             ppeokCauser.Remove(month);
-            Toast(isPlayerSide, selfPpeok ? "자뻑" : "뻑 먹기");
+            // 2026-08-26 — "첫뻑먹기"(손패 첫 장이 기존 뻑을 먹은 경우)는
+            // 자뻑/일반 뻑 먹기와 무관하게 항상 같은 판돈 보너스(PpeokMoney())가
+            // 추가로 붙는다(4인판과 동일) — 피 뺏기는 위에서 이미 그대로 일어난다.
+            if (wasFirstHandPlay) { ApplyMoneyBonus(isPlayerSide, PpeokMoney()); Toast(isPlayerSide, "첫뻑먹기"); }
+            else Toast(isPlayerSide, selfPpeok ? "자뻑" : "뻑 먹기");
 
             // 그 뻑에 보너스피가 같이 묻혀 있었으면(ResolveBonusJoker 참고)
             // 지금 이걸 해소하는 쪽이 그 보너스피도 같이 가져간다.
