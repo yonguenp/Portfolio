@@ -951,7 +951,7 @@ public partial class GoStop3PGame : MonoBehaviour
     /// 재사용한다 — 버튼 3개(2/3/4인)라 딱 맞는다.</summary>
     void ShowModeSelectPopup()
     {
-        ui?.ShowOverlay(new Color(.93f, .73f, .18f), "인원수를 선택하세요", null,
+        ui?.ShowOverlay(Color.white, "인원수 선택", null,
             "테스트용 — 로비/타이틀을 거치면 자동으로 정해집니다",
             "2인 (맞고)", () => BeginWithSeatCount(2),
             "3인 (고스톱)", () => BeginWithSeatCount(3),
@@ -1161,6 +1161,13 @@ public partial class GoStop3PGame : MonoBehaviour
         {
             yield return StartCoroutine(DetermineDealerSeq());
             dealerDetermined = true;
+            // 2026-08-26: 선을 정하고 난 다음 다시 호출해달라는 요청 —
+            // BuildStaticUI()가 씬 진입 시 이미 한 번 부르지만(Left/Right/
+            // TopSeat 참조·초기 on-off 구성), 선 뽑기 직후 시점에 화면
+            // 구성을 한 번 더 맞춰야 하는 경우(사용자가 씬/UI를 계속
+            // 손보는 중이라 이 시점의 세팅이 달라질 수 있다)를 대비해
+            // 여기서도 명시적으로 다시 부른다.
+            ApplySeatVisibility(ui.ContentArea);
         }
 
         // 2026-08-19: 네트워크 대전에서 접속 인원이 3명이면 진짜 3인
