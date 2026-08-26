@@ -2003,6 +2003,17 @@ public partial class GoStop3PGame : MonoBehaviour
 
         var r1 = GoStopRules.ResolveWithBomb(card, h, field, out bool bomb);
 
+        // 2026-08-26 정정(사용자 확인) — 쪽/따닥/싹쓸이의 "마지막 턴" 예외는
+        // 더미의 마지막 한 장이 아니라 **각자 자기 손패의 마지막 장을 낼 때**
+        // (맞고 10번째, 3~4인 고스톱 7번째)를 가리키는 것이었다 — 남은 손패가
+        // 적을수록 어떤 패가 나올지 예측이 쉬워져서 랜덤성이 없어지기 때문.
+        // 이 손패(h)에서 card(폭탄이면 파트너까지)가 이미 빠진 뒤라 h.Count==0
+        // 이면 정확히 "이번이 그 손의 마지막 카드"다. 손이 다 떨어진 뒤 덱만
+        // 넘기는 턴(DeckOnlySeq)은 이미 그 마지막 턴이 지난 뒤라 이 예외가
+        // 다시 적용되지 않는다(사용자 확인 — 손이 빈 이후 턴부터는 정상적으로
+        // 쪽/따닥/싹쓸이가 붙는다).
+        bool isLastHandCard = h.Count == 0;
+
         // 따닥 — 필드에 같은 달이 2장 있어 손패로 그중 하나를 고른 뒤, 같은
         // 턴의 뒷패가 남은 나머지 한 장과 마저 맞아떨어지는 것(사용자 확인
         // 규칙, 2026-08-20). 선택 직후엔 아직 뒷패가 안 나왔으니 "고르지
@@ -2130,12 +2141,10 @@ public partial class GoStop3PGame : MonoBehaviour
 
         // --- ② 뒷패 슬램다운(있다면) ---
         HwatuCard drawn = null;
-        bool isLastDeckCard = false;
         GameObject deckGhost = null;
         if (willDraw)
         {
             drawn = drawPile[0]; drawPile.RemoveAt(0);
-            isLastDeckCard = drawPile.Count == 0;
 
             if (drawn.isJoker)
             {
@@ -2252,7 +2261,7 @@ public partial class GoStop3PGame : MonoBehaviour
                 // 그 카드다. 손패가 뭔가를 잡았으면 남은 카드가 없어 겹쳐놓을
                 // 대상이 없다 — 그런 경우엔 즉시 캡처로 단순화한다.
                 HwatuCard anchor = r1.captured.Count == 0 ? card : null;
-                yield return StartCoroutine(ResolveBonusJoker(seat, drawn, anchor, cap, handLandingWorld));
+                yield return StartCoroutine(ResolveBonusJoker(seat, drawn, anchor, cap, isLastHandCard, handLandingWorld));
             }
             else
             {
@@ -2284,13 +2293,13 @@ public partial class GoStop3PGame : MonoBehaviour
 
                     cap.AddRange(r2.captured);
                     GoStopAudio.Instance?.Capture();
-                    bool chok = r1.placedOnField && r2.captured.Contains(card) && !isLastDeckCard;
+                    bool chok = r1.placedOnField && r2.captured.Contains(card) && !isLastHandCard;
                     // 따닥: 손패로 필드 2장 중 하나를 고른 뒤(ddadakWatch=고르지
                     // 않은 나머지 한 장), 같은 턴의 뒷패가 그 나머지 한 장마저
                     // 잡았다. chok과는 조건이 겹치지 않는다(chok은 r1.placedOnField,
                     // 즉 손패가 아무것도 못 먹은 경우에만 성립하는데, ddadakWatch는
                     // 반대로 손패가 선택 캡처로 뭔가를 먹었을 때만 채워진다).
-                    bool ddadak = ddadakWatch != null && r2.captured.Contains(ddadakWatch) && !isLastDeckCard;
+                    bool ddadak = ddadakWatch != null && r2.captured.Contains(ddadakWatch) && !isLastHandCard;
 
                     if (seat == PLAYER_SEAT || IsRemoteSeat(seat))
                     {
@@ -2327,7 +2336,7 @@ public partial class GoStop3PGame : MonoBehaviour
                             Toast(seat, "싹쓸이");
                         }
                     }
-                    else stole2 = ApplyMatchBonus(seat, r2, false, allowSweep: !isLastDeckCard);
+                    else stole2 = ApplyMatchBonus(seat, r2, false, allowSweep: !isLastHandCard);
 
                     if (stole2)
                     {
@@ -2362,12 +2371,17 @@ public partial class GoStop3PGame : MonoBehaviour
         if (drawn.isJoker)
         {
             // 손패를 안 낸 턴(덱만 넘기기)이라 "이전 손패에서 선택한 패"가
-            // 없다 — 겹쳐놓을 대상이 없으므로 즉시 캡처로 단순화한다.
-            yield return StartCoroutine(ResolveBonusJoker(seat, drawn, null, cap));
+            // 없다 — 겹쳐놓을 대상이 없으므로 즉시 캡처로 단순화한다. 이미
+            // 손이 빈 뒤라 "마지막 손패 턴"이 아니다(isLastHandCard: false).
+            yield return StartCoroutine(ResolveBonusJoker(seat, drawn, null, cap, false));
         }
         else
         {
-            bool isLastDeckCard = drawPile.Count == 0;
+            // 2026-08-26 정정(사용자 확인) — 쪽/따닥/싹쓸이 예외는 더미의
+            // 마지막 한 장이 아니라 "각자 자기 손패의 마지막 장을 낼 때"를
+            // 가리킨다. 이 턴은 손이 이미 다 떨어진 뒤(그 마지막 턴은 이미
+            // 지났다)라 더 이상 예외 대상이 아니다 — 항상 정상적으로
+            // 쪽/따닥/싹쓸이가 붙는다(allowSweep 기본값 true 그대로).
             flyFrom[drawn] = drawPileArea.position;
             var r = GoStopRules.Resolve(drawn, field);
             if (r.choiceCandidates != null)
@@ -2389,7 +2403,7 @@ public partial class GoStop3PGame : MonoBehaviour
             {
                 cap.AddRange(r.captured);
                 GoStopAudio.Instance?.Capture();
-                ApplyMatchBonus(seat, r, false, allowSweep: !isLastDeckCard);
+                ApplyMatchBonus(seat, r, false);
                 RegisterFlyViaField(r);
                 if (seat == PLAYER_SEAT || IsRemoteSeat(seat))
                     dualPending = r.captured.FirstOrDefault(c => c.dualPi);
@@ -2437,7 +2451,12 @@ public partial class GoStop3PGame : MonoBehaviour
     /// 손패 슬램다운이 착지한 지점을 넘겨주면 그 자리에서 나타난다. 안
     /// 주어지면(DeckOnlySeq처럼 이번 턴에 손패를 안 낸 경우) 기존처럼
     /// 더미 자리에서 나타난다.</param>
-    IEnumerator ResolveBonusJoker(int seat, HwatuCard joker, HwatuCard anchor, List<HwatuCard> cap, Vector3? revealFrom = null)
+    /// <param name="isLastHandCard">2026-08-26 — 이 조커가 "손패의 마지막
+    /// 장을 낸 턴"에 뒤집힌 것인지(PlaySeq가 자기 turn-scope의 isLastHandCard를
+    /// 그대로 넘겨준다). DeckOnlySeq에서 호출될 때는 이미 손이 빈 뒤라
+    /// 항상 false를 넘긴다 — 쪽/싹쓸이 예외는 정확히 그 한 번의 턴에만
+    /// 적용된다(사용자 확인).</param>
+    IEnumerator ResolveBonusJoker(int seat, HwatuCard joker, HwatuCard anchor, List<HwatuCard> cap, bool isLastHandCard, Vector3? revealFrom = null)
     {
         field.Add(joker);
         flyFrom[joker] = revealFrom ?? drawPileArea.position;
@@ -2459,12 +2478,11 @@ public partial class GoStop3PGame : MonoBehaviour
         {
             // 두 조커가 연달아 나오는 극히 드문 경우 — 같은 함수를 재귀
             // 호출해서 이번에도 같은 anchor 기준으로 처리한다.
-            yield return StartCoroutine(ResolveBonusJoker(seat, extra, anchor, cap));
+            yield return StartCoroutine(ResolveBonusJoker(seat, extra, anchor, cap, isLastHandCard));
             yield break;
         }
 
         flyFrom[extra] = drawPileArea.position;
-        bool isLastDeckCard = drawPile.Count == 0;
         var r = GoStopRules.Resolve(extra, field);
 
         if (r.choiceCandidates != null)
@@ -2490,7 +2508,7 @@ public partial class GoStop3PGame : MonoBehaviour
 
             // 쪽 — anchor가 이 뒷패에 맞춰 잡혔다. PlaySeq의 일반 쪽 판정
             // (r1.placedOnField && r2.captured.Contains(card))과 완전히 같은 형태다.
-            bool chok = anchor != null && r.captured.Contains(anchor) && !isLastDeckCard;
+            bool chok = anchor != null && r.captured.Contains(anchor) && !isLastHandCard;
             if (chok)
             {
                 StealPiFromEachOther(seat, 1);
@@ -2502,7 +2520,7 @@ public partial class GoStop3PGame : MonoBehaviour
                     Toast(seat, "싹쓸이");
                 }
             }
-            else ApplyMatchBonus(seat, r, false, allowSweep: !isLastDeckCard);
+            else ApplyMatchBonus(seat, r, false, allowSweep: !isLastHandCard);
 
             if (seat == PLAYER_SEAT || IsRemoteSeat(seat))
             {
