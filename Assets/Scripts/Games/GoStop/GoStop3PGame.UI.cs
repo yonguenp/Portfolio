@@ -234,7 +234,7 @@ public partial class GoStop3PGame
         dealerDrawPopup = HwatuUI.InstantiatePopup<DealerDrawPopupView>("DealerDrawPopup", canvasRoot);
     }
 
-    const float DRAW_CARD_W = 150f, DRAW_CARD_H = 170f;
+    const float DRAW_CARD_W = 108f, DRAW_CARD_H = 176.4f;
     const float DRAW_COL_PITCH = 150f;
     const float DRAW_ROW_PITCH = 210f; // 카드(170)+태그(26)+여백 — 겹치지 않을 만큼
 
@@ -326,21 +326,28 @@ public partial class GoStop3PGame
             }
             pickedBy[chosen] = s;
             slots[chosen].GetComponent<Button>().interactable = false; // 재선택 방지 + 기본 disabled 틴트로 살짝 어두워짐
+            // 2026-08-26: "어떤 카드를 누가 골랐는지 바로 알려주면 좋겠다"
+            // 요청 — 예전엔 다 고른 뒤 뒤집는 순간에야 이름표를 붙였는데,
+            // 이제 뒷면 상태 그대로 고른 즉시 이름표부터 붙인다(값은 여전히
+            // 안 보인다 — 블라인드 픽 자체는 그대로 유지). 아래 공개 루프는
+            // 이 태그를 그대로 재사용하고 새로 만들지 않는다.
+            var pickPos = (slots[chosen].transform as RectTransform).anchoredPosition;
+            var pickTag = HwatuUI.MakeLabel(dealerDrawPopup.pool, pickPos + new Vector2(0f, -DRAW_CARD_H - 4f), new Vector2(DRAW_CARD_W, 26f), 18f, Color.white);
+            pickTag.text = SeatName(s);
             GoStopAudio.Instance?.CardPlay();
         }
 
         dealerDrawPopup.promptText.text = "";
         yield return new WaitForSeconds(0.3f);
 
-        // 고른 카드만 순서대로 뒤집어 공개(안 고른 나머지는 뒷면 그대로 방치)
+        // 고른 카드만 순서대로 뒤집어 공개(안 고른 나머지는 뒷면 그대로 방치).
+        // 이름표는 위 픽 단계에서 이미 붙여뒀으므로 여기서는 카드 얼굴만 바꾼다.
         for (int i = 0; i < 8; i++)
         {
             if (pickedBy[i] == -1) continue;
             var pos = (slots[i].transform as RectTransform).anchoredPosition;
             Object.Destroy(slots[i]);
             HwatuUI.MakeCard(pool[i], dealerDrawPopup.pool, pos, DRAW_CARD_W, DRAW_CARD_H, null, false);
-            var tag = HwatuUI.MakeLabel(dealerDrawPopup.pool, pos + new Vector2(0f, -DRAW_CARD_H - 4f), new Vector2(DRAW_CARD_W, 26f), 18f, Color.white);
-            tag.text = SeatName(pickedBy[i]);
             GoStopAudio.Instance?.CardPlay();
             yield return new WaitForSeconds(0.25f);
         }
