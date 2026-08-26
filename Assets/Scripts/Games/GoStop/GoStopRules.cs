@@ -412,26 +412,43 @@ public static class GoStopRules
 
     // ── 피 뺏기 (따닥·쪽·싹쓸이·폭탄 공통) ─────────────────
     /// <summary>
-    /// 상대가 이미 획득한 더미에서 피를 빼앗는다. 실제로 존재하는 만큼만 옮긴다 —
-    /// 상대가 피를 아직 하나도 못 모았으면 빚(음수 피)으로 남기지 않고 그냥 스킵한다.
-    /// 홑피부터 내주고 쌍피는 홑피가 다 떨어졌을 때만 최후에 내준다 — 일반적인
-    /// 고스톱 관례(사용자 확인). 예전엔 반대(쌍피부터)로 짜여 있었다.
+    /// 상대가 이미 획득한 더미에서 피를 빼앗는다. <paramref name="piValueOwed"/>는
+    /// "장수"가 아니라 <b>피 값(피 몇 장어치)</b>이다 — 예전엔 카드 장수로
+    /// 세서, 빚이 2피인데 홑피(1)+쌍피(2)를 연달아 가져가 실제로는 3피를
+    /// 뺏는 오버슈트 버그가 있었다(2026-08-26 사용자 신고: "자뻑으로 2장
+    /// 뺏길 때 홑피+쌍피를 가져가서 장수는 2장인데 피는 3개 뺏겼다").
+    /// <br/>이 게임의 피 값은 홑피(1)·쌍피(2) 두 종류뿐이라 다음 규칙으로
+    /// 정확히 맞춘다: 남은 빚만큼을 <b>홑피만으로</b> 채울 수 있으면(홑피
+    /// 개수 ≥ 남은 빚) 홑피를 하나씩 가져간다("홑피 우선" 기존 관례 유지) —
+    /// 홑피가 모자라면 남은 빚과 <b>정확히 같은 값</b>의 카드(보통 쌍피)를
+    /// 대신 한 장 가져가 오버슈트 없이 딱 맞춘다. 그마저 없으면(자투리
+    /// 카드만 남음) 가장 작은 값부터 가져가는 걸로 타협한다(과다 인출이
+    /// 불가피한 경우 — 예: 빚 1인데 쌍피만 남음).
+    /// <br/>실제로 존재하는 만큼만 옮긴다 — 상대가 피를 아직 하나도 못
+    /// 모았으면 빚(음수 피)으로 남기지 않고 그냥 스킵한다.
     /// </summary>
-    public static int StealPi(List<HwatuCard> from, List<HwatuCard> to, int count)
+    public static int StealPi(List<HwatuCard> from, List<HwatuCard> to, int piValueOwed)
     {
         int moved = 0;
-        for (int i = 0; i < count; i++)
+        int remaining = piValueOwed;
+        while (remaining > 0)
         {
             // 2026-08-20 정정(사용자 신고 — "뻑 해소할 때 피를 안 뺏어온다") —
-            // 여기만 kind/piValue(원본)를 썼다. 9월 열끗을 쌍피로 쓰기로
-            // 정한 카드는 kind가 여전히 Yeolkkeut라서, 상대의 피 후보가
-            // 그 카드 하나뿐이면 이 필터에 전혀 안 걸려 훔칠 게 있는데도
-            // 못 찾고 그냥 빈손으로 끝났다(CalcScore 등 이 프로젝트의 다른
-            // 모든 곳은 EffectiveKind/EffectivePiValue를 쓰는데 여기만
-            // 빠져 있었다).
-            var pi = from.Where(c => c.EffectiveKind == HwatuKind.Pi).OrderBy(c => c.EffectivePiValue).FirstOrDefault();
-            if (pi == null) break;
-            from.Remove(pi); to.Add(pi); moved++;
+            // kind/piValue(원본)가 아니라 EffectiveKind/EffectivePiValue를
+            // 써야 한다(9월 열끗을 쌍피로 쓰기로 정한 카드는 kind가 여전히
+            // Yeolkkeut라 원본 필터로는 안 걸린다).
+            var pool = from.Where(c => c.EffectiveKind == HwatuKind.Pi).ToList();
+            if (pool.Count == 0) break;
+
+            int singleCount = pool.Count(c => c.EffectivePiValue == 1);
+            HwatuCard pick = singleCount >= remaining
+                ? pool.First(c => c.EffectivePiValue == 1)
+                : pool.FirstOrDefault(c => c.EffectivePiValue == remaining)
+                  ?? pool.OrderBy(c => c.EffectivePiValue).First();
+
+            from.Remove(pick); to.Add(pick);
+            remaining -= pick.EffectivePiValue;
+            moved++;
         }
         return moved;
     }
