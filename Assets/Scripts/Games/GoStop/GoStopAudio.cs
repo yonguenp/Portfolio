@@ -1,18 +1,15 @@
 using UnityEngine;
 
 /// <summary>
-/// 고스톱(2인 맞고 + 4인 고스톱 공용) 절차적 효과음. 프로젝트에 오디오
-/// 에셋이 없어 파형을 코드로 합성한다(BrickBreakerAudio와 같은 방식 —
-/// AudioClip.Create로 Awake에서 한 번만 만들고, 2D AudioSource 풀을 돌려쓴다).
+/// 고스톱(2~4인 전부) 절차적 효과음. 프로젝트에 오디오 에셋이 없어 파형을
+/// 코드로 합성한다(BrickBreakerAudio와 같은 방식 — AudioClip.Create로
+/// Awake에서 한 번만 만들고, 2D AudioSource 풀을 돌려쓴다). GoStop3PGame.cs가
+/// 이 컴포넌트를 자기 GameObject에 붙여 쓴다.
 ///
-/// 2인/4인이 이벤트 종류가 거의 같아서(뻑/쪽/싹쓸이/폭탄/흔들기/고·스톱/
-/// 나가리/승패 등) 파일 하나를 공유한다 — GoStopGame.cs/GoStop3PGame.cs
-/// 둘 다 이 컴포넌트를 자기 GameObject에 붙여 쓰면 된다.
-///
-/// 대부분의 이벤트는 <see cref="PlayForLabel"/> 하나로 처리한다 — 두 게임
-/// 모두 이미 Toast(label)로 "무슨 일이 일어났는지"를 문자열로 넘기고
-/// 있어서, 그 라벨 문자열에 사운드를 매핑하면 호출부를 거의 안 건드리고
-/// 붙일 수 있다. Toast를 안 거치는 이벤트(카드 내기, 턴 전환, 고/스톱,
+/// 대부분의 이벤트는 <see cref="PlayForLabel"/> 하나로 처리한다 — 이미
+/// Toast(label)로 "무슨 일이 일어났는지"를 문자열로 넘기고 있어서, 그
+/// 라벨 문자열에 사운드를 매핑하면 호출부를 거의 안 건드리고 붙일 수
+/// 있다. Toast를 안 거치는 이벤트(카드 내기, 턴 전환, 고/스톱,
 /// 승패, 나가리)만 전용 메서드를 따로 부른다.
 /// </summary>
 public class GoStopAudio : MonoBehaviour

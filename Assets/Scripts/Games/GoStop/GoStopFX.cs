@@ -7,11 +7,10 @@ using Coffee.UIExtensions;
 
 /// <summary>
 /// UIEffect(mob-sakai/UIEffect)·ParticleEffectForUGUI(mob-sakai/ParticleEffectForUGUI)
-/// 두 라이브러리를 도입하면서(2026-08-20) 만든 공용 그래픽 폴리시 헬퍼.
-/// 2인(<see cref="GoStopGame"/>)·3~4인(<see cref="GoStop3PGame"/>) 양쪽이
-/// 공유한다 — <see cref="HwatuUI"/>와 같은 원칙: 카드 그리기처럼 여러 곳에서
-/// 반복되는 시각 처리를 한 곳에 모아두면, 나중에 톤을 바꿀 때 여기 한 곳만
-/// 고치면 된다.
+/// 두 라이브러리를 쓰는 공용 그래픽 폴리시 헬퍼. <see cref="GoStop3PGame"/>
+/// (2~4인 전부)이 쓴다 — <see cref="HwatuUI"/>와 같은 원칙: 카드 그리기처럼
+/// 여러 곳에서 반복되는 시각 처리를 한 곳에 모아두면, 나중에 톤을 바꿀 때
+/// 여기 한 곳만 고치면 된다.
 ///
 /// <b>왜 UIEffect인가:</b> 이 프로젝트는 UGUI Image/TMP를 전부 코드로 직접
 /// 만든다 — 셰이더를 새로 작성하지 않고 "컴포넌트 하나 붙이고 프로퍼티만

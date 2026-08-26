@@ -5,10 +5,8 @@ using TMPro;
 using Coffee.UIEffects;
 
 /// <summary>
-/// 화투 카드 GameObject를 그리는 공용 헬퍼. 원래 <see cref="GoStopGame"/>(2인 맞고)
-/// 안에 인스턴스 메서드로만 있던 걸 3인 고스톱(<see cref="GoStop3PGame"/>)과
-/// 공유하려고 뽑아냈다 — 2인 파일은 이미 검증이 끝난 코드라 손대지 않고
-/// 그대로 뒀고(회귀 위험 없음), 새 코드만 여기를 쓴다.
+/// 화투 카드 GameObject를 그리는 공용 헬퍼. <see cref="GoStop3PGame"/>
+/// (2~4인 전부)이 쓴다.
 /// </summary>
 public static class HwatuUI
 {

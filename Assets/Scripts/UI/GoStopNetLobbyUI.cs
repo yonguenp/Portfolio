@@ -13,10 +13,7 @@ using TMPro;
 /// 로직은 전혀 안 건드리고, <see cref="GoStopNetLobby"/> API만 감싼
 /// 순수 화면이다.
 ///
-/// 2026-08-20: 2인(맞고, <see cref="GoStopGame"/>) 네트워크 대전도 이식이
-/// 끝나서 이제 2명부터 시작할 수 있다 — 예전엔 3명 미만이면 "시작"을
-/// 막아뒀었다(테스트 기기가 PC+휴대폰 2대뿐이라 2인부터 검증 우선순위가
-/// 바뀌었다).
+/// 2인(맞고)도 네트워크 대전이 지원되어 2명부터 시작할 수 있다.
 /// </summary>
 public class GoStopNetLobbyUI : MonoBehaviour
 {
@@ -204,10 +201,9 @@ public class GoStopNetLobbyUI : MonoBehaviour
 
     void HandleGameStarting(int seat, int total)
     {
-        // 2026-08-23: GoStop3PGame이 SEATS=2(맞고)까지 처리할 수 있게 확장돼
-        // 이제 인원수와 무관하게 항상 같은 씬을 연다 — GoStop3PGame.Awake()가
-        // lobby.PlayerCount를 읽어 SetSeatCount로 알아서 모드를 맞춘다.
-        // 예전엔 2명이면 GoStopScene(GoStopGame 전용 클래스)을 따로 열었다.
+        // GoStop3PGame이 SEATS=2(맞고)~4 전부 처리하므로 인원수와 무관하게
+        // 항상 같은 씬을 연다 — GoStop3PGame.Awake()가 lobby.PlayerCount를
+        // 읽어 SetSeatCount로 알아서 모드를 맞춘다.
         SceneManager.LoadScene("GoStop3PScene");
     }
 

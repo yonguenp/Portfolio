@@ -48,8 +48,8 @@ public class GoStopNetLobby : MonoBehaviour
 
     /// <summary>총 참가 인원(호스트 포함) — <see cref="OnGameStarting"/>가
     /// 발사되는 순간 확정되고, 씬이 넘어간 뒤(이 오브젝트는 DontDestroyOnLoad라
-    /// 살아남는다) 게임 스크립트(GoStopGame/GoStop3PGame)의 Start()가
-    /// 이 값을 읽어 좌석 수·게임 모드를 정한다. 2=맞고, 3/4=고스톱.</summary>
+    /// 살아남는다) <c>GoStop3PGame</c>의 Start()가 이 값을 읽어 좌석 수·
+    /// 게임 모드를 정한다. 2=맞고, 3/4=고스톱.</summary>
     public int PlayerCount { get; private set; }
 
     /// <summary>1점 가격(원) — design.md §49.2. 방 생성 시 호스트가 정하고
@@ -63,11 +63,10 @@ public class GoStopNetLobby : MonoBehaviour
     public const int MinPointPrice = 10;
     /// <summary>1점 가격 최댓값. design.md는 "호스트 보유 머니 이하"로
     /// 제한하라고 하는데, 네트워크 판은 로컬 저장 잔액을 안 쓰고 항상
-    /// <c>STARTING_MONEY</c>(10만원, GoStopGame.cs/GoStop3PGame.cs와
-    /// 동일한 값)로 새로 시작한다 — 그래서 "호스트 보유 머니"라는 게
-    /// 이 시점엔 사실상 이 값 하나뿐이라 그대로 상한으로 쓴다. design.md
-    /// 자체의 절대 상한(100만원)보다 낮지만, 실제로 의미 있는 제약은
-    /// 이쪽이다.</summary>
+    /// <c>STARTING_MONEY</c>(10만원, GoStop3PGame.cs와 동일한 값)로 새로
+    /// 시작한다 — 그래서 "호스트 보유 머니"라는 게 이 시점엔 사실상 이
+    /// 값 하나뿐이라 그대로 상한으로 쓴다. design.md 자체의 절대 상한
+    /// (100만원)보다 낮지만, 실제로 의미 있는 제약은 이쪽이다.</summary>
     public const int MaxPointPrice = 100_000;
 
     /// <summary>선택 가능한 단계 — 임의의 숫자를 직접 입력하는 대신

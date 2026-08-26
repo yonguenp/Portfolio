@@ -29,7 +29,7 @@ public static class GoStopRules
     /// 원리를 딜링 시점에도 적용 — 월이 없어 아무도 못 먹는 카드가 필드에
     /// 영원히 남는 것을 막는다). 손패에 떨어진 조커는 그대로 둔다 — 이제
     /// 손패에서 조커를 직접 낼 수 있다(캡으로 즉시 이동 + 다음 뒷패를
-    /// 대신 손으로 가져오는 처리는 GoStop3PGame.cs/GoStopGame.cs 쪽).</summary>
+    /// 대신 손으로 가져오는 처리는 GoStop3PGame.cs 쪽).</summary>
     static List<HwatuCard> BuildFullDeckWithJokers()
     {
         var deck = GoStopDeck.BuildFull();
@@ -353,8 +353,8 @@ public static class GoStopRules
     }
 
     /// <summary>"왜 이 점수가 나왔는지" 화면에 보여줄 항목별 줄 목록 — 0점인
-    /// 항목은 뺀다. UI 쪽(GoStopGame.cs/GoStop3PGame.cs)에서 이 위에 고
-    /// 보너스·배수·최종 점수 줄을 이어 붙인다.</summary>
+    /// 항목은 뺀다. UI 쪽(GoStop3PGame.cs)에서 이 위에 고 보너스·배수·최종
+    /// 점수 줄을 이어 붙인다.</summary>
     public static List<string> FormatScoreLines(Score s)
     {
         var lines = new List<string>();

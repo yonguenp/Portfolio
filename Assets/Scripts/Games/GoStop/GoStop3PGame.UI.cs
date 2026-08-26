@@ -451,9 +451,8 @@ public partial class GoStop3PGame
         // persistent 연결돼 있다 — 여기서 다시 연결할 필요 없다.
     }
 
-    /// <summary>점수 항목 줄(라벨+점수) 밑에 관여한 카드 실물을 늘어놓는다 — 2인판
-    /// (GoStopGame.BuildScoreDetailRows)과 같은 로직·같은 시각 스타일이다.
-    /// 2026-08-22: 이 아래에 "전체 획득패" 구간(<see cref="AppendAllCapsSection"/>)이
+    /// <summary>점수 항목 줄(라벨+점수) 밑에 관여한 카드 실물을 늘어놓는다.
+    /// 이 아래에 "전체 획득패" 구간(<see cref="AppendAllCapsSection"/>)이
     /// 이어 붙으므로, 컨텐츠 크기 확정은 호출부(<see cref="ShowScoreDetail"/>)로
     /// 넘기고 여기선 도달한 y 커서만 돌려준다.</summary>
     float BuildScoreDetailRows(RectTransform content, List<HwatuCard> captured, GoStopRules.Score baseScore)
@@ -1494,10 +1493,8 @@ public partial class GoStop3PGame
 
     /// <summary>필드의 짝을 실제로 쳐서 맞추는 2단 연출 — 손/더미에서 <b>맞은
     /// 필드패 자리까지</b> 먼저 날아가 딱 맞고 튕긴 다음(1구간), 거기서 다시
-    /// 최종 획득패 자리까지 날아간다(2구간). 2026-08-20: "cap으로 즉시
-    /// 들어오는 느낌"이라는 신고로 2인판(GoStopGame.UI.cs)에서 이미 검증된
-    /// via-field 방식을 그대로 이식했다 — v1 시절 "화면이 붐벼서" 생략했던
-    /// 결정을 뒤집은 것.</summary>
+    /// 최종 획득패 자리까지 날아간다(2구간). "cap으로 즉시 들어오는 느낌이라
+    /// 어색하다"는 신고로 도입 — 카드가 어디서 왔는지 눈으로 따라갈 수 있다.</summary>
     IEnumerator SlamInViaField(RectTransform rt, Vector3 fromWorld, Vector3 hitWorld)
     {
         if (rt == null) yield break;
@@ -1652,8 +1649,7 @@ public partial class GoStop3PGame
     }
 
     /// <summary>판돈이 오갈 때 동전이 낸 좌석의 머니칩에서 받는 좌석의
-    /// 머니칩으로 날아가는 연출 — 2인판(GoStopGame.UI.cs)과 같은 헬퍼를
-    /// 좌석 배열에 맞게 이식했다. 광팔이·뻑 보너스처럼 <b>여러 좌석이 한
+    /// 머니칩으로 날아가는 연출. 광팔이·뻑 보너스처럼 <b>여러 좌석이 한
     /// 명에게 동시에 낼 때</b>는 호출자가 지불자마다 한 번씩 불러서 동전
     /// 여러 개가 동시에 날아가게 한다(1:N을 이 함수 하나로 표현하지 않고
     /// 호출 횟수로 표현 — 함수 자체는 항상 1:1).
@@ -1669,10 +1665,8 @@ public partial class GoStop3PGame
         GoStopFX.FlyMoney(ui.ContentArea, fromLbl.transform.position, toLbl.transform.position, amount);
     }
 
-    /// <summary>충격 지점에 흰 원이 확 퍼졌다 사라지는 짧은 플래시 + 작은 파티클
-    /// 스파크 — 2인판(GoStopGame.UI.cs)의 SpawnImpactFlash와 같은 패턴을
-    /// 4인판에도 이식했다(2026-08-19, "애니메이션을 좀 더 역동적으로" 요청 —
-    /// 예전엔 4인판 SlamIn엔 이 연출 자체가 없었다).</summary>
+    /// <summary>충격 지점에 흰 원이 확 퍼졌다 사라지는 짧은 플래시 + 작은
+    /// 파티클 스파크 — SlamIn 착지 시점에 호출한다.</summary>
     void SpawnImpactFlash(RectTransform at)
     {
         var go = new GameObject("Impact", typeof(RectTransform));
@@ -1692,9 +1686,8 @@ public partial class GoStop3PGame
         // 파티클의 DOTween 트윈(0.4~0.6초)이 끝나기 전에 다음 RebuildUI가
         // 먼저 돌면 트윈 대상 Image가 중간에 파괴돼 DOTween이 예외를 던지며
         // 그 프레임의 코루틴을 통째로 멈춘다(actionBusy가 영원히 true로 남는
-        // 버그로 나타났다 — 2인판과 같은 함정, 상세 원인은 GoStopGame.UI.cs
-        // 참고). ContentArea(root)처럼 절대 안 지워지는 부모에 붙이고
-        // 월드 좌표를 그 공간으로 변환해서 위치만 맞춘다.
+        // 버그로 나타났다). ContentArea(root)처럼 절대 안 지워지는 부모에
+        // 붙이고 월드 좌표를 그 공간으로 변환해서 위치만 맞춘다.
         var stableParent = ui != null ? ui.ContentArea : null;
         if (stableParent != null)
         {

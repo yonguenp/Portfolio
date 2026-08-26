@@ -6,12 +6,13 @@ using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// 고스톱(4인 기본, 광팔이) — 정식 "고스톱"(2인은 "맞고", <see cref="GoStopGame"/>).
-/// 좌석 0=플레이어(아래), 1=AI-A(좌측), 2=AI-B(상단), 3=AI-C(우측) — 나를
-/// 기준으로 턴 순서(0→1→2→3→0)를 그대로 반시계 방향 자리에 대응시켰다.
+/// 고스톱(2~4인 전부, "맞고"=2인 포함). 좌석 0=플레이어(아래), 1=AI-A(좌측),
+/// 2=AI-B(상단), 3=AI-C(우측) — 나를 기준으로 턴 순서(0→1→2→3→0)를 그대로
+/// 반시계 방향 자리에 대응시켰다. 2인 전용이던 GoStopGame.cs는 2026-08-26
+/// 삭제 — 그 로직은 SEATS==2 분기로 이 클래스에 전부 흡수돼 있다.
 ///
-/// 고스톱은 원래 3인 게임이라 4명이 앉으면 매판 한 명이 쉰다("광팔이" —
-/// 검색으로 확인한 전통 규칙, <see cref="GoStopRules.DealNew4PWithSitOut"/>).
+/// 4명이 앉으면 매판 한 명이 쉰다("광팔이" — 고스톱은 원래 3인 게임이라는
+/// 전통 규칙, 검색으로 확인, <see cref="GoStopRules.DealNew4PWithSitOut"/>).
 /// 쉬는 좌석은 매판 순서대로 로테이션되고(<see cref="sitOutRotation"/>), 3장
 /// 프로브 손패로 광 장수만 확인해서 광이 있으면 나머지 3명에게서 돈을 걷은
 /// 뒤 그 판은 완전히 빠진다 — 실제 플레이(캡처·고/스톱·정산)는 나머지 3명이
@@ -60,17 +61,14 @@ public partial class GoStop3PGame : MonoBehaviour
     /// (3=진짜 3인, 4=광팔이 있는 4인). Start()보다 먼저(Awake 시점) 불려야
     /// 하며, 그 뒤에 부르면 이미 진행 중이던 판과 좌석 수가 어긋난다 —
     /// 지금은 씬에 막 들어온 시점에서만 쓰는 걸 전제로 한다. 3·4 외의
-    /// 값은 무시한다(이 파일은 3~4인 전용, 2인은 GoStopGame이 따로 맡는다).</summary>
-    // 2026-08-23: 씬 통합(design.md 게임모드 자동결정/다운그레이드 선행 작업) —
-    // SEATS=2(맞고)도 이 엔진 안에서 돌릴 수 있게 확장했다. 2는 이제
-    // GoStopGame.cs(2인 전용 클래스)가 아니라 이 클래스가 직접 처리한다.
+    /// 2·3·4 외의 값은 무시한다 — SEATS=2(맞고)도 이 클래스가 직접 처리한다.</summary>
     public void SetSeatCount(int n)
     {
         if (n == 2 || n == 3 || n == 4) SEATS = n;
     }
     // 맞고(2인)는 7점부터지만 정식 고스톱(3~4인)은 3점부터 난다 — 사용자
     // 확인 규칙. SEATS==2일 때만 맞고 기준(7)을 쓴다 — GoStopRules.CAPTURE_LINE
-    // (2인 전용 파일 GoStopGame.cs가 쓰던 상수, 값은 7로 동일)과는 별개다.
+    // (값은 7로 동일하지만 별개 상수)과는 별개다.
     int CaptureLine => SEATS == 2 ? 7 : 3;
     // 2026-08-19: 네트워크 대전용 — 게스트 기기는 실제로 1~3번 좌석을
     // 배정받으므로 더 이상 상수로 고정할 수 없다. 기본값 0은 기존
@@ -111,11 +109,9 @@ public partial class GoStop3PGame : MonoBehaviour
     readonly int[] allInCount = new int[SEATS_MAX]; // 이제 "리필 횟수"가 아니라 "파산으로 세션이 끝난 횟수"
     int stakeMultiplier = 1; // 나가리마다 2배, 결판나면 1로 리셋 (Start()에서만 초기화)
 
-    // 2026-08-22: "결과 화면에 자금 상세(시작 자금·이번 판 변동·현재 잔액)를
-    // 보여달라" 요청 — EndGame이 정산을 적용하기 직전의 좌석별 잔액 스냅샷.
-    // ShowScoreDetail은 버튼을 눌러야 나중에 실행되므로 그때는 이미 정산이
-    // 끝난 money[]만 남아있다 — "시작 자금"을 보여주려면 여기 따로 남겨둬야
-    // 한다(2인판 GoStopGame.cs의 pendingMoneyBeforePlayer/Ai와 같은 이유).
+    // EndGame이 정산을 적용하기 직전의 좌석별 잔액 스냅샷 — ShowScoreDetail은
+    // 버튼을 눌러야 나중에 실행되므로 그때는 이미 정산이 끝난 money[]만
+    // 남아있다. "시작 자금"을 결과 화면에 보여주려면 여기 따로 남겨둬야 한다.
     readonly int[] pendingMoneyBefore = new int[SEATS_MAX];
 
     void SaveMoney()
@@ -357,9 +353,7 @@ public partial class GoStop3PGame : MonoBehaviour
 
     const float PLAY_STEP_DELAY = 0.35f;
 
-    // 카드가 날아드는 연출 — 손/더미의 실제 위치에서 최종 자리까지 이동+펀치
-    // 스케일. 2인판(GoStopGame v4)에서 검증된 SlamIn 방식을 좌석 배열에
-    // 맞게 이식했다.
+    // 카드가 날아드는 연출 — 손/더미의 실제 위치에서 최종 자리까지 이동+펀치 스케일.
     readonly Dictionary<HwatuCard, Vector3> flyFrom = new();
 
     // 2026-08-20: "cap으로 즉시 들어오는 느낌이라 수정이 필요하다"는 신고로
@@ -1161,10 +1155,9 @@ public partial class GoStop3PGame : MonoBehaviour
         // 2026-08-19: 네트워크 대전에서 접속 인원이 3명이면 진짜 3인
         // 고스톱(광팔이 로테이션 없음)으로 딜한다 — 4인 전용 DealNew4PFull
         // 대신 원래 있던 3인용 DealNew3P를 그대로 재사용한다.
-        // 2026-08-23: SEATS==2(맞고)는 GoStopGame.cs가 쓰던 GoStopRules.DealNew()
-        // (손 10장×2·필드 8장·더미 22장, 조커 포함 50장)를 그대로 재사용하되
-        // 결과를 SEATS 배열 모양(hand[0]/hand[1])으로 옮겨 담는다 — 딜링 로직
-        // 자체는 새로 안 만들고 기존 검증된 걸 그대로 쓴다.
+        // SEATS==2(맞고)는 GoStopRules.DealNew()(손 10장×2·필드 8장·더미 22장,
+        // 조커 포함 50장)를 재사용하고 결과를 SEATS 배열 모양(hand[0]/hand[1])으로
+        // 옮겨 담는다.
         List<HwatuCard> jokersInField;
         if (SEATS == 2)
         {
@@ -1879,8 +1872,7 @@ public partial class GoStop3PGame : MonoBehaviour
     /// RebuildUI 때 그 자리를 거쳐 날아가는 2단 연출(SlamInViaField)이 걸린다.
     /// 이번 판 리빌드가 필드를 갈아엎기 전에(필드 GameObject가 아직 살아있을
     /// 때) 불러야 한다. 3장 이상 딸려오는 뻑 해소/폭탄은 "어느 한 장을
-    /// 쳤다"고 하기 애매해서 대상에서 뺀다 — 2인판(GoStopGame.cs)의 같은
-    /// 이름 함수와 완전히 동일한 판정이다.</summary>
+    /// 쳤다"고 하기 애매해서 대상에서 뺀다.</summary>
     void RegisterFlyViaField(GoStopRules.CaptureResult r)
     {
         if (r.captured.Count != 2) return;
@@ -2448,20 +2440,14 @@ public partial class GoStop3PGame : MonoBehaviour
     /// 낸 손패가 매칭 안 돼 필드에 남은 카드, 없으면 null) 유무와 무관하게
     /// 항상 그 자리에서 바로 가져간다.
     /// <br/>
-    /// 2026-08-20 재작성(사용자 신고 — "필드에 홀수 개의 패가 남는다"의
-    /// 원인을 찾음, 2인판 GoStopGame.cs와 동일한 버그·동일한 수정). 예전엔
-    /// anchor가 없으면 뒷패를 아예 더 안 깠고, anchor가 있어도 "다른
-    /// 달이면" 뒷패(extra)를 <see cref="GoStopRules.Resolve"/> 없이 그냥
-    /// 필드에 던져버렸다 — extra가 필드에 이미 있는(anchor와 무관한) 다른
-    /// 카드와 우연히 짝이 맞아도 절대 안 먹히고 계속 필드에 쌓이기만 했다.
-    /// 조커는 "진짜 카드"가 아니라 이번 턴의 덱 소모 몫을 아직 못 채웠으므로,
-    /// **anchor 유무와 무관하게 항상** 뒷패를 한 장 더 까고 일반 덱 캡처와
-    /// 완전히 같은 경로(Resolve→선택→매칭 판정)를 거친다 — anchor가 이
-    /// 카드에 맞춰 잡히면 그게 곧 쪽이다(예전의 "extra.month==anchor.month"
-    /// 특수 분기를 Resolve()의 결과로 자연스럽게 흡수했다). 3장이 함께
-    /// 캡처되던 예전 "쪽" 연출과 최종 결과(anchor·extra·joker가 전부 같은
-    /// 좌석 것이 됨)는 동일하다 — 조커가 한 박자 먼저 캡처되고 anchor+extra가
-    /// 뒤이어 잡히는 것으로 나뉠 뿐이다.</summary>
+    /// **함정 — 뒷패(extra)를 절대 `Resolve()` 없이 그냥 필드에 던지지
+    /// 말 것.** 조커는 진짜 카드가 아니라 이번 턴 덱 소모 몫을 아직 못
+    /// 채운 상태라, anchor 유무와 무관하게 항상 뒷패를 한 장 더 까고 일반
+    /// 덱 캡처와 완전히 같은 경로(Resolve→선택→매칭 판정)를 거쳐야 한다 —
+    /// anchor가 이 카드에 맞춰 잡히면 그게 곧 쪽이다. 예전에 "extra가 anchor와
+    /// 다른 달이면 그냥 필드에 던진다"는 특수 분기가 있었는데, 그 카드가
+    /// 필드의 무관한 다른 카드와 우연히 짝이 맞아도 절대 안 먹히고 계속
+    /// 쌓이기만 해서 "필드에 홀수 개가 남는다"는 버그로 이어졌다.</summary>
     /// <param name="revealFrom">2026-08-23: "뒷패가 보너스패라면 유저가
     /// 직전에 선택한 손패 위 포지션에 등장한다" 요청 — PlaySeq가 방금
     /// 손패 슬램다운이 착지한 지점을 넘겨주면 그 자리에서 나타난다. 안
@@ -3001,8 +2987,7 @@ public partial class GoStop3PGame : MonoBehaviour
         var goCallers = loserSeats.Where(s => calledGo[s]).ToList();
         int dokbakIdx = goCallers.Count == 1 ? loserSeats.IndexOf(goCallers[0]) : -1;
 
-        // 2026-08-23: SEATS==2(맞고)는 피박 기준이 7장(고스톱 3~4인의 5장과
-        // 다르다 — 2인 전용 GoStopGame.cs가 쓰던 값과 동일). FinalScoreMulti는
+        // SEATS==2(맞고)는 피박 기준이 7장(고스톱 3~4인은 5장) — FinalScoreMulti는
         // 기본값(5)을 그대로 쓰므로 2인일 때만 명시적으로 7을 넘긴다.
         var payout = GoStopRules.FinalScoreMulti(captured[winnerSeat], sweeps[winnerSeat], goCount[winnerSeat],
             heundeulCount[winnerSeat], bombCount[winnerSeat], loserCaptured, WON_PER_POINT,

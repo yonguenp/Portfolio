@@ -109,8 +109,8 @@ public class GoStopNetMessage
     /// 분리했다).</summary>
     public string[] playerNames;
 
-    /// <summary>StartGame — 총 참가 인원(호스트 포함). 2면 맞고
-    /// (GoStopGame), 3/4면 고스톱(GoStop3PGame)을 띄운다.</summary>
+    /// <summary>StartGame — 총 참가 인원(호스트 포함). GoStop3PGame이
+    /// 2(맞고)~4(고스톱) 전부 이 값 하나로 좌석 수를 맞춘다.</summary>
     public int playerCount;
 
     /// <summary>StartGame — 호스트가 방 생성 시 정한 1점 가격(원). 실제
