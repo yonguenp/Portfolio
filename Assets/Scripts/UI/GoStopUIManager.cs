@@ -5,18 +5,19 @@ using UnityEngine.SceneManagement;
 using TMPro;
 
 /// <summary>
-/// 고스톱/맞고 전용 UI — Assets/Prefabs/GoStopUI.prefab 하나만 존재하며
-/// GoStopScene/GoStop3PScene이 각자 인스턴스를 하나씩 쓴다.
+/// 고스톱 전용 UI — Assets/Prefabs/GoStopUI.prefab 하나만 존재하며
+/// GoStop3PScene(2~4인 전부)이 그 인스턴스를 쓴다.
 ///
 /// 2026-08-22: <see cref="GameUIManager"/>(다른 7개 게임이 공유하는 공통
 /// UI)에서 완전히 분리한 것 — 고스톱 UI 구조가 다른 게임들과 많이 달라서
-/// (가로뷰 4인판, 카드/Cap/판돈 표시 등) 공용 GameUI를 억지로 겸용하는
-/// 대신 독립된 클래스+프리팹으로 뗐다. 필드 이름·공개 API는 GameUIManager와
-/// 의도적으로 동일하게 유지했다 — GoStopGame.cs/GoStop3PGame.UI.cs가
-/// 참조하던 `ui.ContentArea`/`ui?.ShowOverlay(...)` 등 호출부를 전혀 안
-/// 바꾸고 타입만 GameUIManager→GoStopUIManager로 바꾸는 것으로 마이그레이션이
+/// (가로뷰, 카드/Cap/판돈 표시 등) 공용 GameUI를 억지로 겸용하는 대신
+/// 독립된 클래스+프리팹으로 뗐다. 필드 이름·공개 API는 GameUIManager와
+/// 의도적으로 동일하게 유지했다 — GoStop3PGame.UI.cs가 참조하는
+/// `ui.ContentArea`/`ui?.ShowOverlay(...)` 등 호출부를 전혀 안 바꾸고
+/// 타입만 GameUIManager→GoStopUIManager로 바꾸는 것으로 마이그레이션이
 /// 끝나게 하려는 것 — 이후 고스톱 UI를 고칠 때(리소스 교체, 레이아웃 조정)
-/// 다른 7개 게임에 영향을 줄 걱정이 구조적으로 없다.
+/// 다른 7개 게임에 영향을 줄 걱정이 구조적으로 없다. (2026-08-26: 2인
+/// 전용이던 GoStopScene/GoStopGame.cs는 삭제했다.)
 /// </summary>
 public class GoStopUIManager : MonoBehaviour
 {

@@ -6,14 +6,15 @@ public static class iOSBuilder
 {
     const string OUTPUT = "/Users/yonguen/UnityWithClaude/Build/iOS";
 
-    // 2026-08-20: GoStopScene(2인 맞고)·GoStop3PScene(3~4인 고스톱)이
-    // 빠져 있었다 — 이 배열이 BuildPlayerOptions.scenes로 그대로
-    // 넘어가서 Build Profiles/EditorBuildSettings의 씬 목록을 완전히
-    // 무시하고 이 목록만 쓴다. 그래서 그쪽을 아무리 고쳐도(File → Build
-    // Profiles에 9개 씬이 다 보여도) 이 커스텀 빌드 메뉴로 뽑은 iOS
-    // 빌드에는 반영이 안 됐다 — "Scene 'GoStopScene' couldn't be loaded"
-    // 런타임 에러의 진짜 원인이었다. 새 씬을 추가할 때는 EditorBuildSettings
-    // 뿐 아니라 이 배열도 같이 업데이트할 것.
+    // 2026-08-20: 이 배열이 BuildPlayerOptions.scenes로 그대로 넘어가서
+    // Build Profiles/EditorBuildSettings의 씬 목록을 완전히 무시하고 이
+    // 목록만 쓴다. 그래서 그쪽을 아무리 고쳐도(File → Build Profiles에
+    // 다 보여도) 이 커스텀 빌드 메뉴로 뽑은 iOS 빌드에는 반영이 안 됐다 —
+    // "Scene 'X' couldn't be loaded" 런타임 에러의 진짜 원인이었다.
+    // 새 씬을 추가할 때는 EditorBuildSettings뿐 아니라 이 배열도 같이
+    // 업데이트할 것.
+    // 2026-08-26: GoStopScene(2인 전용, GoStopGame.cs) 삭제 — GoStop3PScene
+    // (GoStop3PGame.cs)이 2~4인을 전부 처리하므로 더 이상 필요 없었다.
     static readonly string[] Scenes =
     {
         "Assets/Scenes/SplashScene.unity",
@@ -23,7 +24,6 @@ public static class iOSBuilder
         "Assets/Scenes/Game2048Scene.unity",
         "Assets/Scenes/Game1010Scene.unity",
         "Assets/Scenes/GameBrickBreakerScene.unity",
-        "Assets/Scenes/GoStopScene.unity",
         "Assets/Scenes/GoStop3PScene.unity",
     };
 

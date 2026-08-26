@@ -7,7 +7,7 @@ public class TitleManager : MonoBehaviour
     [SerializeField] Button continueButton;
     [SerializeField] GameObject optionsPanel;
 
-    static readonly string[] GameScenes = { "GameScene", "Game1to50Scene", "Game2048Scene", "Game1010Scene", "GameBrickBreakerScene", "GoStopScene", "GoStop3PScene" };
+    static readonly string[] GameScenes = { "GameScene", "Game1to50Scene", "Game2048Scene", "Game1010Scene", "GameBrickBreakerScene", "GoStop3PScene" };
 
     GoStopModeChoiceUI goStopChoice;
 

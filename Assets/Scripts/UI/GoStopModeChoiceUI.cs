@@ -4,10 +4,13 @@ using UnityEngine.SceneManagement;
 using TMPro;
 
 /// <summary>
-/// 타이틀에서 고스톱 카드를 누르면 뜨는 인원수 선택 팝업 — 2인(맞고, GoStopScene)
-/// 인지 3인(고스톱, GoStop3PScene)인지 고른다. <see cref="TitleOptionsUI"/>와 같은
-/// 패턴(Create 정적 팩토리 + 코드로 직접 UI 생성)을 따른다 — 타이틀은 씬에 직접
-/// 만들어져 있지만, 이런 새 오버레이는 이미 코드 생성 전례(설정 팝업)가 있다.
+/// 타이틀에서 고스톱 카드를 누르면 뜨는 인원수 선택 팝업 — 2인(맞고)인지
+/// 3인(고스톱)인지 고른다. 어느 쪽을 골라도 <c>GoStop3PScene</c>(2~4인을
+/// 전부 처리하는 <see cref="GoStop3PGame"/>) 하나로 들어간다 —
+/// 2026-08-26에 2인 전용 GoStopScene/GoStopGame.cs를 삭제했다.
+/// <see cref="TitleOptionsUI"/>와 같은 패턴(Create 정적 팩토리 + 코드로
+/// 직접 UI 생성)을 따른다 — 타이틀은 씬에 직접 만들어져 있지만, 이런 새
+/// 오버레이는 이미 코드 생성 전례(설정 팝업)가 있다.
 /// </summary>
 public class GoStopModeChoiceUI : MonoBehaviour
 {
