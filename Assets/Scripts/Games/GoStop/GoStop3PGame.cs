@@ -888,9 +888,10 @@ public partial class GoStop3PGame : MonoBehaviour
         }
         stakeMultiplier = 1;
 
-        // 효과음 (절차적 생성 — 오디오 에셋 없음, BrickBreakerAudio와 같은 패턴)
+        // 효과음(절차적 생성) + 배경음(실제 라이선스 트랙, GoStopAudio.PlayBgm 참고)
         if (GoStopAudio.Instance == null)
             new GameObject("GoStopAudio").AddComponent<GoStopAudio>();
+        GoStopAudio.Instance.PlayBgm(); // 이미 재생 중이면 내부에서 조용히 무시
 
         // 게스트는 여기서 아무것도 시작 안 한다 — 호스트가 첫 StateSync를
         // 보내오면 OnNetGameMessage → ApplyNetworkSnapshot이 손패를 채우고

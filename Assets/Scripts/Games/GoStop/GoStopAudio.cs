@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 
 /// <summary>
@@ -29,6 +30,24 @@ public class GoStopAudio : MonoBehaviour
                       winClip, loseClip, moneyClip, gwangPaliClip, chongtongClip;
     static bool clipsBuilt;
 
+    // ── 배경음(BGM) ──────────────────────────────────────
+    // "화투게임에 어울리는 동양 고전 느낌" 요청(2026-08-26) — 이 프로젝트
+    // 전체가 오디오 에셋 없이 절차적 합성만 써왔지만(위 SFX 전부), 국악기
+    // 음색까지 코드로 합성하는 건 현실적이지 않아 처음으로 실제 라이선스
+    // 트랙을 들여왔다: "Kingdom - Ancient" by AiCanvas
+    // (https://pixabay.com/music/classical-string-quartet-kingdom-ancient-450558/,
+    // Pixabay Content License — 상업적 이용 무료, 저작자 표시 불필요).
+    // Assets/Resources/Audio/GoStop/KingdomAncient.mp3, Streaming+Vorbis로
+    // 임포트(5분 넘는 트랙을 DecompressOnLoad로 두면 압축 해제 상태로
+    // 100MB+ 상주해서 부적절 — 다른 SFX 클립처럼 즉시 필요한 짧은 파형이
+    // 아니라 스트리밍이 맞는 유일한 클립이다).
+    static AudioClip bgmClip;
+    AudioSource[] bgmSources;
+    int bgmActive = -1;
+    Coroutine bgmRoutine;
+    const float BGM_CROSSFADE_SEC = 3f;
+    const float BGM_FADE_IN_SEC = 2f;
+
     void Awake()
     {
         Instance = this;
@@ -39,6 +58,15 @@ public class GoStopAudio : MonoBehaviour
             src.playOnAwake  = false;
             src.spatialBlend = 0f; // 2D — 카드가 화면 이곳저곳으로 날아다녀도 좌우가 안 뒤집힌다
             voices[i] = src;
+        }
+        bgmSources = new AudioSource[2];
+        for (int i = 0; i < 2; i++)
+        {
+            var src = gameObject.AddComponent<AudioSource>();
+            src.playOnAwake  = false;
+            src.spatialBlend = 0f;
+            src.loop         = false; // 루프는 코드가 크로스페이드로 직접 잇는다 — Unity 기본 루프는 하드컷이라 안 쓴다
+            bgmSources[i] = src;
         }
         BuildClips();
     }
@@ -84,6 +112,74 @@ public class GoStopAudio : MonoBehaviour
         // 화려하게. 3옥타브를 아르페지오처럼 훑고 올라가는 인상을 주려고
         // 시작 주파수를 낮게 잡고 끝을 훨씬 높게(2.5옥타브 상승) 벌렸다.
         chongtongClip= Tone("gs_chongtong", 392f, 1568f, 0.55f, Wave.Sine, 0f, 0.008f, 1.1f, 0.28f);
+
+        if (bgmClip == null) bgmClip = Resources.Load<AudioClip>("Audio/GoStop/KingdomAncient");
+    }
+
+    /// <summary>배경음 재생 시작 — 이미 돌고 있으면(같은 세션 안에서 새 판을
+    /// 여러 번 시작해도) 조용히 무시한다. 씬을 나가면(scene unload) 이
+    /// GameObject 자체가 파괴되면서 자연히 멈춘다 — 별도 페이드아웃을
+    /// OnDestroy에 걸어봐야 씬 전환 도중이라 코루틴이 끝까지 돌 시간이
+    /// 없으므로 의미가 없다(다른 씬으로 넘어가는 순간 뚝 끊기는 건 이
+    /// 프로젝트의 다른 SFX도 마찬가지로 정상 동작이다).</summary>
+    public void PlayBgm()
+    {
+        if (bgmClip == null || bgmSources == null || bgmActive != -1) return;
+        bgmSources[0].clip = bgmClip;
+        bgmSources[0].time = 0f;
+        bgmSources[0].volume = 0f;
+        bgmSources[0].Play();
+        bgmActive = 0;
+        bgmRoutine = StartCoroutine(BgmLoop());
+    }
+
+    /// <summary>두 AudioSource를 번갈아 겹쳐 재생하는 크로스페이드 루프.
+    /// 트랙이 루프용으로 만들어진 게 아니라(끝나면 그냥 끝) 화성이 이어지진
+    /// 않지만, 곡 끝나기 <see cref="BGM_CROSSFADE_SEC"/>초 전에 같은 클립을
+    /// 처음부터 다시 틀어 등가전력(equal-power, cos/sin) 곡선으로 겹치면
+    /// 하드컷보다 훨씬 자연스럽게 들린다 — 이 환경엔 오프라인 오디오 편집
+    /// 툴(ffmpeg 등)이 없어서 파일 자체를 트림+베이크하는 대신 런타임에서
+    /// 처리한다.</summary>
+    IEnumerator BgmLoop()
+    {
+        float t = 0f;
+        while (t < BGM_FADE_IN_SEC)
+        {
+            t += Time.deltaTime;
+            bgmSources[0].volume = Mathf.Lerp(0f, GameAudioSettings.Bgm, t / BGM_FADE_IN_SEC);
+            yield return null;
+        }
+
+        while (true)
+        {
+            var cur = bgmSources[bgmActive];
+            float triggerTime = bgmClip.length - BGM_CROSSFADE_SEC;
+            while (cur.isPlaying && cur.time < triggerTime)
+            {
+                cur.volume = GameAudioSettings.Bgm; // 옵션 슬라이더를 재생 중에 움직여도 바로 반영
+                yield return null;
+            }
+
+            int next = 1 - bgmActive;
+            var nextSrc = bgmSources[next];
+            nextSrc.clip = bgmClip;
+            nextSrc.time = 0f;
+            nextSrc.volume = 0f;
+            nextSrc.Play();
+
+            float cft = 0f;
+            while (cft < BGM_CROSSFADE_SEC)
+            {
+                cft += Time.deltaTime;
+                float k = Mathf.Clamp01(cft / BGM_CROSSFADE_SEC);
+                cur.volume     = Mathf.Cos(k * Mathf.PI * 0.5f) * GameAudioSettings.Bgm;
+                nextSrc.volume = Mathf.Sin(k * Mathf.PI * 0.5f) * GameAudioSettings.Bgm;
+                yield return null;
+            }
+            cur.Stop();
+            nextSrc.volume = GameAudioSettings.Bgm;
+            bgmActive = next;
+        }
     }
 
     void Play(AudioClip clip, float volume = 1f, float pitch = 1f)
