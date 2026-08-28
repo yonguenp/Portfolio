@@ -13,6 +13,9 @@ public class TitleManager : MonoBehaviour
 
     void Start()
     {
+        // 프로젝트 기본이 AutoRotation이라(GoStop 가로 고정을 위한 변경,
+        // SplashManager.cs 참고) 타이틀도 세로를 직접 잠가야 한다.
+        Screen.orientation = ScreenOrientation.Portrait;
         if (continueButton)
             continueButton.gameObject.SetActive(SaveManager.HasSave());
 

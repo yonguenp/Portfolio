@@ -1422,7 +1422,7 @@ public partial class GoStop3PGame
     void DrawCapZoneInBox(RectTransform area, List<HwatuCard> cards, float centerX, float baselineY, float boxWidth, bool weighted = false, bool bottomUp = false)
     {
         if (cards.Count == 0) return;
-        int maxPerRow = Mathf.Max(1, Mathf.FloorToInt((boxWidth - CAP_AI_W) / CAP_AI_PITCH) + 1);
+        int maxPerRow = 5;
         float rowStep = CAP_AI_H + 3f;
         DrawCapZone(area, cards, centerX, baselineY, rowStep, maxPerRow, weighted, bottomUp);
     }

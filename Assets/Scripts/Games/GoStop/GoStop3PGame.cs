@@ -1159,14 +1159,23 @@ public partial class GoStop3PGame : MonoBehaviour
         // 건드리지 않으므로 자동으로 "선 유지"가 된다.
         if (!dealerDetermined)
         {
+            // 2026-08-26: 선 뽑기 팝업이 떠 있는 동안엔 아직 아무것도
+            // 확정된 게 없는데(패도 안 나뉘고 선도 모른다) Left/Right/
+            // TopSeat/MySeat(Back/Cap/StatusBox)가 빈 상태 그대로 팝업
+            // 뒤에 보이는 게 어색하다는 지적 — 선 뽑기 동안은 좌석
+            // 컨테이너를 통째로 숨기고, 선이 정해진 뒤 ApplySeatVisibility로
+            // 다시 켠다. root 폴백(leftSeatRef 등이 아직 씬에 없는 옛
+            // 구조)에서는 건드리지 않는다 — ApplySeatVisibility 자체가
+            // 이미 이 규칙(line 64~67)을 쓰고 있다.
+            var root = ui.ContentArea;
+            if (leftSeatT != root)  leftSeatT.gameObject.SetActive(false);
+            if (rightSeatT != root) rightSeatT.gameObject.SetActive(false);
+            if (topSeatT != root)   topSeatT.gameObject.SetActive(false);
+            if (mySeatT != root)    mySeatT.gameObject.SetActive(false);
+
             yield return StartCoroutine(DetermineDealerSeq());
             dealerDetermined = true;
-            // 2026-08-26: 선을 정하고 난 다음 다시 호출해달라는 요청 —
-            // BuildStaticUI()가 씬 진입 시 이미 한 번 부르지만(Left/Right/
-            // TopSeat 참조·초기 on-off 구성), 선 뽑기 직후 시점에 화면
-            // 구성을 한 번 더 맞춰야 하는 경우(사용자가 씬/UI를 계속
-            // 손보는 중이라 이 시점의 세팅이 달라질 수 있다)를 대비해
-            // 여기서도 명시적으로 다시 부른다.
+            // 선이 정해졌으니 이제 SEATS에 맞는 좌석들을 다시 켠다.
             ApplySeatVisibility(ui.ContentArea);
         }
 
@@ -1375,17 +1384,30 @@ public partial class GoStop3PGame : MonoBehaviour
             if (GoStopRules.IsChongtong(hand[s]))
             {
                 Toast(s, "총통!");
-                // 총통 전용 팝업 프리팹은 없어서(ShowActionPopup은 조기
-                // 리턴) 대신 큼직한 금색 파티클 버스트로 화려하게
-                // 알린다 — 딜 직후 즉시 승리하는 희귀 이벤트라 다른
-                // 어떤 캡처 이벤트보다도 임팩트가 커야 한다.
-                var canvasRoot = fieldArea.parent.parent.parent as RectTransform;
-                GoStopIcons.SpawnBurst(canvasRoot, canvasRoot.InverseTransformPoint(fieldArea.position),
-                    new Color(1f, 0.85f, 0.3f), count: 24);
-                EndGame(s, fixedBaseScore: 3, extraMultiplier: 4);
+                FireChongtong(s);
+                // 2026-08-26(사용자 확인) — 총통은 고정 3점으로 정산한다.
+                // 예전엔 extraMultiplier:4를 곱해 최종 12점이 나왔는데,
+                // 3점(배수 없음)이 맞는 값이었다.
+                EndGame(s, fixedBaseScore: 3);
                 newGameStarting = false;
                 yield break;
             }
+        }
+
+        // 2026-08-26(사용자 확인 규칙) — 필드에 같은 달 4장이 통째로 깔리면
+        // 그 달은 아무도 정상적으로 매칭해서 가져갈 방법이 없다(낼 손패도
+        // 나올 뒷패도 전부 이미 필드에 있다) — 판 자체를 무효로 보고
+        // 나가리 처리한다. 손패 총통(위)과 달리 승자가 없는 결과라 일반
+        // 나가리(EndGame(-1))와 완전히 같은 경로를 탄다 — 선 유지·판돈
+        // 2배·"다시 시작" 버튼까지 다른 나가리와 동일하게 동작한다.
+        // IsChongtong은 "같은 달 4장"만 보므로 손 검사에 쓰던 걸 그대로
+        // 재사용한다(월 없는 조커는 필터링돼 무관).
+        if (GoStopRules.IsChongtong(field))
+        {
+            Toast(dealerSeat, "필드 4장 - 나가리");
+            EndGame(-1);
+            newGameStarting = false;
+            yield break;
         }
 
         // 이번 판 시작 좌석이 내가 아닐 수 있다(내가 쉬는 좌석이면 시작이
@@ -1790,6 +1812,53 @@ public partial class GoStop3PGame : MonoBehaviour
 
         ShowTimedToast($"{SeatName(seat)}이(가) {label} 완성!");
         GoStopAudio.Instance?.Win();
+    }
+
+    /// <summary>총통(딜 직후 같은 달 4장으로 즉시 승리) 전용 족보 이펙트 —
+    /// 예전엔 프리팹 없이 코드가 직접 금색 파티클만 뿌렸는데, 다른 족보
+    /// (고도리/홍단/초단/청단/광)와 같은 패턴으로 통일했다. 프리팹
+    /// (EffectChongtong)이 "총통!" 등 정적 문구·기본색을 담당하고, 코드는
+    /// 좌석 이름만 얹는다(FireAchievement류와 동일한 원칙). 사운드는
+    /// Toast(s, "총통!")가 이미 GoStopAudio.PlayForLabel을 거쳐
+    /// Chongtong() 전용 음을 재생하므로 여기서 또 부르지 않는다.</summary>
+    void FireChongtong(int seat)
+    {
+        if (fieldArea == null) return;
+        var canvasRoot = fieldArea.parent.parent.parent as RectTransform;
+        Vector2 local = canvasRoot.InverseTransformPoint(fieldArea.position);
+        var color = new Color(1f, 0.85f, 0.3f);
+
+        GoStopIcons.SpawnBurst(canvasRoot, local, color, 30);
+
+        var fx = HwatuUI.InstantiateEffect<GoStopEffectPopup>("EffectChongtong", canvasRoot);
+        if (fx != null)
+        {
+            fx.root.anchoredPosition = local;
+            fx.Play(SeatName(seat), color);
+        }
+    }
+
+    /// <summary>나가리(승자 없음) 전용 이펙트 — EndGame(winnerSeat &lt; 0)이
+    /// 호출하므로, 원인(점수 미달·필드 4장 등)과 무관하게 나가리로 끝나는
+    /// 모든 경로에서 한 번만 구현해도 자동으로 다 커버된다. 특정 좌석
+    /// 얘기가 아니라 판 전체에 해당하는 결과라 좌석 이름을 얹지 않고
+    /// 프리팹의 기본 문구("나가리")를 그대로 쓴다. 사운드는 EndGame이
+    /// 이미 GoStopAudio.Nagari()를 부르므로 여기서 또 재생하지 않는다.</summary>
+    void FireNagari()
+    {
+        if (fieldArea == null) return;
+        var canvasRoot = fieldArea.parent.parent.parent as RectTransform;
+        Vector2 local = canvasRoot.InverseTransformPoint(fieldArea.position);
+        var color = new Color(0.75f, 0.75f, 0.78f); // 나가리 — 다른 족보(원색)와 구분되는 무채색 톤
+
+        GoStopIcons.SpawnBurst(canvasRoot, local, color, 20);
+
+        var fx = HwatuUI.InstantiateEffect<GoStopEffectPopup>("EffectNagari", canvasRoot);
+        if (fx != null)
+        {
+            fx.root.anchoredPosition = local;
+            fx.Play(); // overrideText 없음 — 프리팹 기본 문구 그대로
+        }
     }
 
     static Color EmergencyColor(string setName) => setName switch
@@ -2986,6 +3055,9 @@ public partial class GoStop3PGame : MonoBehaviour
             stakeMultiplier *= 2;
             pendingPayout = null; // 나가리는 승자가 없어 분석할 점수 자체가 없다
             GoStopAudio.Instance?.Nagari();
+            // 2026-08-26: 나가리 이펙트 — 여기 한 곳에서만 불러도 나가리로
+            // 끝나는 모든 경로(점수 미달·필드 4장 등)가 자동으로 커버된다.
+            FireNagari();
             ui?.ShowOverlay(new Color(.6f, .6f, .6f), "나가리", "-",
                 $"아무도 {CaptureLine}점을 못 넘겼습니다 · 다음 판 판돈 {stakeMultiplier}배",
                 "다시 시작", NewGame, "타이틀", GoToTitle);

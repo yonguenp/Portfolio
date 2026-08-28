@@ -74,6 +74,15 @@ public class GameUIManager : MonoBehaviour
     {
         Instance = this;
 
+        // GoStop3PGame이 진짜 가로 고정을 걸 수 있으려면 프로젝트 기본
+        // 화면 방향이 AutoRotation이어야 한다(단일 orientation이면 iOS
+        // Info.plist 자체가 그 방향만 지원해서 런타임 강제가 무의미해짐 —
+        // SplashManager.cs 주석 참고). 그 대가로 GameUI.prefab을 쓰는
+        // 나머지 7개 게임은 전부 여기서 세로를 직접 잠가야 한다 — GoStop만
+        // 별도 GoStopUIManager를 쓰므로 이 잠금과 무관하게 자기 씬에서
+        // 가로를 강제한다.
+        Screen.orientation = ScreenOrientation.Portrait;
+
         if (hudBar) hudRoot = hudBar.transform.parent as RectTransform; // "Bar"의 부모 = "HUD"
         if (contentArea) contentAreaOffsetMaxWithHud = contentArea.offsetMax;
 

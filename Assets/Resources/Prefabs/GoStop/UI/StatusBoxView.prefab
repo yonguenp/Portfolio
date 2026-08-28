@@ -74,8 +74,8 @@ MonoBehaviour:
   m_fontMaterials: []
   m_fontColor32:
     serializedVersion: 2
-    rgba: 4278190080
-  m_fontColor: {r: 0, g: 0, b: 0, a: 1}
+    rgba: 4294967295
+  m_fontColor: {r: 1, g: 1, b: 1, a: 1}
   m_enableVertexGradient: 0
   m_colorMode: 3
   m_fontColorGradient:
@@ -507,14 +507,14 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
   m_Material: {fileID: 0}
-  m_Color: {r: 1, g: 1, b: 1, a: 1}
+  m_Color: {r: 0.3019608, g: 0.3647059, b: 0.2627451, a: 1}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 21300000, guid: dad3e3be48bf14dce9fbd8e46a2ea3de, type: 3}
+  m_Sprite: {fileID: -62245763954740697, guid: 980c5554808394e5bb8e1073dfa2e943, type: 3}
   m_Type: 1
   m_PreserveAspect: 0
   m_FillCenter: 1
@@ -831,10 +831,10 @@ RectTransform:
   - {fileID: 6253223328277078252}
   m_Father: {fileID: 3897619400137782401}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0, y: 0}
-  m_AnchorMax: {x: 0, y: 0}
-  m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 34, y: 34}
+  m_AnchorMin: {x: 0, y: 1}
+  m_AnchorMax: {x: 0, y: 1}
+  m_AnchoredPosition: {x: 26.692497, y: 1}
+  m_SizeDelta: {x: 30, y: 30}
   m_Pivot: {x: 0.5, y: 1}
 --- !u!222 &4683731976129321181
 CanvasRenderer:
@@ -1122,7 +1122,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 3861689092142768050}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 30649d3a9faa99c48a7b1166b86bf2a0, type: 3}
   m_Name: 
@@ -1176,7 +1176,7 @@ RectTransform:
   m_AnchorMin: {x: 0, y: 0.5}
   m_AnchorMax: {x: 0, y: 0.5}
   m_AnchoredPosition: {x: -10, y: 0}
-  m_SizeDelta: {x: 15, y: 25}
+  m_SizeDelta: {x: 9.6, y: 16}
   m_Pivot: {x: 1, y: 0.5}
 --- !u!222 &8488827501253566686
 CanvasRenderer:
@@ -1249,10 +1249,10 @@ RectTransform:
   - {fileID: 6587578595048946666}
   m_Father: {fileID: 3897619400137782401}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0, y: 0}
-  m_AnchorMax: {x: 0, y: 0}
-  m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 34, y: 34}
+  m_AnchorMin: {x: 0, y: 1}
+  m_AnchorMax: {x: 0, y: 1}
+  m_AnchoredPosition: {x: 80.07749, y: 1}
+  m_SizeDelta: {x: 30, y: 30}
   m_Pivot: {x: 0.5, y: 1}
 --- !u!222 &5376706086366703509
 CanvasRenderer:
@@ -1325,10 +1325,10 @@ RectTransform:
   - {fileID: 1342694792541886363}
   m_Father: {fileID: 3897619400137782401}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0, y: 0}
-  m_AnchorMax: {x: 0, y: 0}
-  m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 34, y: 34}
+  m_AnchorMin: {x: 0, y: 1}
+  m_AnchorMax: {x: 0, y: 1}
+  m_AnchoredPosition: {x: 133.4625, y: 1}
+  m_SizeDelta: {x: 30, y: 30}
   m_Pivot: {x: 0.5, y: 1}
 --- !u!222 &753240480504533882
 CanvasRenderer:
@@ -1789,10 +1789,10 @@ RectTransform:
   - {fileID: 6994828575455806813}
   m_Father: {fileID: 3897619400137782401}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0, y: 0}
-  m_AnchorMax: {x: 0, y: 0}
-  m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 34, y: 34}
+  m_AnchorMin: {x: 0, y: 1}
+  m_AnchorMax: {x: 0, y: 1}
+  m_AnchoredPosition: {x: 186.84747, y: 1}
+  m_SizeDelta: {x: 30, y: 30}
   m_Pivot: {x: 0.5, y: 1}
 --- !u!222 &706137892597125345
 CanvasRenderer:
@@ -2290,7 +2290,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 537d9385778c74c05a1a06e19a29a9cc, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GoStopStatusBoxView
-  background: {fileID: 7109355530379182780}
+  background: {fileID: 4553608718512692560}
   nameRect: {fileID: 6547254331990996611}
   nameText: {fileID: 7099422941420455088}
   goScoreRect: {fileID: 8330551496669925173}
@@ -2299,10 +2299,9 @@ MonoBehaviour:
   moneyIconRect: {fileID: 4238372647553213435}
   moneyText: {fileID: 1442138010823739926}
   badgeArea: {fileID: 7451217241328975899}
-  normalBgColor: {r: 1, g: 1, b: 1, a: 1}
-  normalTextColor: {r: 0.106, g: 0.133, b: 0.267, a: 1}
-  highlightBgColor: {r: 0.929, g: 0.729, b: 0.18, a: 0.95}
-  highlightTextColor: {r: 0.106, g: 0.133, b: 0.267, a: 1}
+  normalBgColor: {r: 0.3019608, g: 0.3647059, b: 0.2627451, a: 1}
+  highlightBgColor: {r: 0.5764706, g: 0.14117648, b: 0.1254902, a: 1}
+  disableBgColor: {r: 0.1509434, g: 0.14885214, b: 0.14311142, a: 0.95}
   dealerIcon: {fileID: 2134398903194371754}
   riskIconBg:
   - {fileID: 2535756611534187384}

@@ -53,10 +53,10 @@ public class GoStopStatusBoxView : MonoBehaviour
 
     [Header("색상 — 2026-08-24: 기본/현재턴 배경·글자색을 프리팹에서 직접\n조정할 수 있게 SerializeField로 뺐다. 예전엔 GoStop3PGame.FillSlot이\n이 값들을 코드에 직접 박아 넣고 있었다(#1B2244/#EDBA2E 등) — 이제\n이 프리팹을 열어 색만 바꾸면 4개 좌석(상단/좌/우/하단) 전부에\n반영된다. 기본값은 기존 하드코딩 값과 동일하게 맞춰서 색을 아직\n안 바꾼 기존 씬은 시각적으로 그대로다.")]
     [SerializeField] Color normalBgColor = new Color(0.106f, 0.133f, 0.267f, 0.88f);       // #1B2244 계열 — B안 표면색
-    [SerializeField] Color normalTextColor = Color.white;
+    
     [SerializeField] Color highlightBgColor = new Color(0.929f, 0.729f, 0.180f, 0.95f);    // #EDBA2E — 강조색(현재 턴)
-    [SerializeField] Color highlightTextColor = new Color(0.106f, 0.133f, 0.267f, 1f);     // 밝은 배경 위라 어두운 글자로 뒤집는다
-
+    [SerializeField] Color disableBgColor = new Color(0.929f, 0.729f, 0.180f, 0.95f); 
+    
     [Header("배지 — 매턴 상태만 갱신(재생성 안 함)")]
     [SerializeField] RectTransform dealerIcon;          // "선"(항상 같은 자리, SetActive로만 표시)
     [SerializeField] Image[] riskIconBg = new Image[3];       // [0]=광 [1]=멍 [2]=피
@@ -107,14 +107,6 @@ public class GoStopStatusBoxView : MonoBehaviour
     public void ApplyTurnState(bool highlight)
     {
         if (background) background.color = highlight ? highlightBgColor : normalBgColor;
-        var textColor = highlight ? highlightTextColor : normalTextColor;
-        if (nameText)
-        {
-            nameText.color = textColor;
-            nameText.fontStyle = highlight ? FontStyles.Bold : FontStyles.Normal;
-        }
-        if (goScoreText) goScoreText.color = textColor;
-        if (moneyText) moneyText.color = textColor;
     }
 
     /// <summary>이 좌석이 이번 판 배지 표시 대상이 아닐 때(쉬는 좌석, 빈

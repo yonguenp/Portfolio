@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.UI;
@@ -14,6 +13,15 @@ using TMPro;
 /// 순수 화면이다.
 ///
 /// 2인(맞고)도 네트워크 대전이 지원되어 2명부터 시작할 수 있다.
+///
+/// 2026-08-28: 정적인 틀(딤·카드·제목/부제·본문 컨테이너·닫기 버튼)만
+/// <c>Assets/Resources/Prefabs/GoStop/UI/GoStopNetLobbyUI.prefab</c>으로
+/// 뺐다 — 화면마다(Home/Hosting/Scanning/Connecting/Waiting/Error) 내용
+/// 자체의 "구조"가 달라지는(방 목록 개수, 좌석 4개 등) <see cref="body"/>
+/// 안쪽은 매 판 카드가 달라지는 GoStop 보드와 같은 이유로 여전히 코드가
+/// 그린다(이 프로젝트가 이미 채택한 "정적 틀=프리팹, 가변 콘텐츠=코드"
+/// 경계). 닫기 버튼 onClick만 베이킹 시점에 <c>Close()</c>로 persistent
+/// 연결해뒀다.
 /// </summary>
 public class GoStopNetLobbyUI : MonoBehaviour
 {
@@ -23,8 +31,10 @@ public class GoStopNetLobbyUI : MonoBehaviour
     string myName = "";
     GoStopRoomScanner.DiscoveredRoom connectingRoom;
 
-    RectTransform panelRT, card, body, closeBtnRT;
-    TextMeshProUGUI titleLbl, subtitleLbl;
+    [SerializeField] RectTransform panelRT;
+    [SerializeField] RectTransform body;
+    [SerializeField] RectTransform closeBtnRT;
+    [SerializeField] TextMeshProUGUI subtitleLbl;
 
     static readonly Color Surface  = new Color(0.137f, 0.169f, 0.322f, 1f); // #232B52
     static readonly Color Surface2 = new Color(0.169f, 0.208f, 0.376f, 1f); // #2B3560
@@ -34,27 +44,7 @@ public class GoStopNetLobbyUI : MonoBehaviour
     static readonly Color T40 = new Color(1f, 1f, 1f, 0.40f);
 
     const int MIN_NETWORK_PLAYERS = 2; // GoStopNetLobby.HostStartGame과 동일 — 2인부터 시작 가능
-
-    // 2026-08-20: 첫 버전은 "body" 컨테이너를 카드 중앙(0.5,0.5) 기준으로
-    // 두고 자식들 좌표를 손으로 추측해서 박았다가, 실제 4개 좌석 로우 +
-    // 힌트 + 버튼 2개(총 652px 깊이)가 카드 안에 다 안 들어가서 맨 아래
-    // 버튼들이 카드 밖으로 삐져나가 항상 떠 있는 "닫기" 버튼과 겹쳤다
-    // ("방만들기/방찾기 둘 다 UI가 겹친다"는 실사용 신고로 발견).
-    //
-    // 지금은 **카드 전체를 하나의 세로 커서로 채운다** — body를 카드
-    // 위쪽에 top-pivot으로 고정하고, 그 안의 모든 요소는 NextY() 커서가
-    // "이전 요소 바로 아래"로 자동 배치한다(GoStop3PGame.UI.cs의
-    // BuildStaticUI가 이미 쓰던, 이 프로젝트에서 검증된 좌표 하드코딩
-    // 회피 패턴). 카드 높이(CARD_H)는 헤더+본문 최대 깊이+닫기 버튼을
-    // 전부 더해서 역산한 값이라 "내용이 카드보다 커서 넘친다"가 애초에
-    // 구조적으로 불가능하다.
-    // 2026-08-20: 사용자가 직접 화면에서 확인하며 준 실측값으로 전면
-    // 축소·재배치했다 — 카드 762 커봤던 옛 CARD_H(1020)/BODY_H(700)는
-    // 여유를 넉넉히 두려던 것이었는데, 실제로 보니 과했다.
-    const float CARD_W = 760f;
-    const float CARD_H = 620f;
-    const float BODY_W = 700f;
-    const float BODY_H = 300f;
+    const float BODY_W = 700f; // 프리팹의 Body 폭(사용자 확인 값)과 반드시 맞출 것 — 아래 각 화면의 sizeDelta 계산이 이 값을 그대로 쓴다
 
     float cursor; // body 로컬 커서 — 0=맨 위, 내려갈수록(화면 아래쪽) 더 음수
 
@@ -72,64 +62,17 @@ public class GoStopNetLobbyUI : MonoBehaviour
 
     public static GoStopNetLobbyUI Create(RectTransform canvasRT)
     {
-        var go = new GameObject("GoStopNetLobbyUI", typeof(RectTransform));
-        go.transform.SetParent(canvasRT, false);
-        var rt = go.GetComponent<RectTransform>();
-        Stretch(rt);
-
-        var ui = go.AddComponent<GoStopNetLobbyUI>();
-        ui.Build();
-        return ui;
-    }
-
-    void Build()
-    {
-        panelRT = MakeRect("Panel", transform);
-        Stretch(panelRT);
-        var dim = AddImg(panelRT, null, new Color(0f, 0f, 0f, 0.82f));
-        dim.raycastTarget = true;
-
-        card = MakeRect("Card", panelRT, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
-        card.sizeDelta = new Vector2(CARD_W, CARD_H);
-        var cardImg = AddImg(card, UISkin.Panel, Surface, true);
-        cardImg.raycastTarget = true;
-
-        // 헤더 — 카드 top-center 기준 절대 좌표(사용자 확인 값).
-        titleLbl = AddLabel(card, "네트워크 대전", 40f, T95);
-        titleLbl.rectTransform.anchoredPosition = new Vector2(0f, 256f);
-        subtitleLbl = AddLabel(card, "", 20f, T70);
-        subtitleLbl.rectTransform.anchoredPosition = new Vector2(0f, 201f);
-        subtitleLbl.rectTransform.sizeDelta = new Vector2(680f, 60f);
-
-        // body를 카드 top-pivot으로 고정(사용자 확인 값 — posY -150).
-        body = MakeRect("Body", card, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
-        body.pivot = new Vector2(0.5f, 1f);
-        body.sizeDelta = new Vector2(BODY_W, BODY_H);
-        body.anchoredPosition = new Vector2(0f, -150f);
-
-        var closeBtn = MakeRect("Close", card, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
-        closeBtn.pivot = new Vector2(0.5f, 0f);
-        closeBtn.sizeDelta = new Vector2(300f, 76f);
-        closeBtn.anchoredPosition = new Vector2(0f, 30f);
-        var closeImg = AddImg(closeBtn, UISkin.Button, Color.white, true);
-        closeImg.raycastTarget = true; // AddImg 기본 false — 이 프로젝트 공통 함정("raycastTarget=false 버튼이
-                                        // 클릭을 조상에게 넘겨버림", CLAUDE.md 참고). 안 켜주면 이 버튼만
-                                        // 클릭이 전혀 안 먹는다(뒤에 깔린 card 패널로 새서 아무 반응이 없다).
-        AddLabel(closeBtn, "닫기", 24f, T95);
-        closeBtn.gameObject.AddComponent<Button>().onClick.AddListener(Close);
-        closeBtnRT = closeBtn;
-
-        panelRT.gameObject.SetActive(false);
+        var ui = HwatuUI.InstantiateUIPrefab<GoStopNetLobbyUI>("GoStopNetLobbyUI", canvasRT);
 
         // 로비 이벤트는 이 오브젝트가 살아있는 내내(비활성 상태에서도) 구독해
         // 둔다 — 팝업이 닫혀 있어도 게임 시작 신호(OnGameStarting)는 놓치면
-        // 안 된다(예: 호스트가 대기실에서 이 팝업을 닫아버린 경우는 없지만,
-        // 방어적으로 항상 반응하게 해둔다). Redraw는 활성 상태일 때만 의미가
-        // 있으므로 각 핸들러 안에서 activeSelf를 확인한다.
+        // 안 된다. Redraw는 활성 상태일 때만 의미가 있으므로 각 핸들러 안에서
+        // activeSelf를 확인한다.
         var lobby = EnsureLobby();
-        lobby.OnLobbyChanged += HandleLobbyChanged;
-        lobby.OnGameStarting += HandleGameStarting;
-        lobby.OnDisconnected += HandleDisconnected;
+        lobby.OnLobbyChanged += ui.HandleLobbyChanged;
+        lobby.OnGameStarting += ui.HandleGameStarting;
+        lobby.OnDisconnected += ui.HandleDisconnected;
+        return ui;
     }
 
     /// <summary>씬 어디에도 <see cref="GoStopNetLobby"/>를 미리 심어두지
@@ -170,6 +113,8 @@ public class GoStopNetLobbyUI : MonoBehaviour
         Redraw();
     }
 
+    // 프리팹의 닫기 버튼 onClick에 persistent listener로 이미 연결돼 있다
+    // (베이킹 시점) — public이어야 그 연결이 성립한다.
     public void Close()
     {
         // 대기실/스캔 중이었으면 세션을 접고 나간다 — "닫기"를 눌렀는데
@@ -354,7 +299,7 @@ public class GoStopNetLobbyUI : MonoBehaviour
     /// <summary>호스트("Hosting")·게스트("Waiting") 대기실이 거의 같은
     /// 모양이라(좌석 4개 나열) 하나로 합쳤다 — 다른 건 "시작" 버튼 유무뿐.
     /// 이 화면이 4개 화면 중 세로로 가장 깊다(로우 4개+힌트+버튼 최대 2개) —
-    /// BODY_H는 이 화면 기준으로 역산됐다.</summary>
+    /// 프리팹의 Body 높이는 이 화면 기준으로 역산돼 있다.</summary>
     void ShowRoster(bool isHostView)
     {
         var lobby = GoStopNetLobby.Instance;
@@ -490,9 +435,9 @@ public class GoStopNetLobbyUI : MonoBehaviour
         row.gameObject.AddComponent<Button>().onClick.AddListener(onClick);
     }
 
-    // ── 공용 헬퍼 (GoStopModeChoiceUI와 동일 패턴) ─────────
-    static RectTransform MakeRect(string name, Transform parent) => MakeRect(name, parent, Vector2.zero, Vector2.one);
-
+    // ── 공용 헬퍼 — body 안쪽 가변 콘텐츠(로우/버튼)를 여전히 코드로
+    // 그리는 데 쓴다. 정적 틀(Panel/Card/제목/부제/닫기)은 이제 프리팹이
+    // 담당하므로 그쪽 전용 헬퍼(Stretch 등)는 제거했다.
     static RectTransform MakeRect(string name, Transform parent, Vector2 aMin, Vector2 aMax)
     {
         var go = new GameObject(name, typeof(RectTransform));
@@ -501,12 +446,6 @@ public class GoStopNetLobbyUI : MonoBehaviour
         rt.anchorMin = aMin; rt.anchorMax = aMax;
         rt.offsetMin = Vector2.zero; rt.offsetMax = Vector2.zero;
         return rt;
-    }
-
-    static void Stretch(RectTransform rt)
-    {
-        rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
-        rt.offsetMin = Vector2.zero; rt.offsetMax = Vector2.zero;
     }
 
     static Image AddImg(RectTransform rt, Sprite sp, Color col, bool sliced = false)
