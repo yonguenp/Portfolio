@@ -1,0 +1,31 @@
+key,ko,en,ja
+title_brickbreaker,벽돌깨기 3D,Brick Breaker 3D,ブリックブレーカー3D
+hud_best,최고,Best,最高
+hud_balls,볼,Balls,ボール
+btn_restart,다시 시작,Restart,もう一度
+btn_title,타이틀,Title,タイトル
+btn_start,시작,Start,スタート
+overlay_gameover,게임 오버,Game Over,ゲームオーバー
+overlay_ready,준비,Ready,準備
+overlay_score_label,점수,Score,スコア
+overlay_balls_label,볼 수,Balls,ボール数
+overlay_newbest,최고기록 갱신!,New Best!,最高記録更新!
+lang_korean,한국어,Korean,韓国語
+lang_english,English,English,英語
+lang_japanese,日本語,Japanese,日本語
+options_language,언어,Language,言語
+title_colorsort,색 정렬,Color Sort,カラーソート
+title_1to50,1 to 50,1 to 50,1から50
+title_2048,2048,2048,2048
+title_1010,1010!,1010!,1010!
+btn_help,?,?,?
+btn_close,확인,Got it,OK
+help_title,조작법,How to Play,遊び方
+bb_help_1,화면 오른쪽을 드래그해 조준하세요,Drag the right side of the screen to aim,画面右側をドラッグして狙います
+bb_help_2,손을 떼면 공이 발사됩니다,Release your finger to fire,指を離すと発射されます
+bb_help_3,화면 왼쪽을 드래그하면 시점이 돌아갑니다,Drag the left side to rotate the view,画面左側をドラッグで視点回転
+bb_help_4,노란 구슬을 맞히면 공이 늘어납니다,Hit the yellow orb to gain more balls,黄色い玉に当てるとボールが増えます
+bb_help_5,벽돌이 앞쪽 빨간 선에 닿으면 게임 오버,Game over if bricks reach the red front line,ブロックが手前の赤い線に届くとゲームオーバー
+bb_hint_aim,오른쪽을 드래그해 조준,Drag right side to aim,右側をドラッグして狙う
+js_label_view,시점,View,視点
+js_label_aim,조준·발사,Aim & Fire,照準・発射

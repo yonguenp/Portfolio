@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(open -a \"Unity Hub\")",
+      "Read(//Applications/**)",
+      "Read(//Users/yonguen/.local/bin/**)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); [print\\(k,v\\) for k,v in d['dependencies'].items\\(\\) if 'youngwoo' in k or 'unity-cli' in k.lower\\(\\)]\")",
+      "Bash(python3 -c \"from PIL import Image; print\\('pillow ok'\\)\")",
+      "Bash(python3 -m pip install pillow --quiet)",
+      "Bash(python3 *)",
+      "Bash(brew upgrade *)",
+      "Bash(brew info *)",
+      "Bash(claude --version)",
+      "Bash(npm view *)",
+      "Bash",
+      "mcp__ide__getDiagnostics",
+      "WebSearch",
+      "WebFetch(domain:assetstore.unity.com)",
+      "WebFetch(domain:kenney.nl)",
+      "WebFetch(domain:namu.wiki)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:commons.wikimedia.org)",
+      "WebFetch(domain:blog.codefactory.ai)",
+      "WebFetch(domain:ko.wikipedia.org)",
+      "WebFetch(domain:thewiki.kr)",
+      "WebFetch(domain:www.wingboardgame.com)",
+      "WebFetch(domain:postfiles.pstatic.net)"
+    ]
+  }
+}
