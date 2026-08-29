@@ -225,6 +225,11 @@ public partial class GoStop3PGame
         BuildDealerDrawUI(canvasRoot);
         BuildGwangSaleUI(canvasRoot);
         BuildScoreDetailUI(canvasRoot);
+        // 채팅/이벤트 로그 — 이것만은 sibling 순서로 맨 위를 보장하지 않는다
+        // (팝업들이 열릴 때마다 SetAsLastSibling을 스스로 불러 밀어낼 수
+        // 있어서). BuildChatUI 안에서 override sorting 전용 Canvas를 얹어
+        // 구조적으로 항상 최상단이 되게 한다 — 자세한 이유는 그 함수 문서 참고.
+        BuildChatUI(canvasRoot);
     }
 
     /// <summary>선 뽑기 팝업 — 프리팹은 빈 pool 컨테이너만 갖고 있고, 실제
@@ -358,6 +363,7 @@ public partial class GoStop3PGame
                 best = i;
 
         dealerSeat = pickedBy[best];
+        AppendChatLine($"{SeatNameFor(dealerSeat, -1)}이(가) 선이 되었습니다");
         dealerDrawPopup.resultText.text = $"{SeatName(dealerSeat)}이(가) 선입니다!";
         GoStopAudio.Instance?.Bonus(); // 결과가 정해지는 순간의 반짝이는 차임
         yield return new WaitForSeconds(1.1f);
@@ -1786,9 +1792,15 @@ public partial class GoStop3PGame
     /// 호출 횟수로 표현 — 함수 자체는 항상 1:1).
     /// <br/>쉬는 좌석 등 화면에 슬롯이 없는 좌석(<see cref="SlotOf"/>가 -1)
     /// 이면 날아갈 시작/도착점이 없으므로 조용히 아무것도 안 한다.</summary>
-    void FlyMoneyFX(int fromSeat, int toSeat, int amount)
+    /// <paramref name="reason"/>는 채팅 로그용 사유(예: "첫뻑비") — 생략하면
+    /// "OO이(가) OO에게 N원 지급"처럼 사유 없이 적는다. 시각 효과와 무관하게
+    /// 돈이 실제로 움직인 사실 자체는 항상 기록해야 하므로, 슬롯이 없어
+    /// 이펙트를 못 그리는 경우(아래 return들)에도 로그는 먼저 남긴다.</summary>
+    void FlyMoneyFX(int fromSeat, int toSeat, int amount, string reason = null)
     {
         if (amount <= 0) return;
+        string reasonPart = string.IsNullOrEmpty(reason) ? "" : reason + " ";
+        AppendChatLine($"{SeatNameFor(fromSeat, -1)}이(가) {SeatNameFor(toSeat, -1)}에게 {reasonPart}{amount:N0}원 지급");
         int fromSlot = SlotOf(fromSeat), toSlot = SlotOf(toSeat);
         if (fromSlot < 0 || toSlot < 0) return;
         var fromLbl = moneyText[fromSlot]; var toLbl = moneyText[toSlot];

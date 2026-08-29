@@ -7,15 +7,68 @@
 
 ## Unity CLI
 
+Unity Technologies 공식 CLI(beta, 2026-07-20 발표)를 쓴다. 예전엔 서드파티
+도구(`youngwoocho02/unity-cli` + `com.youngwoocho02.unity-cli-connector`,
+켜져 있는 에디터에 HTTP로 붙어 C#을 즉석 실행하는 방식)를 썼는데, 2026-08-28에
+완전히 제거했다 — 바이너리 삭제, `Packages/manifest.json`의 의존성 라인 제거,
+에디터가 자동으로 재리졸브해 `packages-lock.json`·`Library/PackageCache` 캐시까지
+깨끗이 정리됨(확인 완료).
+
+2026-08-28에 실제로 설치·검증 완료. **에디터에 붙어 있는 HTTP 서버(Pipeline
+패키지)가 명령을 받아 실행하는 구조** — 예전 서드파티 도구와 통신 방식은
+비슷하지만 `--usings` 같은 편의 플래그가 없어서 `eval` 안의 C#은 **모든
+타입을 완전히 정규화해서** 써야 한다(예: `Image`가 아니라
+`UnityEngine.UI.Image`, `Object.FindObjectOfType<T>()`는 obsolete라
+`UnityEngine.Object.FindFirstObjectByType<T>()`를 쓸 것).
+
 ```bash
-export PATH="$HOME/.local/bin:$PATH"
-unity-cli --project /Users/yonguen/UnityWithClaude/UnityWithClaude exec --timeout 90000 \
-  --usings "UnityEditor,UnityEditor.SceneManagement,UnityEditor.Events,UnityEngine,UnityEngine.UI,UnityEngine.EventSystems,UnityEngine.InputSystem.UI,TMPro" \
-  "..."
+# 설치 (macOS/Linux)
+curl -fsSL https://public-cdn.cloud.unity3d.com/hub/prod/cli/install.sh | UNITY_CLI_CHANNEL=beta bash
+
+# Pipeline 패키지 설치 (프로젝트당 1회, 설치 후 에디터 재시작 필요 —
+# 재시작해야 HTTP 서버가 실제로 뜬다)
+unity pipeline install
+
+# 에디터에 붙은 Pipeline 서버 확인 (포트 번호가 매번 다를 수 있음)
+unity pipeline list
+
+# C# 즉석 실행 (에디터가 켜져 있고 Pipeline 서버가 떠 있어야 함)
+unity command eval "return UnityEngine.Application.version;"
+
+# 컴파일 강제 + 상태 폴링
+unity command recompile
+unity command recompile_status
+
+# 콘솔 로그 확인 (positional JSON 인자, --params 플래그 없음)
+unity command console '{"count":50}'
+
+# 빌드 타겟 전환 (전체 리임포트 유발 — confirm 필수)
+unity command switch_build_target '["WebGL", true]'
+unity command switch_build_target_status
+
+# 빌드 (비동기 — 즉시 반환되므로 status로 폴링)
+unity command build '["WebGL", "WebBuild", null, null, null, true, false]'
+unity command build_status
+
+# Play 모드 제어
+unity command editor_play
+unity command editor_stop
+unity command editor_status
 ```
 
-- `exec` 결과는 마지막 `return "..."` 값이 stdout으로 나옴
-- 씬 저장: `EditorSceneManager.SaveScene(sc, "Assets/Scenes/씬이름.unity")`
+- 스크립트 수정 후 반드시 `unity command recompile` + `recompile_status`
+  (또는 `console`)로 컴파일 에러 확인
+- `capture_game_view`는 **Main Camera가 렌더한 화면만** 캡처한다 —
+  Screen Space Overlay Canvas(이 프로젝트 UI 전부)는 안 찍힌다. UI 검증은
+  스크린샷이 아니라 항상 `eval`로 씬 상태를 직접 읽는 방식을 쓸 것(이
+  프로젝트 전역에서 이미 확립된 원칙과 동일한 이유 — 아래 GoStop 섹션들
+  참고).
+- `switch_build_target`은 **전체 에셋 리임포트**를 유발해 수 분 걸릴 수
+  있다 — `switch_build_target_status`로 완료를 확인하고 나서 다음 명령을
+  보낼 것.
+- Pipeline 서버가 "No Unity Editor instances found with reachable Pipeline
+  servers"를 돌려주면 에디터가 안 켜져 있거나, Pipeline 패키지 설치 직후
+  에디터를 재시작 안 한 상태다.
 
 ## 캔버스 설정 (전 씬 공통)
 
@@ -8446,3 +8499,133 @@ HandleGameStarting`이 인원수와 무관하게 이미 항상 `GoStop3PScene`�
 > "스퓨리어스 드리프트"라는 개념 자체를 이제 신뢰하지 않는다 — 과거
 > 세션들이 겪었다고 기록한 사례 다수가 실제로는 이런 식으로 사용자의
 > 동시 편집을 지운 것이었을 가능성이 있다.
+
+## 고스톱 — 채팅/이벤트 로그 (2026-08-28)
+
+"채팅창은 우측하단에 항상 최상단으로, 유저 행동·결과도 간단히 적어달라"는
+요청 — `GoStop3PGame.Chat.cs`(신규 partial class 파일, Core/UI 분리 관례를
+그대로 따름) + `Assets/Resources/Prefabs/GoStop/UI/ChatPanel.prefab`
+(+ `GoStopChatView.cs` 필드 홀더)로 구현했다.
+
+**항상 최상단 — `Canvas.overrideSorting`.** sibling index로는 다른 팝업
+(고/스톱 선택, 점수 상세 등)이 나중에 뜨면 그 밑으로 가려질 수 있어서,
+채팅 패널 자체에 `Canvas`(overrideSorting=true, sortingOrder=500)를 얹어
+렌더 순서를 sibling index와 완전히 분리했다.
+
+> **함정 — `Canvas.overrideSorting`은 프리팹으로 저장하는 순간 `false`로
+> 리셋된다.** 프리팹 저장 시점엔 그 Canvas 위에 부모 Canvas 컨텍스트가
+> 없어서 Unity가 "의미 없는 값"으로 보고 지워버린다 — 실제로 구운
+> 프리팹 에셋을 리플렉션으로 열어봤더니 `overrideSorting=False`였다.
+> `BuildChatUI()`에서 `Instantiate` 직후 `overrideSorting=true;
+> sortingOrder=500;`을 다시 강제로 세팅해서 고쳤다 — **프리팹 루트에
+> Canvas를 얹어 sortingOrder를 쓰는 패턴은 항상 런타임에서 재확인/
+> 재설정할 것.**
+
+**네트워크 이벤트 릴레이 — 기존 채널 재사용 + 새 채널 하나만 추가.**
+- 게임 이벤트(뻑/따닥/쪽/싹쓸이/폭탄/흔들기/보너스/총통/나가리 등)는
+  이미 `Toast(seat, label)`이 `GoStopNetMessage.Type.Event`로 게스트에게
+  중계하고 있었다(처음엔 "이거 데드 코드인 줄 알았는데 조사해보니 이미
+  연결돼 있었다") — `Toast()` 안에서 `LogLocalLine(...)`을 한 줄 추가해
+  채팅 로그에 얹기만 하면 됐다. **여기서 또 브로드캐스트하면 안 된다** —
+  `Toast` 자신이 이미 릴레이 중이라 이중 전송이 된다.
+- 돈이 오가는 이벤트(`ApplyMoneyBonus`/`FlyMoneyFX`)와 선 결정
+  (`DetermineDealerSeq`)·카드 플레이(`PlaySeq`)·게임 종료(`EndGame`)처럼
+  기존 릴레이 경로가 없던 지점엔 `AppendChatLine(...)`을 직접 추가했다.
+- 유저가 직접 치는 채팅(게스트→호스트→전체)과 시스템 로그를 구분하려고
+  새 메시지 타입 `GoStopNetMessage.Type.ChatLog`를 만들었다 — `boolValue`
+  필드를 "isChat"(채팅탭에 넣을지) 플래그로 재사용해서 새 필드를 안
+  늘렸다.
+- `AppendChatLine`(브로드캐스트 O) vs `LogLocalLine`(브로드캐스트 X,
+  받은 메시지를 그릴 때만 사용) — 이름이 비슷해서 헷갈리기 쉬우니
+  주의할 것. 호스트가 게스트에게 받은 채팅을 다시 그릴 때
+  `AppendChatLine`을 쓰면 자기가 받은 메시지를 다시 브로드캐스트하는
+  무한 루프가 될 수 있다(실제로 이렇게 짤 뻔했다 — `HandleIncomingGuestChat`
+  은 반드시 `AppendChatLine`으로 "새로 만들어서 전체에 알리는" 경로를
+  타야 하고, 반대로 자기 자신이 받은 걸 그리기만 할 땐 `LogLocalLine`).
+- **로컬(vs AI) 모드에서도 시스템 메시지가 떠야 한다**는 후속 요청 —
+  `LogLocalLine`이 네트워크 여부와 무관하게 항상 리스트에 쌓고 다시
+  그리므로, 오프라인에서도 자연히 동작한다(네트워크가 없으면
+  `AppendChatLine`의 브로드캐스트 부분만 조용히 스킵된다).
+
+**탭(전체/채팅/로그) — 카테고리 하나로 필터링.** `ChatEntry{ text, isChat }`
+리스트를 `CHAT_MAX_LINES=80`으로 캡핑해서 들고 있다가, 탭 선택
+(`ChatFilter.All/Chat/Log`)에 따라 LINQ로 걸러 한 번에 다시 그린다(개별
+줄을 UI 오브젝트로 만드는 대신 하나의 TMP 텍스트로 합침 — 카드처럼
+값마다 색이 다른 콘텐츠가 아니라 순수 텍스트라 이 방식이 훨씬 단순하다).
+
+**정적 틀=프리팹, 가변 콘텐츠=코드 원칙 재확인.** 배경·헤더·탭 버튼 3개·
+스크롤뷰·입력 필드·전송 버튼까지 전부 프리팹에 미리 구워두고, 코드는
+`chatEntries` 리스트→텍스트 렌더링과 버튼 클릭 핸들러 연결만 담당한다.
+`TMP_InputField`는 이 프로젝트에서 처음 쓴 컴포넌트라(닉네임 입력 등에서
+"전례 없음"으로 미뤄왔던 것) 표준 필드 세팅
+(`textViewport`/`textComponent`/`placeholder`/`lineType=SingleLine`)을
+새로 잡아야 했다.
+
+**검증 — 실제 플레이로 로그가 정상적으로 쌓이는 것까지 확인.** 리플렉션
+기반 강제 게임 시작 호출이 이 세션에서 원인 불명으로 한 번 멈춘 적이
+있었는데(딜링 전 상태에서 계속 멈춰 보임 — `Time.frameCount`는 정상
+진행 중이라 에디터 자체가 멈춘 건 아니었다), 그 직전에 자연스럽게 플레이
+중이던 세션에서 이미 채팅 로그에 실제 포맷된 줄들이 정상적으로 쌓이는
+것을 확인했었다 — 그 강제-호출 테스트의 "멈춤"은 리플렉션 테스트 스크립트
+쪽 문제일 가능성이 높다고 보고 있다(이 프로젝트가 이미 여러 번 겪은
+"unity-cli exec가 특정 타이밍의 조합에서 원인 불명으로 멈춘다"는 계열과
+같다). **버튼을 실제로 눌러 처음부터 끝까지 플레이하며 재확인이 필요**하다
+— 아직 그 확인은 못 했다.
+
+## 웹(WebGL) 빌드 + GitHub Pages 배포 (2026-08-28)
+
+Portfolio 저장소(`github.com/yonguenp/Portfolio`)가 GitHub Pages로 이미
+연결돼 있어서, 그 저장소의 `main` 브랜치 밑에 폴더를 하나 만들어 빌드
+산출물을 넣는 방식으로 배포했다. 실제 플레이 가능한 링크:
+`https://yonguenp.github.io/Portfolio/unitywithclaude/`.
+
+**빌드 자체는 공식 Unity CLI로.** `switch_build_target WebGL`(전체
+리임포트, 수 분 소요) → `build WebGL WebBuild ...`(비동기, `build_status`
+폴링) — 위 "Unity CLI" 섹션의 명령 그대로.
+
+> **함정 — 네트워크 대전 코드가 WebGL에서 컴파일은 되는데 런타임에
+> 안 먹는다.** `System.Net.Sockets`(TCP/UDP)는 WebGL 빌드 타겟에서
+> **컴파일 에러가 안 난다** — 그냥 브라우저 샌드박스가 런타임에 막을
+> 뿐이다. `#if UNITY_WEBGL` 전처리기로 코드 자체를 걷어내는 대신,
+> `GoStopNetLobby.HostRoom()`/`StartScanningForRooms()` 호출부에
+> `Application.platform == RuntimePlatform.WebGLPlayer`를 확인해 즉시
+> "웹 버전은 네트워크 대전을 지원하지 않습니다" 안내로 빠지게 했다 —
+> 코드를 걷어내면 에디터/모바일 빌드와 소스가 갈라져 유지보수 부담이
+> 커지고, 어차피 호출 시점에 막는 게 훨씬 안전하다.
+> **웹에서 이 안내 문구가 실제로 뜨는지는 아직 실브라우저로 확인 못 했다**
+> (리플렉션으로 가드 조건만 확인) — 다음에 웹 버전에서 네트워크 대전
+> 버튼을 눌러볼 것.
+
+> **함정 — 기본 Brotli 압축이 GitHub Pages에서 빌드를 깨뜨린다.**
+> Unity WebGL 기본 압축(`WebGL.compressionFormat = Brotli`,
+> `decompressionFallback = false`)은 `.br` 확장자 파일을 만들고 브라우저가
+> `Content-Encoding: br` 헤더를 보고 자동 압축 해제하는 걸 전제한다 —
+> **GitHub Pages는 이 헤더를 설정할 방법이 없어서** 그대로 올리면 WASM/
+> 데이터 로드가 실패한다. `PlayerSettings.WebGL.decompressionFallback =
+> true`로 바꿔서 고쳤다 — 파일 확장자가 `.unityweb`로 바뀌고 `loader.js`
+> 안에 JS 기반 압축 해제기가 내장돼, 어떤 정적 호스팅에서도 헤더 설정 없이
+> 그냥 서빙만 하면 동작한다. **정적 호스팅(GitHub Pages 등)에 WebGL을
+> 올릴 땐 이 설정을 항상 켤 것** — 서버가 커스텀 헤더를 붙여줄 수 있는
+> 환경(자체 서버, Cloudflare 등)이면 기본 Brotli가 더 빠르지만, GitHub
+> Pages는 그 조건을 못 맞춘다.
+
+> **함정 — GitHub Pages 소스가 어느 브랜치인지 API로 먼저 확인해야 한다.**
+> "Pages로 배포"라길래 처음엔 `gh-pages`라는 이름의 새 orphan 브랜치를
+> 만들어 거기 빌드를 올리고 푸시했는데, `GET /repos/{owner}/{repo}/pages`로
+> 실제 설정을 확인해보니 **이 저장소의 Pages는 `main` 브랜치의 루트를
+> 서빙**하도록 이미 설정돼 있었다 — `gh-pages` 브랜치는 서빙 대상이
+> 아니라 그냥 죽은 브랜치로 푸시한 셈이었다. Pages 소스 자체를
+> `gh-pages`로 바꾸려고 `POST /repos/.../pages`를 시도했지만 **403**
+> (fine-grained PAT가 "Contents: Read/write"만 있고 "Administration"
+> 권한이 없어서 Pages 설정 변경은 못 한다) — 대신 빌드를 `main` 브랜치의
+> `unitywithclaude/` 폴더에 직접 커밋·푸시하는 쪽으로 방향을 바꿔서
+> 권한 문제 없이 바로 배포됐다. **Pages 배포 전엔 항상 `GET .../pages`로
+> 실제 소스 브랜치/경로를 먼저 확인할 것** — 새 브랜치를 만들기 전에
+> 이것부터 봤으면 헛수고를 안 했을 것이다. (지금 저장소에 안 쓰는
+> `gh-pages` 브랜치가 하나 남아 있다 — 삭제 여부는 사용자 확인 대기 중.)
+
+**빌드 산출물은 프로젝트에 커밋하지 않는다.** `WebBuild/`는
+`.gitignore`에 올렸다(2026-08-29) — 90MB에 육박하는 바이너리 산출물을
+매번 리빌드해서 올리는 대신, **배포는 별도 저장소(Portfolio)의 별도
+폴더로 나가고, 이 프로젝트 저장소엔 소스만 남긴다**는 원칙을 지키기
+위해서다.

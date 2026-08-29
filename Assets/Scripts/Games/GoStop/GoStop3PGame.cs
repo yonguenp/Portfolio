@@ -456,6 +456,17 @@ public partial class GoStop3PGame : MonoBehaviour
     /// 받는 StateSync/Event만</b> 처리한다.</summary>
     void OnNetGameMessage(int fromSeat, GoStopNetMessage msg)
     {
+        // 채팅은 호스트도 받아야 하는 유일한 메시지 타입이라(나머지는 전부
+        // WaitForRemoteMessage의 일시적 구독으로 처리) 아래 "게스트 전용"
+        // 가드보다 먼저 분기한다 — 방향(게스트→호스트 원문 / 호스트→게스트
+        // 완성된 한 줄)에 따라 처리가 다르다(GoStopNetMessage.Type.ChatLog
+        // 문서 참고).
+        if (msg.type == GoStopNetMessage.Type.ChatLog)
+        {
+            if (isNetworkHost) HandleIncomingGuestChat(fromSeat, msg.text);
+            else LogLocalLine(msg.text, msg.boolValue);
+            return;
+        }
         if (!isNetworkGuest) return;
         switch (msg.type)
         {
@@ -1353,7 +1364,7 @@ public partial class GoStop3PGame : MonoBehaviour
                 int pay = Mathf.Min(perPayer, money[payer]);
                 money[payer] -= pay; money[sittingOutSeat] += pay;
                 payAmounts[payer] = pay;
-                FlyMoneyFX(payer, sittingOutSeat, pay);
+                FlyMoneyFX(payer, sittingOutSeat, pay, "광팔이");
             }
             GoStopAudio.Instance?.Money();
             // 어떤 패로 팔았는지·총 얼마인지·누가 내는지를 화면에 직접
@@ -1486,8 +1497,10 @@ public partial class GoStop3PGame : MonoBehaviour
 
     int PpeokMoney() => 3 * WON_PER_POINT * stakeMultiplier;
 
-    /// <summary>보너스 금액을 이번 판 활성 좌석들에게서 균등하게(나머지는 버림) 걷는다.</summary>
-    void ApplyMoneyBonus(int seat, int amount)
+    /// <summary>보너스 금액을 이번 판 활성 좌석들에게서 균등하게(나머지는 버림) 걷는다.
+    /// <paramref name="reason"/>은 채팅 로그에 "OO비"처럼 남길 사유 —
+    /// 호출부가 바로 뒤에 부르는 Toast()의 라벨과 짝을 맞춘다.</summary>
+    void ApplyMoneyBonus(int seat, int amount, string reason = null)
     {
         var others = ActiveSeats().Where(s => s != seat).ToList();
         if (others.Count == 0) return;
@@ -1496,7 +1509,7 @@ public partial class GoStop3PGame : MonoBehaviour
         {
             int pay = Mathf.Min(share, money[o]);
             money[o] -= pay; money[seat] += pay;
-            FlyMoneyFX(o, seat, pay);
+            FlyMoneyFX(o, seat, pay, reason);
         }
     }
 
@@ -1506,6 +1519,14 @@ public partial class GoStop3PGame : MonoBehaviour
         ShowTimedToast((seat == PLAYER_SEAT ? "" : SeatName(seat) + " ") + label);
         GoStopAudio.Instance?.PlayForLabel(label);
         ShowActionPopup(label);
+        // 채팅창 로그 — 여기서 다시 브로드캐스트하지 않는다(LogLocalLine,
+        // AppendChatLine 아님). 이 이벤트는 바로 아래에서 EventMsg로 이미
+        // 게스트에게 전달되고, 게스트는 그걸 받아 이 Toast() 함수를 자기
+        // 화면에서 그대로 재실행한다(OnNetGameMessage의 Type.Event 분기) —
+        // 그때 이 줄이 게스트 쪽에서도 다시 실행되며 자기 로그에 남는다.
+        // 만약 여기서 AppendChatLine으로 또 브로드캐스트하면, 게스트가
+        // Event 재생 1번 + ChatLog 수신 1번으로 같은 줄이 두 번 찍힌다.
+        LogLocalLine($"{SeatNameFor(seat, -1)} {label}");
 
         // 호스트 전용 — 뻑/쪽/싹쓸이 등 판정 이벤트는 호스트에서만
         // 발생한다(PlaySeq/DeckOnlySeq는 호스트만 돈다). 게스트도 같은
@@ -2071,6 +2092,13 @@ public partial class GoStop3PGame : MonoBehaviour
         }
 
         GoStopAudio.Instance?.CardPlay();
+        // 2026-08-28: "채팅창에 아무것도 안 올라온다" 신고 — 그동안은
+        // 뻑/따닥/쪽/폭탄/흔들기 등 "특별한" 사건만 Toast()를 거쳐 로그에
+        // 남았고, 평범하게 카드 한 장 내는 매 턴은 아무것도 안 남았다.
+        // 그런 특별한 사건이 한동안 안 터지면(흔한 경우) 채팅창이 계속
+        // 비어 있어 보인다 — 매턴 기본 로그를 하나 깔아서 항상 뭔가
+        // 올라오게 한다.
+        AppendChatLine($"{SeatNameFor(seat, -1)}이(가) {card.month}월 패를 냈습니다");
 
         if (h.Count(c => c.month == card.month) == 3 && declareShake && shookMonths[seat].Add(card.month))
         {
@@ -2286,8 +2314,8 @@ public partial class GoStop3PGame : MonoBehaviour
 
                 int streak = ++ppeokStreak[seat];
                 int total = ++ppeokTotalCount[seat];
-                if (wasFirstPlay) { ApplyMoneyBonus(seat, PpeokMoney()); Toast(seat, "첫뻑"); }
-                else if (streak == 2) { ApplyMoneyBonus(seat, PpeokMoney()); Toast(seat, "연뻑"); }
+                if (wasFirstPlay) { ApplyMoneyBonus(seat, PpeokMoney(), "첫뻑비"); Toast(seat, "첫뻑"); }
+                else if (streak == 2) { ApplyMoneyBonus(seat, PpeokMoney(), "연뻑비"); Toast(seat, "연뻑"); }
                 else Toast(seat, "뻑");
 
                 RebuildUI();
@@ -2424,7 +2452,7 @@ public partial class GoStop3PGame : MonoBehaviour
                         // 에서만 판정한다 — 위 선택 시점에서 옮겨왔다(그때는 아직
                         // 진짜 따닥인지 몰랐다). 피 뺏기는 원래대로 그대로 일어나고
                         // (상대에게 피가 있다면), 첫 턴이면 그 위에 판돈을 추가로 얹는다.
-                        if (wasFirstPlay) { ApplyMoneyBonus(seat, PpeokMoney()); Toast(seat, "첫따닥"); }
+                        if (wasFirstPlay) { ApplyMoneyBonus(seat, PpeokMoney(), "첫따닥비"); Toast(seat, "첫따닥"); }
                         else Toast(seat, "따닥");
                         stole2 = true;
                         if (r2.sweep)
@@ -2657,7 +2685,7 @@ public partial class GoStop3PGame : MonoBehaviour
                 // 2026-08-26 — "첫뻑먹기"(손패 첫 장이 기존 뻑을 먹은 경우)는
                 // 자뻑/일반 뻑 먹기와 무관하게 항상 같은 판돈 보너스
                 // (PpeokMoney())가 추가로 붙는다 — 첫뻑/첫따닥과 같은 원칙.
-                if (wasFirstHandPlay) { ApplyMoneyBonus(seat, PpeokMoney()); Toast(seat, "첫뻑먹기"); }
+                if (wasFirstHandPlay) { ApplyMoneyBonus(seat, PpeokMoney(), "첫뻑먹기비"); Toast(seat, "첫뻑먹기"); }
                 else Toast(seat, selfPpeok ? "자뻑" : "뻑 먹기");
                 ppeokCauser.Remove(month);
                 did = true;
@@ -3054,6 +3082,7 @@ public partial class GoStop3PGame : MonoBehaviour
         {
             stakeMultiplier *= 2;
             pendingPayout = null; // 나가리는 승자가 없어 분석할 점수 자체가 없다
+            AppendChatLine($"나가리 — 다음 판 판돈 {stakeMultiplier}배");
             GoStopAudio.Instance?.Nagari();
             // 2026-08-26: 나가리 이펙트 — 여기 한 곳에서만 불러도 나가리로
             // 끝나는 모든 경로(점수 미달·필드 4장 등)가 자동으로 커버된다.
@@ -3065,6 +3094,7 @@ public partial class GoStop3PGame : MonoBehaviour
             return;
         }
 
+        AppendChatLine($"{SeatNameFor(winnerSeat, -1)} 승리");
         GoStopAudio.Instance?.Money();
         if (winnerSeat == PLAYER_SEAT) { GoStopAudio.Instance?.Win(); PlayWinConfettiFX(); }
         else GoStopAudio.Instance?.Lose();

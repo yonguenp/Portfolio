@@ -193,8 +193,19 @@ public class GoStopNetLobby : MonoBehaviour
 
     // ── 호스트 ──────────────────────────────────────────
 
+    /// <summary>웹 빌드에서는 브라우저 샌드박스가 raw TCP/UDP 소켓 자체를
+    /// 막아놔서(System.Net.Sockets가 링크는 되더라도 실제로 열리지 않는다)
+    /// 이 프로젝트의 P2P 구조가 근본적으로 성립하지 않는다 — 버그가 아니라
+    /// 플랫폼 한계다. 실제로 소켓을 열어보려다 알 수 없는 예외로 멈추는 대신,
+    /// 이미 있는 "연결 실패" 화면(GoStopNetLobbyUI의 Screen.Error)을 그대로
+    /// 재사용해 명확한 사유를 즉시 보여준다.</summary>
+    static bool IsPlatformUnsupported =>
+        Application.platform == RuntimePlatform.WebGLPlayer;
+    const string PlatformUnsupportedMessage = "웹 버전은 브라우저 보안 정책상 네트워크 대전을 지원하지 않습니다.\nPC 또는 모바일 앱에서 이용해주세요.";
+
     public void HostRoom(string displayName, int port = DefaultPort)
     {
+        if (IsPlatformUnsupported) { OnDisconnected?.Invoke(PlatformUnsupportedMessage); return; }
         StopAll();
         myName = displayName;
         IsHost = true;
@@ -316,6 +327,7 @@ public class GoStopNetLobby : MonoBehaviour
 
     public void StartScanningForRooms()
     {
+        if (IsPlatformUnsupported) { OnDisconnected?.Invoke(PlatformUnsupportedMessage); return; }
         StopAll();
         IsGuest = true;
         scanner = gameObject.AddComponent<GoStopRoomScanner>();
