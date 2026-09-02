@@ -1522,7 +1522,7 @@ public partial class GoStop3PGame
     // 같은 pos 슬롯에 여러 장(뻑 무더기 등)이 쌓일 때 완전히 포개지지 않게
     // 살짝 밀어내는 간격 — 몇 장인지 한눈에 보이면서도 "한 자리에 쌓였다"는
     // 느낌은 유지된다.
-    const float FIELD_STACK_OFFSET = 30f;
+    const float FIELD_STACK_OFFSET = 20f;
 
     /// <summary>필드 — 2026-09-02: "카드를 각 pos에 attach" 요청으로 카드를
     /// fieldArea가 아니라 배정받은 pos 슬롯 마커 그 자체의 자식으로 만든다
