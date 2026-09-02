@@ -2002,7 +2002,17 @@ public partial class GoStop3PGame
         return go;
     }
 
-    static void DestroyGhost(GameObject go) { if (go != null) Destroy(go); }
+    // 2026-09-02 버그 수정 — "매칭 안 되는 패가 빈 슬롯에 놓일 때 깜빡인다"는
+    // 재신고로 발견. Destroy()는 실제 제거가 그 프레임 끝까지 미뤄지는데,
+    // 이 함수를 부른 직후(같은 프레임 안, yield 없이) RebuildUI()가 곧장
+    // "진짜" 카드를 같은 pos 슬롯의 자식으로 새로 만드는 호출부가 여러 곳
+    // 있다 — 그러면 그 한 프레임 동안 죽어가는 고스트와 새 카드가 같은
+    // 자리에 동시에 존재해서 겹쳐 그려진다(매칭된 카드는 필드를 아예
+    // 떠나 Cap으로 이동하므로 이 문제가 없다 — 그 자리에 아무것도 새로
+    // 안 생기니까. 매칭 안 된 카드만 "그 자리에 새 카드가 또 생기는"
+    // 경우라 여기서만 증상이 났다). DestroyImmediate로 그 자리에서 바로
+    // 제거해 겹치는 프레임 자체를 없앤다.
+    static void DestroyGhost(GameObject go) { if (go != null) DestroyImmediate(go); }
     static void DestroyGhosts(List<GameObject> list)
     {
         if (list == null) return;
