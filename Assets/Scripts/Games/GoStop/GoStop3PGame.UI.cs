@@ -1543,7 +1543,24 @@ public partial class GoStop3PGame
             {
                 var c = cardsInSlot[i];
                 var offset = new Vector2(i * FIELD_STACK_OFFSET, -i * FIELD_STACK_OFFSET);
-                var go = HwatuUI.MakeCard(c, FieldSlotTransform(c), offset, FIELD_W, FIELD_H, null, false);
+                var target = FieldSlotTransform(c);
+                var go = HwatuUI.MakeCard(c, target, offset, FIELD_W, FIELD_H, null, false);
+                // 2026-09-02 버그 수정 — "뒷패가 깔린 패 pos에 들어갈 때 sibling이
+                // 앞쪽으로 가나?" 신고로 발견. 이 슬롯에 아직 살아있는 고스트
+                // (GhostMarker — 자기 차례가 아직 안 온 뒷패 등, ClearFieldPosSlots가
+                // 건너뛴 것)가 있는데, 방금 만든 "진짜" 카드는 새 마지막 자식으로
+                // 붙는다 — sibling이 늦을수록 위에 그려지므로, 나중에 도착해서
+                // 원래 맨 위에 있어야 할 고스트가 방금 다시 그려진(먼저 있던)
+                // 카드에 가려지는 역전이 생겼다. 고스트보다 앞선 sibling index로
+                // 끼워 넣어 고스트가 항상 맨 위를 지키게 한다.
+                for (int k = 0; k < target.childCount; k++)
+                {
+                    if (target.GetChild(k).GetComponent<GhostMarker>() != null)
+                    {
+                        go.transform.SetSiblingIndex(k);
+                        break;
+                    }
+                }
                 if (flyFrom.TryGetValue(c, out var from))
                 {
                     // 2026-09-02 버그 수정 — 손패/뒷패 고스트가 이미 이 정확한
