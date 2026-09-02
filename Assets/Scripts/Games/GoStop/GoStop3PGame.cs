@@ -1281,6 +1281,21 @@ public partial class GoStop3PGame : MonoBehaviour
         achievedFired.Clear();
         flyFrom.Clear();
         flyViaField.Clear();
+        // 2026-09-02 버그 수정 — "pos1이 비어있는데 다른 슬롯부터 찬다"는
+        // 신고로 발견. fieldSlotAssign이 그동안 한 번도 안 지워졌다 —
+        // SyncFieldSlotAssignments의 반납 조건(버그 5 수정, "field에 없고
+        // 실제로 누군가의 captured에 들어갔다")은 캡처된 카드가 아니라
+        // "이번 게임에서" 캡처된 카드만 인식한다. NewGame()이 captured[s]를
+        // 매번 새 List로 교체하므로, 지난 판에 캡처됐거나 나가리로 그냥
+        // 끝난 카드는 새 captured 목록엔 당연히 없어서 반납 조건을 영원히
+        // 못 만족하고 죽은 참조로 계속 쌓인다 — 판을 거듭할수록 fieldSlotAssign
+        // 이 실제로는 비어 있는 슬롯 번호까지 "이미 쓰는 중"으로 계속 표시해서,
+        // AssignFieldSlot의 "가장 낮은 빈 번호" 탐색이 그 죽은 번호들을 건너뛰고
+        // 점점 뒤쪽 슬롯부터 채우게 된다(극단적으로는 12개 전부 막혀 전부
+        // 폴백 슬롯1에 겹쳐 쌓일 수도 있었다). 새 판은 카드 객체 자체가 전부
+        // 새로 생성되므로(이전 판 카드와 참조가 다르다) 이전 배정은 완전히
+        // 무의미하다 — 통째로 비운다.
+        fieldSlotAssign.Clear();
         System.Array.Clear(playedFirstHandCard, 0, playedFirstHandCard.Length);
         actionBusy = false;
         state = State.Turn;
