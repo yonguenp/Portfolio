@@ -8874,3 +8874,45 @@ Resolve 호출 전)뿐이다. "captured에도 없고 field에도 없는" 카드�
 배정 때 슬롯1로 밀려났을 상황. 추가로 실제 게임을 여러 라운드 자연
 진행시킨 뒤 `field`의 모든 카드에 대해 "배정된 슬롯 = 실제 렌더링된
 슬롯"이 100% 일치하는 것도 별도로 확인했다. 콘솔 에러 0건.
+
+### 버그 6 — "손패는 안 깜빡이는데 뒷패만 깜빡인다"
+
+버그 5(슬롯 좌표 어긋남)를 고친 뒤에도 재신고 — 정확한 관찰이었다.
+원인은 `RebuildUI()` 맨 앞의 `ClearFieldPosSlots()`가 **매번 무조건**
+모든 pos 슬롯의 자식을 지운다는 데 있었다. 손패와 뒷패는 이 청소를
+맞는 타이밍이 서로 다르다:
+
+- **손패 고스트**: "④ 손패 결과를 Cap에 배치" 단계에서
+  `DestroyGhosts(handGhosts)`를 부른 **바로 다음 줄**에 `RebuildUI()`가
+  있다 — 그 RebuildUI의 `ClearFieldPosSlots()`가 돌 때는 이미 손패
+  고스트가 지워진 뒤(버그 4의 DestroyImmediate 덕에 확실히 사라진
+  상태)라 청소할 게 없다.
+- **뒷패 고스트**: "② 뒷패 슬램다운"에서 착지한 뒤, 자기 차례
+  (`GoStopRules.Resolve(drawn, field)` + 그 결과를 그리는 RebuildUI)가
+  오기 **한참 전에** "④"의 RebuildUI가 먼저 낀다. 이 RebuildUI는 손패
+  결과만 처리하려는 것뿐인데, 그 안의 `ClearFieldPosSlots()`가 뒷패
+  고스트까지 무차별로 지워버렸다 — 아직 살아있어야 할 카드가 조기에
+  사라졌다가, 한참 뒤(다음 `PLAY_STEP_DELAY`들 + 필드 선택 팝업 대기 등을
+  지나) 실제 카드로 다시 나타나는, 훨씬 눈에 띄는 "사라졌다 나타남"이
+  됐다.
+
+고침: 슬램다운 중인 고스트에 빈 마커 컴포넌트(`GhostMarker`)를 붙이고,
+`ClearFieldPosSlots()`가 이 마커가 있는 자식은 건너뛰도록 바꿨다 —
+자기 차례가 아직 안 온 고스트는 조기 청소에서 제외되고, 최종적으로는
+각 코드 경로의 명시적인 `DestroyGhost(...)` 호출(버그 4에서 이미
+`DestroyImmediate`로 바꿔둔 것)이 정확한 타이밍에 없앤다.
+
+```csharp
+sealed class GhostMarker : MonoBehaviour { }
+// SpawnGhostCard(HwatuCard, RectTransform)에서: go.AddComponent<GhostMarker>();
+// ClearFieldPosSlots → ClearFieldSlotChildrenKeepGhosts: GhostMarker 있으면 skip
+```
+
+**검증.** 씬의 실제 pos 슬롯에 합성 자식 두 개(GhostMarker 있는 것/없는
+것)를 만들어 `ClearFieldPosSlots()`를 직접 호출 — 마커 없는 자식만
+지워지고 마커 있는 자식은 자연 게임 진행(백그라운드에서 여러 번의 실제
+RebuildUI가 낀 뒤에도) 살아남는 것을 확인했다. 이후 40라운드·`NewGame()`
+1회 완주 스트레스 테스트로 콘솔 에러 0건, `field` 전체의 "배정 슬롯=실제
+렌더 슬롯" 일치(버그 5 검증과 동일한 방식) + "화면에 남아있는 GhostMarker
+자식 수 = 0"(고스트가 자기 차례가 끝나면 정상적으로 다 청소됨, 새는 것
+없음)까지 확인했다.

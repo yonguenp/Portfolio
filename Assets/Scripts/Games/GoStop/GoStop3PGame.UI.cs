@@ -1503,7 +1503,20 @@ public partial class GoStop3PGame
     void ClearFieldPosSlots()
     {
         for (int i = 1; i <= 12; i++)
-            if (fieldPosSlots[i] != null) HwatuUI.ClearChildren(fieldPosSlots[i]);
+            if (fieldPosSlots[i] != null) ClearFieldSlotChildrenKeepGhosts(fieldPosSlots[i]);
+    }
+
+    // 2026-09-02 — HwatuUI.ClearChildren을 그대로 안 쓰는 이유는 위 GhostMarker
+    // 주석 참고. 아직 살아있어야 하는(자기 차례가 안 온) 고스트만 건너뛰고
+    // 나머지(지난 턴에 그려진 실제 카드 등)는 그대로 지운다.
+    static void ClearFieldSlotChildrenKeepGhosts(Transform t)
+    {
+        for (int i = t.childCount - 1; i >= 0; i--)
+        {
+            var child = t.GetChild(i);
+            if (child.GetComponent<GhostMarker>() != null) continue;
+            Destroy(child.gameObject);
+        }
     }
 
     // 같은 pos 슬롯에 여러 장(뻑 무더기 등)이 쌓일 때 완전히 포개지지 않게
@@ -2001,11 +2014,27 @@ public partial class GoStop3PGame
     /// (0,0)에 등장해 기존 카드와 완전히 겹친 채 도착한 뒤에야 갑자기
     /// 옆으로 밀려나는 것처럼 보인다("해당 pos에 이미 카드가 있다면
     /// FIELD_STACK_OFFSET 적용된 포지션이면 딱 맞을듯" 요청).</summary>
+    // 2026-09-02 버그 수정 — "손패는 안 깜빡이는데 뒷패만 깜빡인다"는 신고로
+    // 발견. 뒷패 고스트는 "② 뒷패 슬램다운" 단계에서 pos 슬롯의 자식으로
+    // 착지한 뒤에도, 자기 차례(GoStopRules.Resolve(drawn, field) 호출 +
+    // 그 결과를 그리는 RebuildUI)가 오기 전에 "④ 손패 결과 배치" 단계의
+    // RebuildUI가 먼저 한 번 낀다 — 그 RebuildUI 맨 앞의 ClearFieldPosSlots()
+    // 가 pos 슬롯 자식을 통째로(뒷패 고스트까지 포함해서) 지워버려서, 아직
+    // 자기 차례도 안 왔는데 뒷패가 조기에 사라졌다가 한참 뒤(다음 몇 번의
+    // WaitForSeconds/선택 팝업을 지나) 실제 카드로 다시 나타났다 — 손패
+    // 고스트는 자기 것을 지우는 DestroyGhosts 호출이 항상 "④"의 바로 그
+    // RebuildUI 직전이라 이 문제가 안 생겼다(이미 없어진 뒤라 지울 게
+    // 없다). GhostMarker로 표시해서 ClearFieldPosSlots가 "아직 살아있어야
+    // 하는 고스트"는 건너뛰게 한다.
+    sealed class GhostMarker : MonoBehaviour { }
+
     GameObject SpawnGhostCard(HwatuCard card, RectTransform target)
     {
         int existing = target.childCount;
         var offset = new Vector2(existing * FIELD_STACK_OFFSET, -existing * FIELD_STACK_OFFSET);
-        return HwatuUI.MakeCard(card, target, offset, FIELD_W, FIELD_H, null, false);
+        var go = HwatuUI.MakeCard(card, target, offset, FIELD_W, FIELD_H, null, false);
+        go.AddComponent<GhostMarker>();
+        return go;
     }
 
     /// <summary>슬램다운 고스트 카드 — 2026-09-02: 매칭된 필드 카드처럼 곧
