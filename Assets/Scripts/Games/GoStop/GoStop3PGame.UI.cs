@@ -1449,12 +1449,31 @@ public partial class GoStop3PGame
     /// 카드(새로 깔린 패)는 새로 배정한다. DrawField 맨 앞에서 매번 불러
     /// "지금 필드에 실제로 있는 카드들"과 배정 상태가 항상 일치하게
     /// 만든다 — GoStopRules가 필드를 직접 Remove/Add하는 여러 경로를
-    /// 일일이 쫓아다니지 않아도, 여기 한 곳에서 자연히 정리된다.</summary>
+    /// 일일이 쫓아다니지 않아도, 여기 한 곳에서 자연히 정리된다.
+    ///
+    /// 2026-09-02 버그 수정 — "field에 없으면 곧바로 반납"이 너무 성급했다.
+    /// 뒷패(덱카드)는 슬램다운 애니메이션 때(SpawnGhostCard/AssignFieldSlot로
+    /// 슬롯을 이미 배정받음) → GoStopRules.Resolve(drawn, field) 호출(매칭
+    /// 없으면 이때 비로소 field.Add) 사이에 손패 결과를 반영하는 RebuildUI가
+    /// 한 번 더 낀다(PlaySeq의 "④ 손패 결과 배치" 단계) — 그 중간 시점엔
+    /// drawn이 아직 field에 없어서(진짜로 캡처된 게 아니라 그냥 아직 안
+    /// 넣은 것뿐인데도) 여기서 슬롯을 반납해버렸다. 반납된 슬롯은 그 사이
+    /// 캡처로 비워진 다른 슬롯(예: 매칭된 손패가 있던 자리)에 밀려나고,
+    /// drawn이 실제로 field.Add된 뒤 다시 배정받을 땐 그 새로 빈 슬롯을
+    /// 받아버려서 — 고스트는 pos2에 착지했는데 실제 카드는 pos1에 그려지는
+    /// 불일치("패가 다른 자리로 순간이동한다")가 났다. **진짜로 캡처된
+    /// 카드만 반납**하도록 기준을 "field에 없다"에서 "누군가의 captured에
+    /// 들어갔다"로 좁혔다 — 이 게임 규칙상 필드를 떠나는 카드는 항상 어느
+    /// 좌석의 captured로 들어가므로(조커도 ResolveBonusJoker가 항상 캡처
+    /// 처리한다), "아직 field에 없지만 캡처되지도 않은" 중간 상태의 카드는
+    /// 슬롯을 그대로 유지한 채 다음 배정을 기다린다.</summary>
     void SyncFieldSlotAssignments()
     {
         if (fieldSlotAssign.Count > 0)
         {
-            var stale = fieldSlotAssign.Keys.Where(c => !field.Contains(c)).ToList();
+            var stale = fieldSlotAssign.Keys
+                .Where(c => !field.Contains(c) && captured.Any(cap => cap != null && cap.Contains(c)))
+                .ToList();
             foreach (var c in stale) fieldSlotAssign.Remove(c);
         }
         foreach (var c in field) AssignFieldSlot(c);

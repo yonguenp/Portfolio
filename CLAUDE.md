@@ -8812,3 +8812,65 @@ ghost = SpawnGhostCard(card, target);
 다음 실플레이 확인이 필요하다 — 다만 원인(1프레임 오브젝트 중복)과
 증상(매칭 없을 때만 발생)이 정확히 들어맞고, 고침 자체가 그 중복
 프레임을 구조적으로 없애는 방식이라 논리적으로 확실하다.
+
+### 버그 5 — 뒷패가 슬램다운한 슬롯과 실제 렌더 슬롯이 어긋난다
+
+사용자가 정확한 재현 절차를 직접 짚어줬다: "pos1에 매칭되는 손패를 냄 →
+슬램다운 연출 후 뒷패 깜 → 매칭되는 패 없음으로 pos2에 슬램다운 연출 →
+이후 pos1에 있는 패는 cap으로 이동, **pos2에 생성되어야 될 뒷패가 pos1에
+생성됨**." — 위 버그 4(DestroyImmediate)와는 완전히 별개의, 더 근본적인
+버그였다.
+
+원인은 `SyncFieldSlotAssignments()`의 "반납" 조건이 너무 성급했던 것.
+`GoStopRules.Resolve(played, field)`는 매칭이 없으면 그 자리에서
+**즉시** `field.Add(played)`를 한다(순수하게 동기 호출) — 그런데 이
+호출 타이밍이 손패(`card`)와 뒷패(`drawn`)에서 다르다:
+
+- **손패**: `r1 = GoStopRules.ResolveWithBomb(card, h, field, out bomb)`가
+  PlaySeq **맨 앞**에서 불려서, `card`가 매칭 안 됐으면 field에 곧바로
+  들어간다 — 이후 어떤 RebuildUI가 끼어도 항상 field 안에 있다.
+- **뒷패**: `r2 = GoStopRules.Resolve(drawn, field)`는 "④ 손패 결과를
+  Cap에 배치"(그 안에서 `RebuildUI()`가 한 번 돈다)를 **지나고 나서**야
+  불린다 — 슬램다운 애니메이션(고스트 생성 + `AssignFieldSlot(drawn)`으로
+  슬롯 2 배정)은 그보다 훨씬 전(② 단계)에 이미 끝나 있는데, 정작
+  `field.Add(drawn)`은 한참 뒤에야 일어난다.
+
+그 사이에 끼는 "④"의 `RebuildUI()` → `DrawField()` → `SyncFieldSlotAssignments()`
+가 문제였다. 이 시점엔 `drawn`이 **아직 field에 없다**(Resolve를 안 불렀으니)
+— 그런데 예전 코드는 "field에 없으면 무조건 반납"이었으므로, 진짜로
+캡처된 게 아닌데도 `drawn`의 슬롯2 배정을 스토리 없이 반납해버렸다.
+동시에 매칭됐던 손패가 있던 슬롯1도(이미 캡처돼 진짜로 반납돼야 맞음)
+같이 비워진다. 나중에 `drawn`이 진짜로 `field.Add`되고 나서 다시
+`AssignFieldSlot(drawn)`이 불리면, 슬롯2 배정 기록이 이미 지워졌으니
+"현재 비어있는 가장 낮은 번호"를 새로 받는데, 그게 방금 비워진
+**슬롯1**이었다 — 애니메이션은 pos2로 날아갔는데 실제 렌더는 pos1에
+되는, "패가 순간이동하는" 것처럼 보이는 불일치가 이렇게 생겼다.
+
+고침: 반납 조건을 "field에 없다"에서 "field에 없고 **누군가의 captured에
+실제로 들어갔다**"로 좁혔다.
+
+```csharp
+var stale = fieldSlotAssign.Keys
+    .Where(c => !field.Contains(c) && captured.Any(cap => cap != null && cap.Contains(c)))
+    .ToList();
+```
+
+이 규칙이 성립하는 이유: 이 게임에서 필드를 떠나는 카드는 항상 정확히
+둘 중 하나다 — 어느 좌석의 `captured`로 들어가거나(뻑 등 여러 장을
+필드에 임시로 쌓아두는 경우 포함, 결국은 captured로 간다), 혹은 아직
+`field.Add`를 안 한 "in-transit" 상태(뒷패처럼 애니메이션은 끝났지만
+Resolve 호출 전)뿐이다. "captured에도 없고 field에도 없는" 카드는 반드시
+후자이므로, 그 경우엔 반납하지 않고 기존 슬롯 배정을 그대로 지켜서
+나중에 `field.Add`된 뒤 같은 슬롯을 돌려받게 한다(`AssignFieldSlot`의
+캐시 체크가 `fieldSlotAssign.TryGetValue` 우선이므로 자동으로 그렇게
+된다).
+
+**검증.** 순수 함수 단위 테스트로 정확히 이 시나리오를 재현했다 —
+`fieldSlotAssign`에 (A) 진짜로 `captured[0]`에 들어간 카드를 슬롯1로,
+(B) `field`에도 `captured`에도 없는 "전송 중" 카드를 슬롯2로 각각
+강제로 세팅한 뒤 `SyncFieldSlotAssignments()`를 직접 호출 — 결과:
+(A)는 정확히 반납됨(`ContainsKey=False`), (B)는 슬롯2 그대로 유지됨
+(`ContainsKey=True, slot=2`) — 수정 전이었다면 (B)도 함께 반납돼 다음
+배정 때 슬롯1로 밀려났을 상황. 추가로 실제 게임을 여러 라운드 자연
+진행시킨 뒤 `field`의 모든 카드에 대해 "배정된 슬롯 = 실제 렌더링된
+슬롯"이 100% 일치하는 것도 별도로 확인했다. 콘솔 에러 0건.
