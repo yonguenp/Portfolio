@@ -1717,7 +1717,7 @@ public partial class GoStop3PGame : MonoBehaviour
                 if (needAchieve && state == GoStopRules.SetState.Achieved)
                 {
                     achievedFired.Add((seat, i));
-                    FireAchievement(seat, EmergencySets[i].name);
+                    FireAchievement(seat, EmergencySets[i].name, mine.Where(EmergencySets[i].pred).ToList());
                 }
             }
 
@@ -1809,39 +1809,28 @@ public partial class GoStop3PGame : MonoBehaviour
     }
 
     /// <summary>족보(광 제외) "완성" 이펙트 — 비상(2/3 경고)과 별개로, 실제로
-    /// 3장을 채운 순간 한 번 터진다. 프리팹은 EffectGodoriAchieved/
-    /// EffectHongdanAchieved/EffectChodanAchieved/EffectCheongdanAchieved —
-    /// 비상 프리팹과 완전히 분리된 별개 에셋이라 서로 다르게 디자인할 수
-    /// 있다. 파티클을 비상보다 화려하게(20→30개, 총통/광팔이급) 키우고,
-    /// 사운드도 경고음(Bonus)이 아니라 축하음(Win)을 쓴다 — 같은 프레임에
-    /// 비상과 완성이 동시에 뜨는 경우(뻑/폭탄으로 2/3을 건너뛰고 곧장
-    /// 3장이 들어온 경우)는 없다 — CheckEmergencies가 애초에 별개 조건
-    /// (have==2 vs Achieved)이라 한 세트가 같은 판정 안에서 둘 다를 동시에
-    /// 만족할 수 없다. 광은 3/4/5장·비삼광 여부에 따라 프리팹이 4개로
-    /// 더 갈리므로 <see cref="FireGwangAchievement"/>가 따로 담당한다.</summary>
-    void FireAchievement(int seat, string setName)
+    /// 3장을 채운 순간 한 번 터진다.
+    /// <br/>2026-09-02 — 래스터 팝업(EffectGodoriAchieved 등)을 걷어내고
+    /// <see cref="GoStopVectorEffect"/>로 교체했다. Assets/Art/hwatu_svg
+    /// 원본을 Unity 6.3 내장 SVGImporter가 VectorImage로 임포트해 뒀는데,
+    /// 그 세트를 실제로 완성시킨 카드(<paramref name="cards"/>, 호출부인
+    /// CheckEmergencies가 그 순간의 captured에서 predicate로 걸러 넘긴다)를
+    /// 화면 전체 크기로 확대해 보여줄 수 있다는 게 벡터 자산의 이점이라 —
+    /// 필드 중앙에 작게 뜨던 예전 팝업보다 "이 3장이 모여서 완성됐다"는
+    /// 게 훨씬 분명하게 전달된다. 파티클 버스트(GoStopIcons.SpawnBurst)는
+    /// 그대로 남겨서 두 이펙트가 겹치며 화려함을 더한다. 비상(2/3 경고)
+    /// 쪽은 이번 범위에서 안 건드렸다 — 여전히 GoStopEffectPopup 래스터
+    /// 프리팹을 쓴다(FireEmergency 참고).</summary>
+    void FireAchievement(int seat, string setName, List<HwatuCard> cards)
     {
-        string prefabName = setName switch
-        {
-            "고도리" => "EffectGodoriAchieved",
-            "홍단" => "EffectHongdanAchieved",
-            "초단" => "EffectChodanAchieved",
-            "청단" => "EffectCheongdanAchieved",
-            _ => null,
-        };
-        if (prefabName == null || fieldArea == null) return;
+        if (fieldArea == null) return;
 
         var canvasRoot = fieldArea.parent.parent.parent as RectTransform;
         Vector2 local = canvasRoot.InverseTransformPoint(fieldArea.position);
 
         GoStopIcons.SpawnBurst(canvasRoot, local, EmergencyColor(setName), 30);
 
-        var fx = HwatuUI.InstantiateEffect<GoStopEffectPopup>(prefabName, canvasRoot);
-        if (fx != null)
-        {
-            fx.root.anchoredPosition = local;
-            fx.Play(SeatName(seat), EmergencyColor(setName));
-        }
+        GoStopVectorEffect.Ensure().Play($"{SeatName(seat)}이(가) {setName} 완성!", EmergencyColor(setName), cards);
 
         ShowTimedToast($"{SeatName(seat)}이(가) {setName} 완성!");
         GoStopAudio.Instance?.Win();
@@ -1851,37 +1840,37 @@ public partial class GoStop3PGame : MonoBehaviour
     /// 4단계로 나눈다(비상은 그대로 하나, <see cref="FireEmergency"/>의
     /// "3광" 케이스). 실제 정산 점수표(광 점수표 정정 문서 참고: 비삼광=2점,
     /// 3광=3점, 4광=4점, 5광=15점)와 정확히 같은 기준(광 5장 중 몇 장을
-    /// 가졌는지, 3장일 때 12월 비광 포함 여부)으로 프리팹을 고른다 —
-    /// EffectBiSamGwang/EffectSamGwang/EffectSaGwang/EffectOGwang.
+    /// 가졌는지, 3장일 때 12월 비광 포함 여부)으로 라벨을 고른다.
     /// 한 판에 한 번만 발동하므로(achievedFired) 3광으로 먼저 완성한 뒤
     /// 나중에 4·5광으로 늘어나도 재발동하지 않는다 — "완성 그 순간"의
-    /// 구성으로 어느 프리팹인지 정해진다.</summary>
+    /// 구성으로 어느 라벨인지 정해진다.
+    /// <br/>2026-09-02 — <see cref="FireAchievement"/>와 같은 이유로
+    /// <see cref="GoStopVectorEffect"/>로 교체 — 예전엔 4개 프리팹
+    /// (EffectBiSamGwang 등) 중 하나를 골라 그 프리팹에 미리 구워둔
+    /// "고정 이미지"를 보여줬는데, 이제는 좌석이 실제로 들고 있는
+    /// 광 카드 그대로(3~5장, 어느 달인지도 그대로) 보여준다 — 프리팹
+    /// 4개를 갈라 관리할 필요 자체가 없어졌다(라벨 문구만 갈리면 된다).</summary>
     void FireGwangAchievement(int seat, List<HwatuCard> mine)
     {
         var gwangCards = mine.Where(c => c.kind == HwatuKind.Gwang).ToList();
         int count = gwangCards.Count;
         bool hasBiGwang = gwangCards.Any(c => c.month == 12);
 
-        string prefabName, label;
-        if (count >= 5)      { prefabName = "EffectOGwang";     label = "5광"; }
-        else if (count == 4) { prefabName = "EffectSaGwang";    label = "4광"; }
-        else if (hasBiGwang) { prefabName = "EffectBiSamGwang"; label = "비삼광"; }
-        else                 { prefabName = "EffectSamGwang";   label = "3광"; }
+        string label;
+        if (count >= 5)      label = "5광";
+        else if (count == 4) label = "4광";
+        else if (hasBiGwang) label = "비삼광";
+        else                 label = "3광";
 
         if (fieldArea == null) return;
 
         var canvasRoot = fieldArea.parent.parent.parent as RectTransform;
         Vector2 local = canvasRoot.InverseTransformPoint(fieldArea.position);
-        var color = EmergencyColor("3광"); // 광 계열 톤 — 4개 프리팹은 각자 기본색이 이미 갈려 있다
+        var color = EmergencyColor("3광"); // 광 계열 톤
 
         GoStopIcons.SpawnBurst(canvasRoot, local, color, 30);
 
-        var fx = HwatuUI.InstantiateEffect<GoStopEffectPopup>(prefabName, canvasRoot);
-        if (fx != null)
-        {
-            fx.root.anchoredPosition = local;
-            fx.Play(SeatName(seat), color);
-        }
+        GoStopVectorEffect.Ensure().Play($"{SeatName(seat)}이(가) {label} 완성!", color, gwangCards);
 
         ShowTimedToast($"{SeatName(seat)}이(가) {label} 완성!");
         GoStopAudio.Instance?.Win();

@@ -9202,3 +9202,108 @@ occupiedSlotNumbers=1~12 전부`(스테일 36개). 수정 후 새 판 시작
    를 새로 배정한다 — 정상 동작이라면 항상 pos1부터 채워져야 맞고,
    이번에 고친 버그가 바로 그 "아무도 안 쓰는"이라는 판단 자체가
    죽은 참조 때문에 틀렸던 경우였다.
+
+## 고스톱 — 족보 완성 풀스크린 벡터 카드 이펙트 (`GoStopVectorEffect`) (2026-09-02)
+
+사용자가 `Assets/Art/hwatu_svg/`에 화투 SVG 원본을 추가하고, "족보 이펙트가
+발생할 때 해당하는 패들을 전체화면으로 크게 빡 박혔다가 페이드"하는 연출을
+요청했다 — Unity 6.3(에디터 버전 `6000.3.11f1`)이 지원하는 SVG를 UI Toolkit으로
+쓰자는 제안과 함께.
+
+**아키텍처 결정 — UGUI 대신 UI Toolkit을 새로 들인 이유.** 처음엔 클래식
+SVG 임포터(텍셀레이션→Sprite)로 기존 UGUI `GoStopEffectPopup` 파이프라인에
+얹는 쪽을 권했으나, 사용자가 "이펙트는 어차피 최상단에 잠깐 뜨는 것뿐이라
+순서 문제는 없다"고 확인하면서 UI Toolkit 네이티브 SVG 경로로 확정했다.
+실측해보니 `Assets/Art/hwatu_svg/*.svg`는 **이미 svgType=3(VectorImage)로
+임포트돼 있었다**(SVGImporter 기본값이 이미 이렇게 맞춰져 있었음) — UI
+Toolkit `Image.vectorImage`에 바로 꽂을 수 있는 상태였다.
+
+**만든 것.**
+- `Assets/Scripts/Games/GoStop/GoStopVectorEffect.cs` — 싱글톤
+  MonoBehaviour(`GoStopAudio`/`GoStopIcons`와 같은 `Ensure()` 패턴).
+  `UIDocument`+`PanelSettings`로 화면 전체를 덮는 딤+카드 로우+타이틀
+  라벨을 만든다. `Play(title, accent, IEnumerable<HwatuCard> cards)` 하나가
+  전체 API — 딤 페이드인 → 카드 스태거 슬램인(작게 시작→오버슈트→정착,
+  카드마다 0.08초씩 늦게 시작) → 타이틀 페이드인 → 0.9초 홀드 → 전체
+  페이드아웃 → 자동 클리어까지 코루틴 하나로 처리한다.
+- `Assets/Resources/Hwatu_SVG/` — 필요한 17장만 `Assets/Art/hwatu_svg/`에서
+  역할 이름(`{Month}_{Kind}.svg`, 기존 raster PNG 네이밍과 동일)으로 복사.
+  Kenney 때 확립한 "원본은 Art, 실제 쓰는 것만 Resources" 원칙을 그대로
+  따랐다 — 고도리(2·4·8월 열끗)·홍단(1·2·3월 띠)·초단(4·5·7월 띠)·
+  청단(6·9·10월 띠)·광(1·3·8·11·12월 광) 전부.
+- `Assets/Resources/Prefabs/GoStop/Effects/GoStopVectorEffectPanel.asset` —
+  `PanelSettings` 실제 .asset(코드에서 매번 `ScriptableObject.CreateInstance`
+  하는 대신). referenceResolution=(1920,1080)+Expand — `GoStop3PGame.Start()`가
+  이 씬의 CanvasScaler를 강제로 덮어쓰는 것과 정확히 같은 값(2/3/4인 전부
+  이 씬 하나를 공유하므로 무조건 이 설정). `themeStyleSheet`에
+  `Assets/UI Toolkit/UnityThemes/UnityDefaultRuntimeTheme.tss`(이 세션에서
+  UI Toolkit을 처음 건드리며 자동 생성된 기본 테마)를 연결 — 이게 없으면
+  "No Theme Style Sheet set to PanelSettings, UI will not render properly"
+  경고와 함께 텍스트 등이 정상 렌더링 안 된다.
+
+**호출부 — 광 제외 4세트는 코드 변경 최소로, 광은 프리팹 4개를 통째로
+걷어냄.** `GoStop3PGame.cs`의 `FireAchievement(seat, setName)` → `FireAchievement(seat,
+setName, List<HwatuCard> cards)`로 시그니처 확장(호출부 `CheckEmergencies()`가
+`mine.Where(EmergencySets[i].pred).ToList()`로 그 순간 실제로 세트를
+완성시킨 카드를 넘긴다 — 고정 목록이 아니라 매번 실측). 예전 래스터 팝업
+(`HwatuUI.InstantiateEffect<GoStopEffectPopup>(prefabName, ...)`) 호출을
+`GoStopVectorEffect.Ensure().Play(...)`로 교체. `FireGwangAchievement`도
+동일 — 예전엔 광 3/4/5장·비삼광 여부에 따라 프리팹 4개
+(`EffectBiSamGwang`/`EffectSamGwang`/`EffectSaGwang`/`EffectOGwang`)를
+갈랐는데, 이제 좌석이 실제로 든 광 카드(`gwangCards`, 3~5장 어느 달인지도
+그대로)를 그대로 보여주므로 라벨 문구만 갈리면 되고 프리팹 분기 자체가
+필요 없어졌다. **파티클 버스트(`GoStopIcons.SpawnBurst`)는 그대로 남겨서
+두 이펙트가 겹치며 화려함을 더한다.** 비상(2/3 경고, `FireEmergency`)
+쪽은 이번 범위에서 안 건드렸다 — 여전히 래스터 `GoStopEffectPopup`을
+쓴다. 예전 5개 래스터 완성 프리팹(`EffectGodoriAchieved` 등)은 삭제하지
+않고 그냥 안 쓰는 채로 남겨뒀다.
+
+**버그 3개를 실제로 잡았다(전부 라이브 Play 세션에서 발견·수정·재검증):**
+1. **`VisualElement.transform.scale`이 obsolete(CS0618)** — 컴파일 경고
+   확인 중 발견. `wrap.style.scale = new StyleScale(new Scale(...))`로
+   교체(권장 대체 API, 리플렉션으로 `ObsoleteAttribute.Message` 직접
+   확인해 정확한 대체 경로를 확정한 뒤 적용).
+2. **PanelSettings에 themeStyleSheet를 안 채우면 텍스트가 정상 렌더링
+   안 된다** — 콘솔에서 "No Theme Style Sheet" 경고를 보고 발견. 위
+   "만든 것" 항목의 `GoStopVectorEffectPanel.asset`으로 해결.
+3. **`GameObject.SetActive(false)`로 경고를 없애려다 만든 진짜 크래시.**
+   `UIDocument.OnEnable`이 `AddComponent`되는 순간 동기로 돌면서
+   panelSettings 없이 한 번 초기화돼 그 경고가 뜨길래, "GameObject를
+   비활성으로 만들어 두고 panelSettings까지 다 채운 뒤 SetActive(true)"로
+   막으려 했다 — 그런데 `UIDocument.rootVisualElement`는 **OnEnable이
+   돌기 전(비활성 상태)엔 null**이라서, 그 상태에서 `root.Add(dim)` 등
+   트리를 짓는 코드가 그대로 `NullReferenceException`을 던져 `Ensure()`
+   전체가 깨졌다(`Instance`엔 이미 반쯤 초기화된 깨진 인스턴스가 남아서
+   재시도해도 `if (Instance != null) return Instance;`에 막혀 계속
+   깨진 채로 재사용됨 — Play 세션을 재시작해야만 풀렸다). **고침**:
+   `Setup()`을 `panelSettings 할당`과 `BuildTree()`(root 이하 트리 구성)
+   두 단계로 쪼개서, `go.SetActive(false)` → UIDocument 붙이고
+   panelSettings 채움(트리는 안 건드림) → `go.SetActive(true)`(이제야
+   OnEnable, 경고 없이 rootVisualElement 정상 생성) → `BuildTree()`
+   순서로 재배치. 세 번째 시도만에 경고도 크래시도 둘 다 없는 상태로
+   확정됐다.
+
+**검증(Play 모드 라이브, 스크린샷 대신 리플렉션 — 이 프로젝트 확립된
+방식).** 4인 게임을 띄우고 `FireAchievement`/`FireGwangAchievement`를
+private 메서드 그대로 리플렉션으로 호출해 8가지 전부(고도리·홍단·초단·
+청단·3광·비삼광·4광·5광) 실제 카드 데이터로 순차 재생 — 매번 `cardRow`
+자식 수·`Image.vectorImage` 이름이 기대한 SVG와 정확히 일치하는 것,
+카드 크기가 장수별 공식(n≤3→520h, n=4→440h, n=5→380h, 폭은 h×0.62)대로
+나오는 것, 애니메이션이 끝나면 `cardRow.childCount=0`·딤 알파=0으로
+깨끗이 정리되는 것까지 확인했다. Play 세션 시작(13:48:24) 이후 콘솔
+`error`/`exception`/`assert` 레벨 로그 **0건**(순수 CLI 도구 자체의
+무관한 경고 1건만 있었다).
+
+**아직 손 안 댄 것 — 다음에 이어서 할 수 있는 것들.**
+- 비상(2/3 경고) 이펙트는 여전히 래스터. 원하면 같은 방식으로 확장 가능.
+- 서로 다른 좌석이 짧은 간격으로 다른 세트를 동시에 완성하면, 싱글턴
+  하나뿐인 `GoStopVectorEffect`가 뒤에 온 `Play()` 호출로 앞 애니메이션을
+  중단시키고 갈아탄다(`StopAllCoroutine` 없이 `playing` 코루틴 참조 하나만
+  교체) — 큐잉 없이 "나중 것이 이긴다"는 단순한 정책이다. 실전에서 겹치는
+  빈도가 낮다고 보고 이번엔 큐를 안 만들었다 — 자주 겹친다는 신고가 오면
+  간단한 FIFO 큐를 추가할 것.
+- 진짜 게임 내 자연 발생(합성 카드가 아니라 실제 플레이로 세트를 완성시켜
+  트리거)까지는 이번 세션에서 못 봤다 — `CheckEmergencies()`의 detection
+  로직 자체는 이번에 전혀 안 건드렸고(호출 시그니처만 확장), `FireAchievement`/
+  `FireGwangAchievement`는 정확히 그 함수가 넘기는 것과 같은 모양의
+  데이터로 직접 검증했으니 위험은 낮다고 판단했다.
