@@ -2266,66 +2266,44 @@ public partial class GoStop3PGame : MonoBehaviour
         // DrawField가 나중에 실제로 그리는 자리가 절대 어긋날 수 없다
         // (예전엔 애니메이션은 월 기준 그리드 공식, 실제 렌더링은 다른
         // 공식을 따로 계산해서 싱크가 안 맞을 수 있었다 — 그 버그의 원인).
-        // GhostMatchOffset(매칭 시 카드끼리 겹쳐 보이지 않게 밀어내던
-        // 고정 오프셋)은 더 이상 필요 없다 — 이제 카드마다 완전히 다른
-        // pos 슬롯을 차지하므로 애초에 겹칠 일이 없다.
-        // 2026-09-02: "moveTo 포지션 대신 타겟의 transform 위치로" 요청으로
-        // 고스트/SlamDown이 계산된 Vector3가 아니라 pos 슬롯 마커
-        // (FieldSlotTransform)를 직접 타겟으로 받는다 — 고스트가 그 마커의
-        // 자식으로 attach되므로 착지 지점이 절대 어긋날 수 없다.
         Vector3 handActualLanding = FieldSlotWorldPos(card); // 조커 리빌 지점 참조용(Vector3 스냅샷 그대로 필요)
         var handGhosts = new List<GameObject>();
-        // 2026-09-02(사용자 확인) — 매칭된 필드 카드가 있으면 손패 고스트는
-        // 그 카드가 "이미 렌더링된 자리"에서 FIELD_STACK_OFFSET만큼 밀려난
-        // 자리로 내려친다("짝이 맞는 필드패 위로 내려쳐지는" 손맛 —
-        // pos1~12 개별 슬롯 도입 이전부터 있던 의도인데, "카드마다 완전히
-        // 다른 슬롯을 차지한다"는 그 개편 때 실수로 함께 사라졌었다). 처음엔
-        // 정확히 그 위치(오프셋 0)로 내려쳤는데, "매칭 카드 바로 위에
-        // 딱 겹쳐서 떨어지지 말고 FIELD_STACK_OFFSET만큼 떨어진 자리에"
-        // 요청으로 정정 — DrawField가 같은 슬롯의 2번째 카드를 그릴 때
-        // 쓰는 것과 똑같은 오프셋 방향이라, 최종 렌더(뻑으로 이어질 경우)와
-        // 자연스럽게 이어진다. 기준 자리(mp)는 위 flyFrom 등록 루프가 이미
-        // 실측해 둔 값이다(뻑 무더기처럼 여러 장이 겹쳐 쌓인 자리면 그
-        // 겹친 자리 그대로) — 대상 오브젝트가 곧 파괴될 예정이라 Vector3
-        // 스냅샷으로 받는다(살아있는 Transform은 파괴와 동시에 고스트까지
-        // 같이 사라진다). 매칭이 없으면(그냥 필드에 놓이는 경우) 기존처럼
-        // 자기 자신의 새 빈 슬롯(살아있는 pos 마커)을 쓴다. r1.captured는
-        // 항상 "손패 쪽 카드 먼저, 필드 쪽 매칭 카드가 그 다음"이라
-        // Skip(손패 장수)의 첫 항목이 곧 매칭된 필드 카드다.
+
+        // 2026-09-02 구조적 재설계 — "뻑 3번째/4번째 장, 따닥 3번째/4번째 장
+        // 착지 위치가 어색하다"는 신고로 발견. 예전엔 매칭된 필드 카드
+        // 하나(Skip().FirstOrDefault())의 flyFrom 스냅샷에 FIELD_STACK_OFFSET
+        // 딱 한 칸만 더한 고정 좌표(matchedLanding)를 손패/폭탄 3장 전부가
+        // 그대로 재사용했다 — 이게 "필드에 이미 몇 장이 쌓여 있는지"를 전혀
+        // 모른다. 1:1 매칭(쌓인 패 없음)일 때만 우연히 맞았고, 뻑 해소
+        // (3장 무더기 위에 4번째로 올라감)·따닥(2장 중 하나를 골라 3번째로
+        // 올라감)·폭탄(3장이 같은 자리에 겹쳐 떨어지되 서로 안 퍼짐)에서는
+        // 전부 어긋났다.
+        //
+        // 매칭된 필드 카드(들)는 이 시점에 GoStopRules.Resolve 계열이
+        // 이미 field에서 Remove했을 뿐, 그 "진짜" 렌더링(GameObject)은
+        // ClearFieldPosSlots가 아직 한 번도 안 돌아서(④의 RebuildUI 전이라)
+        // 그대로 pos 슬롯의 자식으로 살아있다 — 그래서 "매칭 없음" 카드에도
+        // 이미 쓰고 있던 SpawnGhostCard(HwatuCard, RectTransform)를 매칭된
+        // 카드에도 똑같이 쓰면, target.childCount가 "지금 이 슬롯에 실제로
+        // 몇 장이 쌓여 있는지"를 정확히 세어 그 바로 위 자리를 자동으로
+        // 내준다 — 뻑 무더기든 따닥의 2장이든 폭탄의 연쇄 3장이든 전부
+        // 같은 한 가지 메커니즘으로 정확히 처리된다(이미 "no match" 경로가
+        // 검증해 둔 것과 동일한 메커니즘이라 새로 만든 코드가 아니다).
         var matchedFieldCard = r1.captured.Skip(handSideCount).FirstOrDefault();
-        Vector3? matchedLanding = null;
-        if (matchedFieldCard != null && flyFrom.TryGetValue(matchedFieldCard, out var mp))
-            matchedLanding = mp + new Vector3(FIELD_STACK_OFFSET, -FIELD_STACK_OFFSET, 0f);
+        RectTransform matchedSlot = matchedFieldCard != null ? FieldSlotTransform(matchedFieldCard) : null;
         if (bomb)
         {
             // r1.captured = [card, partner1, partner2, fieldMatch] — 앞 3장이
-            // 손패에서 나온 카드다. 파파팍 — 짧은 간격으로 하나씩, 매칭된
-            // 필드 카드가 있던 바로 그 자리 위로 한꺼번에 몰려든다.
+            // 손패에서 나온 카드다. 파파팍 — 짧은 간격으로 하나씩 내려친다.
+            // 매 반복마다 target.childCount가 방금 내려친 카드만큼 늘어나
+            // 있으므로, 3장이 자연히 한 칸씩 계단으로 퍼져 쌓인다(예전엔
+            // 셋 다 같은 고정 좌표로 완전히 겹쳐 떨어졌다).
             foreach (var hc in r1.captured.Take(3))
             {
-                GameObject ghost; Vector3 landing;
-                if (matchedLanding.HasValue)
-                {
-                    landing = matchedLanding.Value;
-                    ghost = SpawnGhostCard(hc, landing);
-                    StartCoroutine(SlamDown(ghost.transform as RectTransform, landing));
-                }
-                else
-                {
-                    var target = FieldSlotTransform(hc);
-                    ghost = SpawnGhostCard(hc, target);
-                    // 2026-09-02 버그 수정 — target.position(pos 마커 자체의
-                    // 피벗 좌표, 보통 center)이 아니라 고스트가 실제로 놓인
-                    // 자리(ghost.transform.position, 카드 피벗은 top-center라
-                    // 마커 좌표와 카드 반 장 높이만큼 차이난다)를 landing으로
-                    // 써야 한다 — 안 그러면 나중에 DrawField가 그리는 "진짜"
-                    // 카드(고스트와 동일한 자리에 그려짐)와 flyFrom에 등록된
-                    // 옛 landing이 서로 어긋나서, 실제로는 안 움직인 카드가
-                    // "움직인 것"으로 오판돼 SlamIn이 엉뚱한 지점에서 시작해
-                    // 잠깐 아래로 처졌다가 제자리로 돌아오는 것처럼 보인다.
-                    landing = ghost.transform.position;
-                    StartCoroutine(SlamDown(ghost.transform as RectTransform, target));
-                }
+                var target = matchedSlot != null ? matchedSlot : FieldSlotTransform(hc);
+                var ghost = SpawnGhostCard(hc, target);
+                var landing = ghost.transform.position;
+                StartCoroutine(SlamDown(ghost.transform as RectTransform, target));
                 handGhosts.Add(ghost);
                 flyFrom[hc] = landing;
                 yield return new WaitForSeconds(0.07f);
@@ -2334,22 +2312,18 @@ public partial class GoStop3PGame : MonoBehaviour
         }
         else
         {
-            GameObject ghost; Vector3 landing;
-            if (matchedLanding.HasValue)
-            {
-                landing = matchedLanding.Value;
-                ghost = SpawnGhostCard(card, landing);
-                yield return StartCoroutine(SlamDown(ghost.transform as RectTransform, landing));
-            }
-            else
-            {
-                var target = FieldSlotTransform(card);
-                ghost = SpawnGhostCard(card, target);
-                // 위 bomb 분기와 같은 이유(2026-09-02) — target.position이 아니라
-                // 고스트가 실제로 놓인 자리를 landing으로 기록한다.
-                landing = ghost.transform.position;
-                yield return StartCoroutine(SlamDown(ghost.transform as RectTransform, target));
-            }
+            var target = matchedSlot != null ? matchedSlot : FieldSlotTransform(card);
+            var ghost = SpawnGhostCard(card, target);
+            // 2026-09-02 — target.position(pos 마커 자체의 피벗 좌표, 보통
+            // center)이 아니라 고스트가 실제로 놓인 자리(ghost.transform.position,
+            // 카드 피벗은 top-center라 마커 좌표와 카드 반 장 높이만큼
+            // 차이난다)를 landing으로 써야 한다 — 안 그러면 나중에 DrawField가
+            // 그리는 "진짜" 카드(고스트와 동일한 자리에 그려짐)와 flyFrom에
+            // 등록된 옛 landing이 서로 어긋나서, 실제로는 안 움직인 카드가
+            // "움직인 것"으로 오판돼 SlamIn이 엉뚱한 지점에서 시작해 잠깐
+            // 아래로 처졌다가 제자리로 돌아오는 것처럼 보인다.
+            var landing = ghost.transform.position;
+            yield return StartCoroutine(SlamDown(ghost.transform as RectTransform, target));
             handGhosts.Add(ghost);
             flyFrom[card] = landing;
         }
@@ -2375,12 +2349,19 @@ public partial class GoStop3PGame : MonoBehaviour
             }
             else if (couldBePpeok && drawn.month == card.month)
             {
-                // 뻑이 형성되는 바로 그 순간 — 뒷패도 방금 손패가 몰려든
-                // 그 자리(3장째)로 겹쳐 쌓인다("뻑나면 3장이 겹쳐있어야"
-                // 요청).
-                var landing = flyFrom[card];
-                deckGhost = SpawnGhostCard(drawn, landing);
-                yield return StartCoroutine(SlamDown(deckGhost.transform as RectTransform, landing));
+                // 뻑이 형성되는 바로 그 순간 — 뒷패는 방금 손패 고스트가
+                // 내려친 그 슬롯의 3번째 자리(원래 있던 필드패 1장 + 손패
+                // 고스트 1장 = childCount 2)로 쌓인다. 2026-09-02 구조적
+                // 재설계 — 예전엔 flyFrom[card](손패 고스트의 착지 좌표)를
+                // 그대로 재사용해서 뒷패가 손패와 완전히 같은 자리에 겹쳐
+                // 떨어졌다(3장째라는 시각적 단서가 없었다) — 위 ①의 매칭
+                // 고스트와 같은 SpawnGhostCard(RectTransform) 메커니즘을
+                // 재사용해서 target.childCount가 정확한 3번째 자리를
+                // 자동으로 내주게 했다.
+                var target = FieldSlotTransform(card);
+                deckGhost = SpawnGhostCard(drawn, target);
+                var landing = deckGhost.transform.position;
+                yield return StartCoroutine(SlamDown(deckGhost.transform as RectTransform, target));
                 flyFrom[drawn] = landing;
             }
             else
@@ -2402,7 +2383,19 @@ public partial class GoStop3PGame : MonoBehaviour
                 DestroyGhosts(handGhosts);
                 DestroyGhost(deckGhost);
 
-                field.AddRange(r1.captured);
+                // 2026-09-02 버그 수정 — field.AddRange(r1.captured)는
+                // [card, matchedFieldCard] 순서라, DrawField가 이 순서 그대로
+                // 스택 인덱스를 매기면 카드(방금 낸 손패)가 맨 아래(i=0),
+                // 원래 필드에 있던 카드가 중간(i=1)이 된다. 그런데 애니메이션
+                // 중에는 정반대였다 — matchedSlot 기준 childCount로 쌓았으니
+                // 원래 있던 필드 카드가 맨 아래(offset 0, 움직이지 않음),
+                // 손패 고스트가 그 위(offset 1)였다. 고스트가 사라지고
+                // DrawField의 "진짜" 카드로 넘어가는 순간 이 둘의 시각적
+                // 순서가 뒤바뀌어 보였다 — field에 넣는 순서를 애니메이션이
+                // 실제로 쌓은 순서(matchedFieldCard 먼저, card 다음, drawn
+                // 마지막)에 맞춘다.
+                if (matchedFieldCard != null) field.Add(matchedFieldCard);
+                field.Add(card);
                 field.Add(drawn);
                 ppeokCauser[card.month] = seat;
 
