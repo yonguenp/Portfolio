@@ -1925,10 +1925,24 @@ public partial class GoStop3PGame
     /// 실시간으로 추적한다("moveTo 포지션이 아니라 타겟의 transform 위치로
     /// 이동" 요청 참고 — 예전엔 rt.position을 코루틴 시작 시점에 한 번
     /// 스냅샷 떠서 고정 Vector3로 이동했다).</summary>
+    // 2026-09-02(사용자 확인) — "패를 내고 들어올 때 어느 유저가 냈고
+    // 어느 유저가 가져가는지 잘 안 보인다, 순간적으로 뿅 없어지는
+    // 느낌"이라는 신고 — SlamIn이 필드↔획득패 사이의 캡처 비행에도
+    // 쓰이는데, 그 거리(실측 600~1400px, 화면을 거의 가로지른다)에
+    // 고정 0.11초는 너무 짧아 눈이 못 따라간다. 반면 필드 내부의 아주
+    // 짧은 보정용 SlamIn(거의 안 걸림, 걸려도 몇십 px)은 지금 속도가
+    // 이미 자연스럽다는 확인을 받았으므로 그대로 둔다 — 거리에 따라
+    // 지속시간을 자동으로 늘리면 두 상황을 하나의 함수로 같이 만족시킬
+    // 수 있다(짧으면 스냅, 길면 눈으로 좇을 수 있게).
+    static float CaptureFlightDistanceT(float dist) => Mathf.Clamp01(dist / 500f);
+
     IEnumerator SlamIn(RectTransform rt, Vector3 fromWorld)
     {
         if (rt == null) yield break;
-        yield return FlyAndPunch(rt, fromWorld, rt, 0.11f, 0.14f);
+        float t01 = CaptureFlightDistanceT(Vector3.Distance(fromWorld, rt.position));
+        float flyDur = Mathf.Lerp(0.11f, 0.38f, t01);
+        float punchDur = Mathf.Lerp(0.14f, 0.22f, t01);
+        yield return FlyAndPunch(rt, fromWorld, rt, flyDur, punchDur);
     }
 
     /// <summary>필드의 짝을 실제로 쳐서 맞추는 2단 연출 — 손/더미에서 <b>맞은
@@ -1943,10 +1957,13 @@ public partial class GoStop3PGame
     {
         if (rt == null) yield break;
 
-        yield return FlyAndPunch(rt, fromWorld, hitWorld, 0.09f, 0.10f);
+        // 2026-09-02 — SlamIn과 같은 이유로 각 구간을 거리에 맞춰 늘린다.
+        float t1 = CaptureFlightDistanceT(Vector3.Distance(fromWorld, hitWorld));
+        yield return FlyAndPunch(rt, fromWorld, hitWorld, Mathf.Lerp(0.09f, 0.30f, t1), Mathf.Lerp(0.10f, 0.16f, t1));
         if (rt == null) yield break;
 
-        yield return FlyAndPunch(rt, hitWorld, rt, 0.14f, 0.16f);
+        float t2 = CaptureFlightDistanceT(Vector3.Distance(hitWorld, rt.position));
+        yield return FlyAndPunch(rt, hitWorld, rt, Mathf.Lerp(0.14f, 0.34f, t2), Mathf.Lerp(0.16f, 0.22f, t2));
     }
 
     /// <summary>이동(감속) + 도착 시 임팩트 플래시 + 펀치 스케일 — 목적지가
@@ -2099,7 +2116,13 @@ public partial class GoStop3PGame
     /// 곧 파괴될 예정이라 살아있는 Transform을 못 쓴다). 착지 지점 위쪽에서
     /// 시작해 ease-in(가속)으로 빠르게 떨어뜨린 뒤 충격 플래시 + 펀치
     /// 스케일로 마무리한다 — "카드를 탁 내려놓는다"는 손맛을 노린 것.</summary>
-    IEnumerator SlamDown(RectTransform rt, Vector3 landing, float dropHeight = 170f, float dropDur = 0.10f, float punchDur = 0.12f)
+    // 2026-09-02(사용자 확인) — "이펙트가 나오는 특수한 상황에서는 다들
+    // 같은 속도감으로 흘러가서 긴장감이 안 산다, 쎄게 내려친다던지 뻑났을
+    // 땐 힘없이 내려놓는다던지" 요청으로 punchScale을 노출한다 — 기본값
+    // 1.22f는 기존 동작 그대로라 이 값을 안 넘기는 모든 호출부(일반
+    // 매칭 등)는 전혀 안 바뀐다. 폭탄처럼 "쎄게"는 이 값을 키우고,
+    // 뻑 형성처럼 "힘없이"는 1.0에 가깝게 낮춰서 부른다.
+    IEnumerator SlamDown(RectTransform rt, Vector3 landing, float dropHeight = 170f, float dropDur = 0.10f, float punchDur = 0.12f, float punchScale = 1.22f)
     {
         if (rt == null) yield break;
         Vector3 baseScale = rt.localScale;
@@ -2124,7 +2147,7 @@ public partial class GoStop3PGame
         {
             t += Time.deltaTime;
             float p = Mathf.Clamp01(t / punchDur);
-            float s = p < 0.4f ? Mathf.Lerp(1f, 1.22f, p / 0.4f) : Mathf.Lerp(1.22f, 1f, (p - 0.4f) / 0.6f);
+            float s = p < 0.4f ? Mathf.Lerp(1f, punchScale, p / 0.4f) : Mathf.Lerp(punchScale, 1f, (p - 0.4f) / 0.6f);
             if (rt == null) yield break;
             rt.localScale = baseScale * s;
             yield return null;
@@ -2147,7 +2170,7 @@ public partial class GoStop3PGame
     /// 오프셋(anchorOffset = rt.position − target.position)을 한 번 구해서
     /// 매 프레임 그 보정값을 다시 더한다 — target이 움직여도(GridLayoutGroup
     /// 등) 정확한 피벗 보정이 유지된다.</summary>
-    IEnumerator SlamDown(RectTransform rt, RectTransform target, float dropHeight = 170f, float dropDur = 0.10f, float punchDur = 0.12f)
+    IEnumerator SlamDown(RectTransform rt, RectTransform target, float dropHeight = 170f, float dropDur = 0.10f, float punchDur = 0.12f, float punchScale = 1.22f)
     {
         if (rt == null || target == null) yield break;
         Vector3 anchorOffset = rt.position - target.position;
@@ -2173,7 +2196,7 @@ public partial class GoStop3PGame
         {
             t += Time.deltaTime;
             float p = Mathf.Clamp01(t / punchDur);
-            float s = p < 0.4f ? Mathf.Lerp(1f, 1.22f, p / 0.4f) : Mathf.Lerp(1.22f, 1f, (p - 0.4f) / 0.6f);
+            float s = p < 0.4f ? Mathf.Lerp(1f, punchScale, p / 0.4f) : Mathf.Lerp(punchScale, 1f, (p - 0.4f) / 0.6f);
             if (rt == null) yield break;
             rt.localScale = baseScale * s;
             yield return null;

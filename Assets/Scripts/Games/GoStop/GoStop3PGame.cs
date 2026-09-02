@@ -2303,7 +2303,11 @@ public partial class GoStop3PGame : MonoBehaviour
                 var target = matchedSlot != null ? matchedSlot : FieldSlotTransform(hc);
                 var ghost = SpawnGhostCard(hc, target);
                 var landing = ghost.transform.position;
-                StartCoroutine(SlamDown(ghost.transform as RectTransform, target));
+                // 2026-09-02(사용자 확인) — 폭탄은 "쎄게 내려친다"는 요청 —
+                // 더 높이서(dropHeight) 더 빠르게(dropDur) 떨어뜨리고
+                // 펀치 스케일(punchScale)도 키워서 타격감을 올린다.
+                StartCoroutine(SlamDown(ghost.transform as RectTransform, target,
+                    dropHeight: 230f, dropDur: 0.07f, punchDur: 0.12f, punchScale: 1.4f));
                 handGhosts.Add(ghost);
                 flyFrom[hc] = landing;
                 yield return new WaitForSeconds(0.07f);
@@ -2361,7 +2365,11 @@ public partial class GoStop3PGame : MonoBehaviour
                 var target = FieldSlotTransform(card);
                 deckGhost = SpawnGhostCard(drawn, target);
                 var landing = deckGhost.transform.position;
-                yield return StartCoroutine(SlamDown(deckGhost.transform as RectTransform, target));
+                // 2026-09-02(사용자 확인) — 뻑은 "아무도 못 먹고 묶이는"
+                // 김빠지는 결과라, 다른 착지보다 낮게(dropHeight)·느리게
+                // (dropDur)·거의 안 튕기게(punchScale≈1) 힘없이 내려놓는다.
+                yield return StartCoroutine(SlamDown(deckGhost.transform as RectTransform, target,
+                    dropHeight: 60f, dropDur: 0.22f, punchDur: 0.16f, punchScale: 1.06f));
                 flyFrom[drawn] = landing;
             }
             else
