@@ -1767,8 +1767,13 @@ public partial class GoStop3PGame
             // 2026-09-01: 하이라이트가 CardFront 프리팹 내부의 Highlight
             // 자식(스트레치 앵커)으로 바뀌면서 카드 크기에 자동으로 맞춰져,
             // 손패 전용 크기를 따로 안 넘겨도 된다.
+            // 2026-09-02(사용자 확인) — 손패를 handArea 바닥에 붙이고 싶어서
+            // anchor/pivot을 (0.5,0)(bottom)으로 바꿨다. 카드 자체가 아래쪽
+            // 기준으로 자라 올라가므로, playable일 때 y=34로 올리는 이 "위로
+            // 뜬다" 연출은 그대로 유지된다(카드 바닥이 handArea 바닥에서
+            // 34px 뜬다는 뜻으로 자연스럽게 재해석된다).
             var go = HwatuUI.MakeCard(card, handArea, new Vector2(x, y), HAND_W, HAND_H,
-                () => OnPlayerPlay(card), playable);
+                () => OnPlayerPlay(card), playable, pivotBottom: true);
 
             // 폭탄/흔들기/굳은자 가능 표시 — 카드 자체는 안 건드리고 작은
             // 아이콘을 모서리에 얹는다. 셋 다 손패 안에서만 조건이 갈리므로
@@ -1829,8 +1834,13 @@ public partial class GoStop3PGame
         var go = new GameObject("BombSkip", typeof(RectTransform));
         go.transform.SetParent(handArea, false);
         var rt = go.GetComponent<RectTransform>();
-        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 1f);
-        rt.pivot = new Vector2(0.5f, 1f);
+        // 2026-09-02(사용자 확인) — 손패 카드들이 이제 bottom-pivot으로 바닥에
+        // 붙는다(MakeCard pivotBottom, DrawPlayerHand 참고). 이 슬롯은
+        // MakeCard를 안 쓰는 별도 오브젝트라 여기서도 똑같이 맞춰야
+        // 나머지 손패와 세로로 어긋나지 않는다 — 자식(라벨 등)의 상대
+        // 좌표는 go 자신의 로컬 좌표계라 이 변경과 무관하게 그대로 둔다.
+        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0f);
+        rt.pivot = new Vector2(0.5f, 0f);
         rt.sizeDelta = new Vector2(HAND_W, HAND_H);
         rt.anchoredPosition = pos;
 

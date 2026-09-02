@@ -61,17 +61,22 @@ public static class HwatuUI
     /// 하이라이트 링엔 자동 반복 샤이니 스윕을 건다(<see cref="GoStopFX.ApplyShinyEdge"/>)
     /// — 코루틴 없이 <c>edgeShinyAutoPlaySpeed</c> 하나로 계속 훑고 지나간다.</summary>
     public static GameObject MakeCard(HwatuCard card, Transform parent, Vector2 pos, float w, float h,
-                                      System.Action onClick, bool highlight)
+                                      System.Action onClick, bool highlight, bool pivotBottom = false)
     {
         var prefab = Resources.Load<GameObject>("Prefabs/GoStop/Cards/CardFront");
         var go = Object.Instantiate(prefab, parent, false);
         go.name = card.spriteName;
         var rt = go.GetComponent<RectTransform>();
         // SampleCard 자체는 디자인 미리보기용으로 중앙 고정 앵커를 쓰지만,
-        // 실제 게임의 모든 호출부는 top-pivot 기준 anchoredPosition으로
+        // 실제 게임의 호출부는 기본적으로 top-pivot 기준 anchoredPosition으로
         // 좌표를 계산한다 — 복제 직후 앵커/피벗을 게임 규약에 맞게 덮어쓴다.
-        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 1f);
-        rt.pivot = new Vector2(0.5f, 1f);
+        // 2026-09-02: pivotBottom(기본 false, 손패 전용) — "손패를 바닥에
+        // 붙이고 싶다"는 요청으로 추가. 필드/Cap 등 다른 모든 호출부는
+        // top-pivot 좌표 계산(FieldSlotTransform·matchedSlot의 childCount
+        // 오프셋 등, 이번 세션 내내 고친 로직 전부)을 그대로 전제하므로
+        // 절대 기본값을 바꾸면 안 된다 — 손패에서만 명시적으로 켠다.
+        rt.anchorMin = rt.anchorMax = pivotBottom ? new Vector2(0.5f, 0f) : new Vector2(0.5f, 1f);
+        rt.pivot = pivotBottom ? new Vector2(0.5f, 0f) : new Vector2(0.5f, 1f);
         rt.sizeDelta = new Vector2(w, h);
         rt.anchoredPosition = pos;
 

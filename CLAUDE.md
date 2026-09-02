@@ -9043,3 +9043,45 @@ FirstOrDefault()`)의 flyFrom 스냅샷에 `FIELD_STACK_OFFSET` **딱 한 칸만
 (반복문 안에서 매번 `target.childCount`를 다시 재므로 구조적으로
 그렇게 될 수밖에 없다), 실제 폭탄 시나리오를 리플렉션으로 강제 재현해
 좌표까지 재확인하지는 못했다 — 다음에 폭탄이 발생하면 확인할 것.
+
+## 손패 카드 앵커/피벗 — bottom-pivot으로 전환 (2026-09-02)
+
+"핸드에 패가 앵커 top-pivot(0.5,1)로 pos y 0/38인데, bottom-pivot(0.5,0)
+으로 바꿔서 바닥에 붙이고 싶다"는 요청. `HwatuUI.MakeCard`가 **필드·Cap·
+손패 전부가 공유하는 단일 함수**라 top-pivot이 하드코딩돼 있었는데 —
+이번 세션 내내 고친 필드 카드 위치 계산(`FieldSlotTransform`의
+childCount 오프셋, `matchedSlot` 기반 착지 등, 버그 3~8 전부)이 예외
+없이 top-pivot을 전제로 하고 있어서, 이걸 전역으로 바꾸면 그 검증들이
+전부 무효가 된다 — **손패에만 적용되는 선택적 파라미터**로 좁혔다.
+
+```csharp
+public static GameObject MakeCard(..., bool highlight, bool pivotBottom = false)
+{
+    ...
+    rt.anchorMin = rt.anchorMax = pivotBottom ? new Vector2(0.5f, 0f) : new Vector2(0.5f, 1f);
+    rt.pivot = pivotBottom ? new Vector2(0.5f, 0f) : new Vector2(0.5f, 1f);
+    ...
+}
+```
+
+기본값 `false`라 필드/Cap 등 나머지 9곳의 호출부는 전혀 안 건드리고,
+`DrawPlayerHand()`의 손패 카드 생성 호출 한 곳에만
+`pivotBottom: true`를 넘긴다. posY 값(0/34, 낼 수 있는 패는 위로 뜸)은
+그대로 — bottom-pivot에서는 "카드 바닥이 handArea 바닥에서 34px
+뜬다"는 뜻으로 자연스럽게 재해석된다.
+
+**부수 발견 — 폭탄 크레딧 슬롯("덱만" 카드 자리)도 같이 고쳐야 했다.**
+`MakeBombSkipSlot`은 `MakeCard`를 안 쓰고 직접 만든 별도 GameObject라,
+top-pivot이 자체적으로 하드코딩돼 있었다 — 손패만 bottom-pivot으로
+바꾸고 이건 그대로 두면, 이 슬롯만 손패 줄에서 세로로 어긋나 보였을
+것이다(손패는 바닥에서 자라 올라가는데 이 슬롯은 위에서 매달려
+내려오는 모양). 같이 bottom-pivot으로 맞췄다 — 슬롯 내부 라벨 등
+자식 오브젝트는 부모(슬롯) 자신의 로컬 좌표계 안에서 상대 배치되므로
+이 변경과 무관해 손 안 댔다.
+
+**검증.** 컴파일 클린 확인 후 라이브 Play에서 손패 7장 전부
+`anchorMin=(0.5,0), anchorMax=(0.5,0), pivot=(0.5,0)`, `anchoredPos.y`가
+정확히 0 또는 34(낼 수 있는 패)인 것을 확인했다. 카드 재생(`OnPlayerPlay`)
+직접 호출로 손패가 정상적으로 줄어드는 것(클릭/로직 경로가 pivot 변경과
+무관하게 정상 작동), 30라운드 자연 진행 + `NewGame()` 1회 완주까지
+콘솔 에러 0건.
