@@ -17,6 +17,7 @@ public static class HwatuShapes
     static readonly Dictionary<int, Sprite> circleCache = new();
     static readonly Dictionary<long, Sprite> triangleCache = new();
     static readonly Dictionary<long, Sprite> roundedCache = new();
+    static readonly Dictionary<string, Sprite> borderedCache = new();
     static Sprite dotGridCache;
     static Sprite coinCache;
 
@@ -104,6 +105,104 @@ public static class HwatuShapes
         return sp;
     }
 
+    /// <summary>모서리 둥근 사각형 + 테두리 색이 채움색과 다른 2톤 버전(오리엔탈
+    /// 목업 팔레트용). <see cref="RoundedRect"/>는 단색이라 나중에 Image.color로
+    /// 틴트하는 방식인데, 그 방식으론 "크림색 채움 + 짙은 초록 테두리" 같은
+    /// 조합을 못 만든다(틴트는 전체에 균일하게 곱해진다) — 그래서 채움/테두리
+    /// 색을 텍스처 생성 시점에 함께 굽는다. size는 텍스처 실제 픽셀 크기(9-slice라
+    /// 최종 화면 크기와 무관하게 작게 잡아도 된다), radius/borderWidth도 같은
+    /// 텍스처 픽셀 단위.</summary>
+    public static Sprite RoundedRectBordered(int size, int radius, int borderWidth, Color fill, Color border)
+    {
+        string key = $"{size}_{radius}_{borderWidth}_{ColorUtility.ToHtmlStringRGBA(fill)}_{ColorUtility.ToHtmlStringRGBA(border)}";
+        if (borderedCache.TryGetValue(key, out var cached)) return cached;
+
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        var px = new Color[size * size];
+        for (int y = 0; y < size; y++)
+        for (int x = 0; x < size; x++)
+        {
+            float outerDist = SdRoundRect(x, y, size, size, radius, 0);
+            float outerAA = Mathf.Clamp01(0.5f - outerDist);
+            Color c;
+            if (borderWidth > 0)
+            {
+                float innerDist = SdRoundRect(x, y, size, size, radius, borderWidth);
+                float innerAA = Mathf.Clamp01(0.5f - innerDist);
+                c = Color.Lerp(border, fill, innerAA);
+            }
+            else
+            {
+                c = fill;
+            }
+            c.a *= outerAA;
+            px[y * size + x] = c;
+        }
+        tex.SetPixels(px); tex.Apply();
+        tex.hideFlags = HideFlags.HideAndDontSave;
+
+        int inset = Mathf.Max(radius, borderWidth) + 2;
+        var sp = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f),
+                               100f, 0, SpriteMeshType.FullRect, new Vector4(inset, inset, inset, inset));
+        sp.hideFlags = HideFlags.HideAndDontSave;
+        borderedCache[key] = sp;
+        return sp;
+    }
+
+    static float SdRoundRect(float x, float y, int w, int h, int radius, int inset)
+    {
+        float px = x + 0.5f - w / 2f;
+        float py = y + 0.5f - h / 2f;
+        float hw = w / 2f - inset;
+        float hh = h / 2f - inset;
+        float r = Mathf.Max(0.5f, radius - inset);
+        float qx = Mathf.Abs(px) - (hw - r);
+        float qy = Mathf.Abs(py) - (hh - r);
+        float ax = Mathf.Max(qx, 0f);
+        float ay = Mathf.Max(qy, 0f);
+        float outside = Mathf.Sqrt(ax * ax + ay * ay) - r;
+        float inside = Mathf.Min(Mathf.Max(qx, qy), 0f);
+        return outside + inside;
+    }
+
+    static Sprite latticeCache;
+
+    /// <summary>오리엔탈 목업(<c>GoStopOrientalMockupBuilder.LatticeTile</c>)에서
+    /// 그대로 옮겨온 아주 옅은 대각선 격자 타일 — 테이블 배경 위에 Tiled로
+    /// 깔아서 밋밋한 단색 배경에 은은한 질감을 준다(순수 데코, 클릭 불가).</summary>
+    public static Sprite LatticeTile(int size = 64)
+    {
+        if (latticeCache != null) return latticeCache;
+
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        var px = new Color[size * size];
+        var clear = new Color(0f, 0f, 0f, 0f);
+        for (int i = 0; i < px.Length; i++) px[i] = clear;
+        var line = HwatuTheme.DarkGreen; line.a = 0.12f;
+        const int thickness = 1;
+        for (int x = 0; x < size; x++)
+        for (int t = -thickness; t <= thickness; t++)
+        {
+            SetLatticePx(px, size, x, ((x + t) % size + size) % size, line);
+            SetLatticePx(px, size, x, ((size - 1 - x + t) % size + size) % size, line);
+        }
+        tex.SetPixels(px);
+        tex.Apply();
+        tex.wrapMode = TextureWrapMode.Repeat;
+        tex.filterMode = FilterMode.Bilinear;
+        tex.hideFlags = HideFlags.HideAndDontSave;
+
+        var sp = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f);
+        sp.hideFlags = HideFlags.HideAndDontSave;
+        latticeCache = sp;
+        return sp;
+    }
+
+    static void SetLatticePx(Color[] px, int size, int x, int y, Color c)
+    {
+        if (x >= 0 && x < size && y >= 0 && y < size) px[y * size + x] = c;
+    }
+
     /// <summary>
     /// 짙은 빨강 바탕에 작은 돌기(엠보싱) 점이 촘촘히 반복되는 무늬. 화투 뒷면 특유의
     /// 오돌토돌한 질감을 직접 그린 것 — 특정 제조사 사진을 쓰지 않고, 흔한
@@ -115,7 +214,7 @@ public static class HwatuShapes
     {
         if (dotGridCache != null) return dotGridCache;
 
-        var bg = new Color32(126, 18, 22, 255); // 짙은 적색 바탕
+        var bg = (Color32)HwatuTheme.CardBackMaroon; // 오리엔탈 팔레트 카드 뒷면 톤(#5C1A1A)
 
         var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
         var px = new Color32[size * size];

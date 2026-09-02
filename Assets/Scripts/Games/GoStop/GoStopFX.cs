@@ -278,7 +278,7 @@ public class GoStopMoneyFly : MonoBehaviour
         var lbl = HwatuUI.MakeLabel(parent, localPos + new Vector2(0f, 6f), new Vector2(240f, 44f), 24f,
                                      new Color(1f, 0.85f, 0.3f));
         lbl.text = $"+{amount:N0}원";
-        lbl.fontStyle = FontStyles.Bold;
+        lbl.font = HwatuTheme.FontBold;
         lbl.raycastTarget = false;
         var runner = lbl.gameObject.AddComponent<GoStopFloatText>();
         runner.Animate(lbl.rectTransform, lbl);

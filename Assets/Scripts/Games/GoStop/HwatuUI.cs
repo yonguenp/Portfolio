@@ -10,8 +10,7 @@ using Coffee.UIEffects;
 /// </summary>
 public static class HwatuUI
 {
-    static TMP_FontAsset font;
-    static TMP_FontAsset Font => font ??= Resources.Load<TMP_FontAsset>("TextMesh Pro/Fonts/ONE Mobile POP SDF");
+    static TMP_FontAsset Font => HwatuTheme.Font;
 
     public static RectTransform MakeRect(string name, Transform parent, Vector2 size, Vector2 pos)
     {
@@ -44,138 +43,96 @@ public static class HwatuUI
     }
 
     /// <summary>카드 한 장. onClick이 null이면 클릭 불가(레이캐스트도 끔 — 겹쳤을 때 다른 카드 입력을 안 가로챈다).
-    /// <paramref name="highlightSize"/>/<paramref name="highlightOffset"/>을 생략하면 기존 공식(카드보다
-    /// 사방 8px 큰 링, 카드와 같은 위치)을 쓴다 — 손패처럼 카드 비율이 특수해 기본 공식이 어긋나는
-    /// 곳에서만 직접 지정한다.
+    /// <br/>2026-09-01: "디자인이 다르다, new GameObject 대신 클론을 만들어라"
+    /// 요청 — 카드 프레임을 코드로 직접 조립하는 대신, 씬의 SampleCard를
+    /// 그대로 저장해 둔 프리팹(Assets/Resources/Prefabs/GoStop/Cards/
+    /// CardFront.prefab)을 복제한다. 사용자가 SampleCard를 에디터에서
+    /// 계속 손볼 수 있고, 그 결과가 이 프리팹에 반영되기만 하면 코드를
+    /// 다시 안 고쳐도 자동으로 실제 게임에 따라온다. 프레임의 룩(색·
+    /// 테두리·그림자 유무 등)은 전부 프리팹이 갖고 있으므로 여기서는
+    /// 크기·위치·클릭 가능 여부·실제 카드 그림·하이라이트 on/off만 주입한다.
+    /// <br/>하이라이트도 별도 오브젝트를 새로 만들지 않는다 — CardFront
+    /// 프리팹 안에 이미 "Highlight" 자식(카드보다 사방 8px 큰 골드 링,
+    /// 기본 비활성)이 있어서 여기선 SetActive만 토글한다. 카드 크기가
+    /// 호출부마다 달라도(w,h) Highlight가 스트레치 앵커라 자동으로 같이
+    /// 늘어나므로 예전처럼 크기를 따로 넘겨줄 필요가 없다.
     /// <br/>2026-08-20: UIEffect(mob-sakai) 도입 — 카드 본체엔 은은한 드롭섀도를 상시 걸어
     /// 평평한 이미지가 살짝 뜬 것처럼 보이게 하고(<see cref="GoStopFX.ApplyCardShadow"/>),
     /// 하이라이트 링엔 자동 반복 샤이니 스윕을 건다(<see cref="GoStopFX.ApplyShinyEdge"/>)
     /// — 코루틴 없이 <c>edgeShinyAutoPlaySpeed</c> 하나로 계속 훑고 지나간다.</summary>
     public static GameObject MakeCard(HwatuCard card, Transform parent, Vector2 pos, float w, float h,
-                                      System.Action onClick, bool highlight,
-                                      Vector2? highlightSize = null, Vector2? highlightOffset = null)
+                                      System.Action onClick, bool highlight)
     {
-        if (highlight)
-        {
-            var ring = new GameObject("Highlight", typeof(RectTransform));
-            ring.transform.SetParent(parent, false);
-            var ringRT = ring.GetComponent<RectTransform>();
-            ringRT.anchorMin = ringRT.anchorMax = new Vector2(0.5f, 1f);
-            ringRT.pivot = new Vector2(0.5f, 1f);
-            ringRT.sizeDelta = highlightSize ?? new Vector2(w + 16f, h + 16f);
-            ringRT.anchoredPosition = pos + (highlightOffset ?? Vector2.zero);
-            var ringImg = ring.AddComponent<Image>();
-            ringImg.sprite = HwatuShapes.RoundedRect(64, 12);
-            ringImg.type = Image.Type.Sliced;
-            ringImg.color = new Color(1f, 0.82f, 0.25f, 0.9f);
-            ringImg.raycastTarget = false;
-            GoStopFX.ApplyShinyEdge(ringImg);
-        }
-
-        var go = new GameObject(card.spriteName, typeof(RectTransform));
-        go.transform.SetParent(parent, false);
+        var prefab = Resources.Load<GameObject>("Prefabs/GoStop/Cards/CardFront");
+        var go = Object.Instantiate(prefab, parent, false);
+        go.name = card.spriteName;
         var rt = go.GetComponent<RectTransform>();
+        // SampleCard 자체는 디자인 미리보기용으로 중앙 고정 앵커를 쓰지만,
+        // 실제 게임의 모든 호출부는 top-pivot 기준 anchoredPosition으로
+        // 좌표를 계산한다 — 복제 직후 앵커/피벗을 게임 규약에 맞게 덮어쓴다.
         rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 1f);
         rt.pivot = new Vector2(0.5f, 1f);
         rt.sizeDelta = new Vector2(w, h);
         rt.anchoredPosition = pos;
 
-        var img = go.AddComponent<Image>();
-        img.sprite = Resources.Load<Sprite>("Hwatu/" + card.spriteName);
-        img.preserveAspect = true;
-        img.raycastTarget = onClick != null;
-        GoStopFX.ApplyCardShadow(img);
+        var frame = go.GetComponent<Image>();
+        frame.raycastTarget = false; // 클릭 서피스는 Art가 담당(아래) — frame은 장식용 프레임일 뿐
+        GoStopFX.ApplyCardShadow(frame);
+
+        var artImg = go.transform.Find("Art").GetComponent<Image>();
+        artImg.sprite = Resources.Load<Sprite>("Hwatu/" + card.spriteName);
+        artImg.raycastTarget = onClick != null;
+
+        var highlightGo = go.transform.Find("Highlight").gameObject;
+        highlightGo.SetActive(highlight);
+        if (highlight)
+        {
+            var hImg = highlightGo.GetComponent<Image>();
+            hImg.sprite = HwatuShapes.RoundedRect(64, 12);
+            hImg.type = Image.Type.Sliced;
+            GoStopFX.ApplyShinyEdge(hImg);
+        }
 
         if (onClick != null)
         {
+            // 2026-09-01: "Hand 카드 버튼이 안 눌린다 — frame 이미지가 꺼져
+            // 있기 때문" — frame이 이제 raycastTarget=false(장식)라 Button의
+            // targetGraphic도 실제로 클릭을 받는 Art를 봐야 한다. 이 프로젝트
+            // 공통 함정(raycastTarget=false 그래픽 위에 얹은 버튼은 클릭이
+            // 조상으로 샌다)과 정확히 같은 원인이다.
             var btn = go.AddComponent<Button>();
-            btn.targetGraphic = img;
+            btn.targetGraphic = artImg;
             btn.onClick.AddListener(() => onClick());
         }
         return go;
     }
 
-    /// <summary>카드 뒷면 — 금색 테두리 프레임 + 안쪽 점무늬 필드(HwatuShapes.DotGridPattern).
-    /// RectTransform을 돌려줘서 호출자가 회전(좌/우 좌석을 "누워있는" 모습으로 눕히는 등)을
-    /// 걸 수 있게 한다.</summary>
-    public static RectTransform MakeCardBack(Transform parent, Vector2 pos, float w, float h)
+    /// <summary>카드 뒷면 — 2026-09-01: "디자인이 다르다, 클론을 만들어라"
+    /// 요청으로 코드 조립 대신 씬의 SampleCardBack을 저장해 둔 프리팹
+    /// (Assets/Resources/Prefabs/GoStop/Cards/CardBack.prefab)을 복제한다.
+    /// 룩(짙은 적갈색+금테 프레임, 안쪽 Mask+패턴 구조)은 전부 프리팹이
+    /// 갖고 있어 여기서는 크기·위치만 주입한다 — 사용자가 SampleCardBack을
+    /// 에디터에서 계속 다듬으면 이 프리팹만 다시 구우면 그대로 반영된다.
+    /// RectTransform을 돌려줘서 호출자가 회전(좌/우 좌석을 "누워있는"
+    /// 모습으로 눕히는 등)을 걸 수 있게 한다.</summary>
+    public static RectTransform MakeCardBack(Transform parent, Vector2 pos, float w, float h, bool miniback = false)
     {
-        var go = new GameObject("Back", typeof(RectTransform));
-        go.transform.SetParent(parent, false);
+        var prefab = Resources.Load<GameObject>(miniback ? "Prefabs/GoStop/Cards/CardBackMini" : "Prefabs/GoStop/Cards/CardBack");
+        var go = Object.Instantiate(prefab, parent, false);
+        go.name = "Back";
         var rt = go.GetComponent<RectTransform>();
         rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 1f);
         rt.pivot = new Vector2(0.5f, 1f);
         rt.sizeDelta = new Vector2(w, h);
         rt.anchoredPosition = pos;
 
-        var frame = go.AddComponent<Image>();
-        frame.sprite = HwatuShapes.RoundedRect(64, 6);
-        frame.type = Image.Type.Sliced;
-        frame.color = new Color(0.541f, 0.129f, 0.129f, 1f); // #8A2122 — 카드 뒷면 통일 색(사용자 확인)
-        frame.raycastTarget = false;
+        var frame = go.GetComponent<Image>();
         GoStopFX.ApplyCardShadow(frame);
-
-        var fieldGo = new GameObject("PatternField", typeof(RectTransform));
-        fieldGo.transform.SetParent(go.transform, false);
-        var fieldRT = fieldGo.GetComponent<RectTransform>();
-        fieldRT.anchorMin = fieldRT.anchorMax = new Vector2(0.5f, 0.5f);
-        fieldRT.sizeDelta = new Vector2(w - 4f, h - 4f);
-        fieldRT.anchoredPosition = Vector2.zero;
-        var field = fieldGo.AddComponent<Image>();
-        field.sprite = HwatuShapes.DotGridPattern();
-        field.raycastTarget = false;
         return rt;
     }
 
-    public static void MakeConfirmButton(Transform parent, Vector2 pos, string label, Color color, UnityEngine.Events.UnityAction onClick)
-    {
-        var rt = MakeRect("Btn", parent, new Vector2(280f, 72f), pos);
-        var img = rt.gameObject.AddComponent<Image>();
-        img.sprite = HwatuShapes.RoundedRect(64, 10);
-        img.type = Image.Type.Sliced;
-        img.color = color;
-        var btn = rt.gameObject.AddComponent<Button>();
-        btn.targetGraphic = img;
-        btn.onClick.AddListener(onClick);
-        var lbl = MakeLabel(rt, Vector2.zero, new Vector2(280f, 72f), 22f, Color.white);
-        lbl.text = label;
-    }
-
-    public static void MakeRowBg(Transform parent, Vector2 pos, Vector2 size)
-    {
-        var rt = MakeRect("StatusBg", parent, size, pos);
-        var img = rt.gameObject.AddComponent<Image>();
-        img.sprite = HwatuShapes.RoundedRect(64, 10);
-        img.type = Image.Type.Sliced;
-        img.color = new Color(0f, 0f, 0f, 0.22f);
-        img.raycastTarget = false;
-    }
-
-    /// <summary>이름·머니 같은 상태 텍스트 뒤에 두르는 카드형 박스 — "텍스트만
-    /// 덜렁 떠 있다"는 지적(4인 고스톱 좌석 정보)으로 추가했다. <see cref="MakeRowBg"/>
-    /// (거의 투명한 어두운 바)보다 훨씬 진하게(표면색 #1B2244, alpha 0.88) 잡아서
-    /// 실제 카드처럼 도드라져 보인다. <paramref name="textTopPos"/>/<paramref name="textHeight"/>는
-    /// 그 자리에 놓일 라벨의 anchoredPosition/sizeDelta.y와 같은 값을 넘긴다
-    /// (라벨과 같은 top-center pivot 기준) — 텍스트보다 상하 7px씩 여유를 두고
-    /// 감싼다. 반드시 텍스트보다 먼저(sibling 순서상 먼저) 만들어야 뒤에 깔린다.</summary>
-    /// <summary>반환값(Image)은 2026-08-20에 추가 — 호출부가 "지금 이 좌석
-    /// 차례" 강조를 위해 나중에 색을 바꿀 수 있어야 해서(<see cref="GoStop3PGame"/>의
-    /// FillSlot 참고) 생성한 배경 Image를 그대로 넘겨준다.</summary>
-    public static Image MakeStatusBox(Transform parent, Vector2 textTopPos, float textHeight, float boxWidth)
-    {
-        var size = new Vector2(boxWidth, textHeight + 14f);
-        var pos = new Vector2(textTopPos.x, textTopPos.y + 7f);
-        var rt = MakeRect("StatusBox", parent, size, pos);
-        var img = rt.gameObject.AddComponent<Image>();
-        img.sprite = HwatuShapes.RoundedRect(64, 12);
-        img.type = Image.Type.Sliced;
-        img.color = new Color(0.106f, 0.133f, 0.267f, 0.88f); // 표면색(#1B2244) — B안 디자인 시스템과 통일
-        img.raycastTarget = false;
-        return img;
-    }
-
     /// <summary>기존 컨테이너(RectTransform) 자체에 배경 이미지를 얹는다 —
-    /// <see cref="MakeStatusBox"/>처럼 별도 자식을 새로 만드는 대신, 카드가
+    /// 별도 자식을 새로 만드는 대신, 카드가
     /// 나중에 자식으로 채워지는 존(획득패 영역 등)에 바로 붙인다. Image가
     /// 같은 GameObject에 먼저 올라가 있으므로 이후 추가되는 카드 자식들이
     /// 자동으로 그 위에 그려진다(부모 그래픽 → 자식 그래픽 순서). 회전된
@@ -191,90 +148,27 @@ public static class HwatuUI
         img.raycastTarget = false;
     }
 
-    /// <summary>동전 아이콘 + 숫자 한 줄.</summary>
-    public static TextMeshProUGUI BuildMoneyChip(Transform parent, Vector2 pos, float width = 150f, float iconSize = 20f, float fontSize = 16f)
+    /// <summary>테두리가 있는 버전 — 오리엔탈 목업의 "panel_dark"(짙은 초록
+    /// 채움 + 더 짙은 테두리)를 그대로 옮겨온 것. Field처럼 "틀에 담긴
+    /// 패널"이라는 인상이 필요한 큰 영역에 쓴다 — Cap 존(<see
+    /// cref="AddZoneBackground"/>, 테두리 없는 플랫 색)과 시각적으로
+    /// 구분하기 위해 프레임 유무로 나눴다(색만으로는 다시 헷갈릴 수 있어서
+    /// — 예전에 "Cap이 필드와 헷갈린다" 신고로 Cap에 배경을 준 적이 있다).</summary>
+    public static void AddFramedZoneBackground(RectTransform rt, Color fill, Color border, int borderWidth = 4)
     {
-        float h = Mathf.Max(iconSize, fontSize + 10f);
-        var chip = MakeRect("MoneyChip", parent, new Vector2(width, h), pos);
-
-        var icon = new GameObject("Coin", typeof(RectTransform));
-        icon.transform.SetParent(chip, false);
-        var iconRT = icon.GetComponent<RectTransform>();
-        iconRT.anchorMin = iconRT.anchorMax = new Vector2(0f, 1f);
-        iconRT.pivot = new Vector2(0f, 1f);
-        iconRT.sizeDelta = new Vector2(iconSize, iconSize);
-        iconRT.anchoredPosition = new Vector2(0f, -(h - iconSize) * 0.5f);
-        var iconImg = icon.AddComponent<Image>();
-        // 2026-08-18: "Kenney board-game-icons 팩의 매칭되는 아이콘으로
-        // 교체" 요청 — 절차적 동전 그림보다 실제 아트(dollar.png)를
-        // 우선한다. 못 찾으면(리소스 미배치 등) 기존 절차적 동전으로 폴백.
-        var dollarSprite = Resources.Load<Sprite>("UI/KenneyBoard/dollar");
-        iconImg.sprite = dollarSprite != null ? dollarSprite : HwatuShapes.CoinIcon();
-        iconImg.raycastTarget = false;
-
-        var labelGo = new GameObject("Label", typeof(RectTransform));
-        labelGo.transform.SetParent(chip, false);
-        var labelRT = labelGo.GetComponent<RectTransform>();
-        labelRT.anchorMin = labelRT.anchorMax = new Vector2(0f, 1f);
-        labelRT.pivot = new Vector2(0f, 1f);
-        labelRT.sizeDelta = new Vector2(width - iconSize - 8f, h);
-        labelRT.anchoredPosition = new Vector2(iconSize + 8f, 0f);
-        var label = labelGo.AddComponent<TextMeshProUGUI>();
-        label.font = Font;
-        label.fontSize = fontSize;
-        label.color = new Color(1f, 1f, 1f, 0.95f);
-        label.alignment = TextAlignmentOptions.MidlineLeft;
-        label.textWrappingMode = TextWrappingModes.NoWrap;
-        return label;
+        var img = rt.gameObject.AddComponent<Image>();
+        img.sprite = HwatuShapes.RoundedRectBordered(96, 20, borderWidth, fill, border);
+        img.type = Image.Type.Sliced;
+        img.color = Color.white; // 색은 이미 스프라이트에 구워져 있다 — 틴트하면 프레임/채움 대비가 죽는다
+        img.raycastTarget = false;
     }
 
-    // ── 공용 팝업(딤+패널) ───────────────────────────────
-    /// <summary>전체화면 딤(반투명 검정 배경) — 모든 팝업의 공용 바탕. 반드시
-    /// <paramref name="canvasRoot"/>(Canvas 바로 밑, GameUI 프리팹의 Overlay와
-    /// 같은 층)에 붙여야 한다. ContentArea 밑에 붙이면 게임오버 Overlay가
-    /// Canvas 자식 중 나중 순번이라 항상 그 위를 덮어버린다("점수 상세가
-    /// 오버레이 뒤에 가려지는" 부류의 버그 — 이 함수로 통일해서 구조적으로
-    /// 막는다). 뒤 화면 클릭을 막기 위해 raycastTarget은 항상 켜져 있고,
-    /// 기본은 숨김 상태로 만들어진다.</summary>
-    public static RectTransform MakeModalDim(RectTransform canvasRoot, string name, float alpha = 0.6f)
-    {
-        var go = new GameObject(name + "Dim", typeof(RectTransform));
-        go.transform.SetParent(canvasRoot, false);
-        var dim = go.GetComponent<RectTransform>();
-        // 캔버스 전체(1080×1920)를 덮어야 한다 — ContentArea 높이(964)로 고정
-        // 크기를 줬던 예전 버전은 딤이 화면 위쪽 절반만 덮고 아래는 안 가려져
-        // "어정쩡하게 뜬다"는 신고를 받았다. stretch 앵커로 부모(canvasRoot)
-        // 크기에 자동으로 맞춘다 — 하드코딩된 해상도 값에 안 기댄다.
-        dim.anchorMin = Vector2.zero;
-        dim.anchorMax = Vector2.one;
-        dim.offsetMin = Vector2.zero;
-        dim.offsetMax = Vector2.zero;
-        var dimImg = go.AddComponent<Image>();
-        dimImg.color = new Color(0f, 0f, 0f, alpha);
-        dimImg.raycastTarget = true;
-        go.SetActive(false);
-        return dim;
-    }
-
-    /// <summary>딤 위에 얹는 둥근 사각 패널 — "가운데 뜨는 대화상자" 팝업(흔들기
-    /// 확인·9월 열끗 선택·참가 선언·점수 상세 등)에서 쓴다. 화투장을 늘어놓고
-    /// 보여주기만 하는 연출용 팝업(선 뽑기·광판다 결과)은 패널 없이
-    /// <see cref="MakeModalDim"/> 위에 바로 내용을 올린다.</summary>
-    public static RectTransform MakeModalPanel(RectTransform dim, string name, Vector2 size, Vector2 pos)
-    {
-        var panel = MakeRect(name, dim, size, pos);
-        var panelImg = panel.gameObject.AddComponent<Image>();
-        panelImg.sprite = HwatuShapes.RoundedRect(64, 16);
-        panelImg.type = Image.Type.Sliced;
-        panelImg.color = new Color(0.13f, 0.16f, 0.30f, 0.98f);
-        return panel;
-    }
 
     /// <summary><c>Assets/Resources/Prefabs/GoStop/Popups/</c>의 팝업 프리팹을
     /// 불러와 canvasRoot 밑에 인스턴스화하고 그 컴포넌트를 돌려준다. 2인/4인이
     /// 같은 프리팹을 공유하는 경우(흔들기·9월열끗·필드선택·점수상세)가 많아
     /// 공용 헬퍼로 뽑았다 — 반드시 canvasRoot(Canvas 바로 밑, Overlay와 같은
-    /// 층)에 붙여야 한다(<see cref="MakeModalDim"/>과 같은 이유).</summary>
+    /// 층)에 붙여야 한다(다른 게임 오버레이에 가려지지 않도록).</summary>
     public static T InstantiatePopup<T>(string prefabName, Transform canvasRoot) where T : Component
     {
         var prefab = Resources.Load<GameObject>("Prefabs/GoStop/Popups/" + prefabName);

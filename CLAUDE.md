@@ -8629,3 +8629,153 @@ Portfolio 저장소(`github.com/yonguenp/Portfolio`)가 GitHub Pages로 이미
 매번 리빌드해서 올리는 대신, **배포는 별도 저장소(Portfolio)의 별도
 폴더로 나가고, 이 프로젝트 저장소엔 소스만 남긴다**는 원칙을 지키기
 위해서다.
+
+## 고스톱 4인판 — 필드 카드를 pos1~12 마커에 attach + 슬램다운 애니메이션
+버그 3종 (2026-09-02)
+
+"필드에 드랍되는 카드들을 각 pos에 attach시키고 싶다, pos는 항상 고정,
+moveTo 포지션 대신 타겟의 transform 위치로 이동"이라는 요청으로 필드 카드
+렌더링 방식을 바꿨다 — 예전엔 매턴 필드 컨테이너를 통째로
+`ClearChildren`하고 좌표 값(Vector2)만 캐싱해 다시 그렸는데, 이제
+`fieldArea/pos1~12` 마커 12개를 **영원히 고정**해 두고 카드는 그
+자식으로만 attach/detach한다.
+
+- `fieldPosSlots[13]`(RectTransform 참조 캐싱, `CacheFieldPosSlots()`가
+  씬의 `pos1~12`를 한 번만 찾아둔다) + `fieldSlotAssign`
+  (Dictionary&lt;HwatuCard,int&gt;, 카드→슬롯 번호 메모이제이션).
+  `AssignFieldSlot(card)` — 같은 달 카드는 같은 슬롯을 공유(뻑 무더기가
+  한 자리에 쌓이게), 다른 달은 빈 슬롯을 새로 배정한다.
+  `ClearFieldPosSlots()`(신규)는 마커 자체는 안 건드리고 각 pos의
+  **자식만** 지운다 — `RebuildUI()`/`ClearBoardForDealing()` 둘 다 기존
+  `HwatuUI.ClearChildren(fieldArea)` 호출을 이걸로 교체했다.
+- `FieldCards`(필드 컨테이너)에 붙어 있던 `StripStrayLayoutGroup` 호출을
+  뺐다 — 사용자가 GridLayoutGroup을 직접 걸어 pos1~12를 자동 정렬하고
+  싶어해서, 이 컨테이너만 예외로 남긴다. **다른 재사용 컨테이너
+  (Cap 존·StatusBox·Back/Cap 슬롯)의 `StripStrayLayoutGroup`은 그대로
+  전부 유지** — 공유 헬퍼 하나를 통째로 비활성화했다가 Cap 존이
+  `NullReferenceException`으로 깨진 적이 있어서(아래 버그 1과는 별개
+  사건), 딱 필드 하나에만 좁혀서 제외했다.
+
+### 버그 1 — 판을 거듭하면 AI가 멈춘다 (진짜 원인은 예외로 죽는 코루틴)
+
+"판을 연속으로 진행하면 AI가 멈춰서 게임이 진행 안 되는 케이스가
+왕왕있음" 신고. 재현: 리플렉션으로 `NewGame()`을 반복 호출하며 스트레스
+테스트하니 두 번째 이후의 `NewGame()`마다 `newGameStarting=True`인 채
+영원히 멈췄다. 콘솔에서 정확히 그 시점의 예외를 찾았다:
+
+```
+NullReferenceException: Object reference not set to an instance of an object
+GoStop3PGame.EnsureCapLayoutHierarchy (...) (GoStop3PGame.UI.cs:1559)
+GoStop3PGame.DrawAiCaptured (...) 
+GoStop3PGame.RebuildUI ()
+GoStop3PGame+<NewGameSeq>d__258.MoveNext ()
+```
+
+`ClearBoardForDealing()`이 새 판 시작 때 획득패(Cap) 존의 **자식만**
+지우고(`HwatuUI.ClearChildren`) `HorizontalLayoutGroup` 컴포넌트 자체는
+그대로 뒀다. 다음 `RebuildUI()`에서 `EnsureCapLayoutHierarchy`가 이
+상태("자식 없음, HLG는 있음")를 못 구분하고 "처음부터 새로 짜는" 분기로
+빠져 `AddComponent&lt;HorizontalLayoutGroup&gt;()`을 **또** 불렀는데,
+`LayoutGroup` 계열은 `[DisallowMultipleComponent]`라 Unity가 추가를
+거부하고 `null`을 돌려줘서 바로 다음 줄(`hlg.spacing = 0f`)에서
+NRE가 났다.
+
+이 예외가 `NewGameSeq()` 코루틴 한복판에서 터지면 코루틴 자체가 죽어서
+맨 끝의 `newGameStarting = false`까지 못 간다 — 그래서 두 번째 이후
+판마다 게임이 영원히 멈췄다. 고침: `existingHlg != null`이면 새로
+`AddComponent` 하지 않고 **그 컴포넌트를 그대로 재사용**한다.
+
+```csharp
+var hlg = existingHlg != null ? existingHlg : container.gameObject.AddComponent<HorizontalLayoutGroup>();
+```
+
+**검증.** 수정 전: 리플렉션으로 `NewGame()`을 반복 호출하며 판을 20~40회
+진행 → 두 번째 `NewGame()`에서 정확히 재현(`newGameStarting` 영원히
+`True`). 수정 후: 같은 스트레스 테스트를 105라운드·`NewGame()` 5회
+완주까지 돌려도 재현 안 됨, 콘솔 에러 0건.
+
+> **함정 — 자동화 스크립트가 어떤 팝업을 답 안 해줬는지 늘 의심할 것.**
+> 이 조사 도중 "새로운 freeze"처럼 보인 경우가 두 번 더 나왔는데, 둘 다
+> 진짜 버그가 아니라 **테스트 스크립트가 안 다루는 팝업**(2·3번째 참가
+> 선언 `declarePopup`, 필드 2장 선택 `fieldChoicePopup`)이 정상적으로
+> 응답을 기다리고 있던 것뿐이었다 — `pendingXxx` 필드를 직접 채워보니
+> 즉시 풀렸다. **`newGameStarting`/`actionBusy` 같은 플래그가 안 풀릴 때는
+> 먼저 모든 popup 필드의 `activeSelf`를 확인해서 "합법적으로 기다리는
+> 중"인지부터 가려낼 것** — 예외 로그가 없으면(이 프로젝트가 이미 여러
+> 번 쓴 방법) 진짜 코드 버그가 아니라 이쪽일 확률이 높다.
+
+### 버그 2 — 매칭 안 되는 패가 빈 슬롯에 놓일 때 깜빡임
+
+고스트 카드(`SpawnGhostCard`)가 이미 최종 위치까지 슬램다운(임팩트
+플래시+펀치 스케일 1→1.28→1)을 끝내고 사라지는데, `DrawField()`가 그
+직후 그리는 "진짜" 카드가 **같은 자리에서 `SlamIn`을 또 재생**하고
+있었다 — 도착 지점이 이미 똑같은데도 무조건 애니메이션을 돌리는 게
+원인. `DrawField()`에 거리 체크를 추가해 실제 이동이 없으면(등록된
+`flyFrom`이 카드의 최종 위치와 거의 같으면) `SlamIn` 자체를 건너뛴다.
+
+```csharp
+if (flyFrom.TryGetValue(c, out var from))
+{
+    var finalPos = (go.transform as RectTransform).position;
+    if ((finalPos - from).sqrMagnitude > 1f)
+        StartCoroutine(SlamIn(go.transform as RectTransform, from));
+}
+```
+
+이 수정은 부수적으로 **"카드가 잠깐 아래로 쏠려 보인다"**는 신고도 같이
+해결했다 — 카드 피벗이 top-center라 펀치 스케일이 커질 때 아랫변만
+아래로 부푸는데, 같은 자리에서 두 번 연달아 재생되니 그 쏠림이 두 배로
+도드라졌던 것. 애니메이션이 한 번만 재생되면 이 증상도 사라진다.
+
+### 버그 3 — 그런데도 여전히 "잠깐 아래로 이동했다 원위치"가 남아있었다
+
+버그 2를 고친 뒤에도 사용자가 "매칭 안 되는 패가 슬램다운될 때 카드가
+아랫쪽으로 잠깐 이동했다가 다시 원래대로 돌아온다"고 재신고 — 버그 2의
+거리 체크가 있는데도 왜 애니메이션이 여전히 걸리는지 원인을 다시 팠다.
+
+`PlaySeq`의 "매칭 없음" 분기가 `flyFrom[card]`에 등록하는 값 자체가
+**틀려 있었다**:
+
+```csharp
+var target = FieldSlotTransform(card);
+landing = target.position;   // 버그 — pos 마커 자체의 피벗 좌표
+ghost = SpawnGhostCard(card, target);
+```
+
+`target.position`은 pos 마커의 **자기 피벗**(보통 center) 좌표인데,
+고스트/실제 카드는 `HwatuUI.MakeCard`가 top-center 피벗+오프셋으로
+그 마커의 자식에 배치하므로 실제 렌더 위치와 다르다 — 리플렉션으로
+직접 재보니 **92px**나 차이났다(pivot 차이(Y) + 슬롯 내 스택
+오프셋(X)이 겹친 값). 그래서 버그 2의 거리 체크(`sqrMagnitude > 1f`)가
+"실제로 이동했다"고 오판해 매번 애니메이션을 걸었던 것 — 버그 2 자체는
+정확했지만, 비교 대상인 `flyFrom` 값이 애초에 잘못 등록되고 있었다.
+
+고침: `landing`을 마커의 좌표가 아니라 **고스트가 실제로 놓인 자리**
+(`ghost.transform.position`, `SpawnGhostCard` 호출 직후 값)로 바꿨다 —
+이 값은 `DrawField()`가 나중에 "진짜" 카드를 그릴 때 쓰는 것과 완전히
+동일한 `HwatuUI.MakeCard(card, target, offset, ...)` 호출로 계산되므로
+구조적으로 항상 일치한다. 같은 패턴(`target.position`을 landing/flyFrom에
+직접 쓰는 것)이 `PlaySeq` 안에 4곳 더 있어서 전부 같이 고쳤다(폭탄
+3장 중 매칭 없는 낱장, 손패 매칭 없음, 뒷패 조커, 뒷패 매칭 없음).
+
+**검증.** `SpawnGhostCard(card, target)`을 리플렉션으로 직접 호출해
+`ghost.transform.position`과 `target.position`의 diff를 실측(92.2px,
+버그 재현), 수정 후 코드 리뷰로 landing이 `ghost.transform.position`을
+쓰도록 바뀐 것 확인 + 실제 플레이 40라운드 회귀 테스트(콘솔 에러 0건)로
+마무리했다.
+
+> **교훈 — "같은 자리인지" 판정 코드를 넣기 전에, 비교 대상 두 값이
+> 애초에 같은 좌표계·같은 기준점을 쓰는지부터 의심할 것.** 버그 2에서
+> 거리 체크라는 올바른 방향의 수정을 넣었는데도 신고가 재발한 이유는
+> 정작 비교 대상 중 하나(`flyFrom`에 등록된 값)가 "카드의 실제 렌더
+> 위치"가 아니라 "그 카드가 속한 컨테이너 마커 자체의 피벗 좌표"라는,
+> 미묘하지만 완전히 다른 값이었기 때문이다. 이 프로젝트에 이미 여러 번
+> 기록된 "부모 피벗과 자식 피벗이 다르면 `rt.position = target.position`
+> 직접 대입이 어긋난다"는 함정과 같은 뿌리 — 이번엔 대입이 아니라
+> "나중에 비교할 값을 기록해두는" 코드에서 같은 함정을 밟았다.
+
+리플렉션 스트레스 테스트 방법(참고용) — 팝업 4종(참가 선언·선 뽑기·
+필드 선택·9월 열끗)을 전부 자동으로 넘겨주는 폴링 루프를 bash `for`
+로 짜고, 매 반복마다 `state`/`currentSeat`를 읽어 내 턴이면
+`OnPlayerPlay`, GoStopChoice면 스톱, GameOver면 `NewGame()`을 자동
+호출했다 — bash 2분 타임아웃에 걸리지 않도록 30~40라운드씩 나눠 돌렸다.

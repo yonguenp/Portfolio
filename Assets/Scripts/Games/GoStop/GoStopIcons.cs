@@ -197,7 +197,7 @@ public static class GoStopIcons
 
         var txt = HwatuUI.MakeLabel(rt, Vector2.zero, new Vector2(size, size), size * 0.5f, fg);
         txt.text = label;
-        txt.fontStyle = FontStyles.Bold;
+        txt.font = HwatuTheme.FontBold; // 합성 볼드 대신 실제 Bold 웨이트 폰트(목업 원칙)
         txt.alignment = TextAlignmentOptions.Center;
         txt.rectTransform.anchorMin = Vector2.zero;
         txt.rectTransform.anchorMax = Vector2.one;
@@ -236,7 +236,7 @@ public static class GoStopIcons
         labelTxt.text = $"[{label}]";
         labelTxt.fontSize = 15f;
         labelTxt.color = new Color(1f, 1f, 1f, 0.9f);
-        labelTxt.fontStyle = FontStyles.Bold;
+        labelTxt.font = HwatuTheme.FontBold;
         labelTxt.alignment = TextAlignmentOptions.Center;
 
         for (int i = 0; i < maxCount; i++)

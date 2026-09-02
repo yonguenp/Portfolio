@@ -266,12 +266,25 @@ public partial class GoStop3PGame : MonoBehaviour
     // 이 환경(Editor 샌드박스)은 Screen.orientation 변경이 실제로
     // 반영되지 않아 실측 검증이 불가능했다 — 아래 숫자는 선언한 참조
     // 해상도 기준 계산값이고, 최종 확인은 실기기가 필요하다.
-    const float FIELD_W = 140f, FIELD_H = 160f;
-    const float HAND_W = 107f, HAND_H = 174f;   // 하단 내 손패(사용자 확인 값)
-    const float CAP_W = 62f, CAP_H = 86f;       // 내 획득패(하단)
-    const float CAP_PITCH = 34f;
-    const float CAP_AI_W = 44f, CAP_AI_H = 59f; // 상대 획득패(상/좌/우 공통)
-    const float CAP_AI_PITCH = 28f;
+    // 2026-08-27(목업 정확히 일치) — 목업 FieldCards 실측값은 120×160이다.
+    // 예전 140×160은 FIELD_COL_PITCH(133)보다 커서 인접한 달의 카드끼리
+    // 살짝 겹치고 있었다(140>133) — 120으로 줄이면 그 겹침도 같이 없어진다.
+    // 2026-09-01(SampleCard 비율 반영) — 씬의 SampleCard(120×196, w/h≈0.6122)를
+    // 실측 기준으로 삼는다. 폭은 그대로 두고(가로 그리드 피치가 폭 기준으로
+    // 이미 촘촘히 튜닝돼 있어서 폭을 건드리면 회귀 위험이 크다) 높이만
+    // W/0.6122로 다시 맞췄다 — FIELD는 W가 이미 120이라 새 H(196)가
+    // SampleCard와 정확히 같아진다.
+    const float FIELD_W = 120f, FIELD_H = 196f;
+    // 2026-09-01: "손패가 좀 작다" 요청으로 1.2배 확대(107×175 → 128×210,
+    // 두 축을 같은 배율로 키워서 비율은 그대로 유지된다).
+    const float HAND_W = 128f, HAND_H = 210f;
+    // 2026-08-27(목업 정확히 일치) — 목업(GoStopOrientalMockupBuilder.CapStack)은
+    // 내 획득패·상대 획득패 구분 없이 항상 같은 30×42 카드를 쓴다. 예전엔
+    // 각자 다른 크기(62×86 / 44×59)였는데 이제 하나로 통일한다 — Cap 카드
+    // 렌더링이 GridLayoutGroup.cellSize로 넘어가면서(EnsureCapLayoutHierarchy
+    // 참고) 이 상수가 사실상 "그리드 셀 크기" 그 자체가 됐다.
+    const float CAP_W = 30f, CAP_H = 49f; // 2026-09-01: 높이만 SampleCard 비율(120:196)로 재계산
+    const float CAP_AI_W = CAP_W, CAP_AI_H = CAP_H; // 점수 상세 팝업 등 옛 호출부 호환용 별칭
     // 2026-08-20: 손패 7장이 Back 컨테이너 폭을 넘치는 문제를 처음엔
     // BACK_W(34→18)를 줄여서 고쳤는데, "뒷패가 일그러진다"는 신고로
     // 원인을 찾아보니 카드 뒷면의 9-slice 테두리(HwatuShapes.RoundedRect,
@@ -282,13 +295,37 @@ public partial class GoStop3PGame : MonoBehaviour
     // 같은 달 카드를 부채처럼 겹쳐 쌓는 것과 같은 원리. 실제 겹침 간격은
     // GoStop3PGame.UI.cs의 RebuildUI가 Back 컨테이너의 실제 폭에서
     // 매번 계산한다(사용자가 씬에서 폭을 넓히면 자동으로 안 겹치게 벌어짐).
-    const float BACK_W = 34f, BACK_H = 48f;
-    const float PILE_W = 100f, PILE_H = 180f; // 사용자 확인 값 — 카드 이미지 좌우 여백을 감안해 축소
-    const float CAP_ROW_PITCH = 100f; // 내 획득패 2줄 예산 — CAP_H(86)보다 살짝 커야 안 겹친다
+    // 2026-08-27(목업 정확히 일치) — 목업 Seat_Top_Back의 카드 크기가
+    // 46×64였다(Seat_Left/Right_Back은 여기서 0.85배만 축소해 쓰는데,
+    // 이 프로젝트는 좌/우/상단 카드를 하나로 통일해서 그 축소는 생략했다
+    // — 시각 차이가 미미하고 상수 하나로 코드가 더 단순해진다).
+    // 2026-09-01: 높이만 SampleCardBack 비율(120:196)로 재계산(46*196/120≈75).
+    const float BACK_W = 46f, BACK_H = 75f;
+    // Back 컨테이너 자체의 높이 — 카드보다 살짝 크게 잡아서 위아래로 3px씩
+    // 숨쉴 틈을 준다(카드 75 + 여백 6 = 81). 카드 크기(BACK_W/H)와 분리해
+    // 둬야 컨테이너만 따로 조정해도 카드 비율은 안 깨진다.
+    const float BACK_CONTAINER_H = 81f;
+    // 2026-09-01: "PileLayer들 크기 120,196으로" 요청 — SampleCard와 완전히
+    // 같은 크기로 통일(더 이상 별도 비율 계산 아님).
+    const float PILE_W = 120f, PILE_H = 196f;
 
     RectTransform fieldArea, drawPileArea, handArea, playerCapArea;
     RectTransform[] backArea = new RectTransform[SEATS_MAX];   // [0] 안 씀(플레이어는 실물 손패)
     RectTransform[] capAreaAI = new RectTransform[SEATS_MAX];  // [0] 안 씀(플레이어는 playerCapArea)
+
+    // 2026-09-01: "깔린 패는 pos1~12 중 빈 자리에" 요청 — 씬에 미리 박아둔
+    // pos1~pos12(FieldCards 밑) 마커를 참조하고, 카드마다(월 무관) 가장
+    // 낮은 번호의 빈 슬롯을 배정한다. GoStopIcons/GoStopRules 등 규칙
+    // 판정 로직은 여전히 월 기준이라 전혀 안 건드린다 — 이건 순수하게
+    // "그 카드를 화면 어디에 그릴지"만 담당하는 별도 레이어다.
+    // <br/>
+    // 2026-09-02 정정: "카드를 각 pos에 attach시키고 싶다"는 요청으로
+    // pos1~12를 RebuildUI가 더 이상 지우지 않게 바꿨다(ClearFieldPosSlots
+    // 참고 — 마커 자체는 영구 고정, 그 자식으로 붙은 카드만 지운다) —
+    // 그래서 이제 값(Vector2)이 아니라 RectTransform 참조를 그대로
+    // 캐싱해도 안전하다(예전엔 매턴 파괴되는 자식이라 값만 남겨야 했다).
+    RectTransform[] fieldPosSlots = new RectTransform[13]; // [1..12] 사용, [0]은 안 씀
+    readonly Dictionary<HwatuCard, int> fieldSlotAssign = new Dictionary<HwatuCard, int>();
     // 2026-08-18: "정보슬롯을 쫌스럽게 쓰지 말고 닉네임 한줄·고점수 한줄·
     // 금액·상태 아이콘 한줄로 넓고 크게" 요청으로 한 줄짜리 statusText를
     // 4단으로 나눴다(이름 위주 statusText는 유지하고 이름으로 그대로 씀,
@@ -485,7 +522,7 @@ public partial class GoStop3PGame : MonoBehaviour
                 if (state != State.GameOver)
                 {
                     state = State.GameOver;
-                    ui?.ShowOverlay(new Color(.8f, .35f, .3f), "연결 끊김", "-",
+                    ui?.ShowOverlay(HwatuTheme.HwatuRed, "연결 끊김", "-",
                         string.IsNullOrEmpty(msg.text) ? "이번 판이 종료됐습니다." : msg.text,
                         "타이틀", GoToTitle);
                 }
@@ -581,7 +618,7 @@ public partial class GoStop3PGame : MonoBehaviour
                 goStopOverlayShown = true;
                 int rawScore = GoStopRules.CalcScore(captured[PLAYER_SEAT], sweeps[PLAYER_SEAT]).Total;
                 int displayScore = rawScore + goCount[PLAYER_SEAT];
-                ui?.ShowOverlay(new Color(.93f, .73f, .18f), $"{displayScore}점 달성!", displayScore.ToString(),
+                ui?.ShowOverlay(HwatuTheme.Gold, $"{displayScore}점 달성!", displayScore.ToString(),
                     "고 하시겠습니까, 스톱 하시겠습니까?", "고", OnPlayerGo, "스톱", OnPlayerStop);
             }
         }
@@ -691,7 +728,7 @@ public partial class GoStop3PGame : MonoBehaviour
 
         int winnerSeat = snap.gameOverWinnerSeat;
         string title = winnerSeat == PLAYER_SEAT ? "승리!" : $"{SeatName(winnerSeat)} 승리";
-        Color col = winnerSeat == PLAYER_SEAT ? new Color(.93f, .73f, .18f) : new Color(.55f, .55f, .60f);
+        Color col = winnerSeat == PLAYER_SEAT ? HwatuTheme.Gold : new Color(.55f, .55f, .60f);
         string sub = snap.gameOverDokbakSeat >= 0
             ? $"{SeatName(snap.gameOverDokbakSeat)} 독박 · 내 머니 {money[PLAYER_SEAT]:N0}원"
             : $"내 머니 {money[PLAYER_SEAT]:N0}원";
@@ -822,7 +859,7 @@ public partial class GoStop3PGame : MonoBehaviour
     {
         if (state == State.GameOver) return;
         state = State.GameOver;
-        ui?.ShowOverlay(new Color(.8f, .35f, .3f), "연결 끊김", "-",
+        ui?.ShowOverlay(HwatuTheme.HwatuRed, "연결 끊김", "-",
             "호스트와의 연결이 끊어졌습니다.", "타이틀", GoToTitle);
     }
 
@@ -888,7 +925,7 @@ public partial class GoStop3PGame : MonoBehaviour
         ui?.SetNewGameAction(isNetworkGuest ? (System.Action)null : NewGame);
         ui?.SetTitle(isNetworkHost || isNetworkGuest ? "고스톱 (네트워크)" : SeatCountTitle());
         ui?.SetBest(PlayerPrefs.GetInt(BestKey, 0));
-        ui?.SetBackground(new Color(0.282f, 0.373f, 0.255f)); // 2인판과 같은 카드테이블 그린
+        ui?.SetBackground(HwatuTheme.DeepGreen); // 오리엔탈 팔레트 테이블 배경(#24452F)
 
         if (!isNetworkHost && !isNetworkGuest)
         {
@@ -1989,7 +2026,12 @@ public partial class GoStop3PGame : MonoBehaviour
         if (r.captured.Count != 2) return;
         var mover = r.captured[0];
         var hit = r.captured[1];
-        var hitGo = fieldArea.Find(hit.spriteName);
+        // 2026-09-02 버그 수정 — 카드는 이제 fieldArea 직계 자식이 아니라
+        // pos 슬롯의 자식이라(2단 깊이) fieldArea.Find(spriteName)로는 못
+        // 찾는다(Transform.Find는 1단 깊이만 본다 — 항상 null을 돌려주고
+        // 있었다). FieldSlotTransform(hit)로 이 카드가 배정받은 슬롯을 바로
+        // 찾아 그 안에서 검색한다.
+        var hitGo = FieldSlotTransform(hit).Find(hit.spriteName);
         if (hitGo != null) flyViaField[mover] = hitGo.position;
     }
 
@@ -2109,14 +2151,6 @@ public partial class GoStop3PGame : MonoBehaviour
         bool wasFirstPlay = !playedFirstHandCard[seat];
         playedFirstHandCard[seat] = true;
 
-        // 2026-08-25 버그 수정 — "손패는 여전히 오프셋 없이 나온다" 신고.
-        // GoStopRules.Resolve가 매칭된 필드 카드를 곧바로 field에서
-        // Remove해버리므로(캡처를 실제로 커밋하기 전인데도), r1을 계산한
-        // 뒤에 field를 다시 조회하면 이미 매칭 카드가 사라져 있어 "매칭
-        // 없음"으로 잘못 판정됐다. Resolve를 부르기 *전에* 미리 스냅샷을
-        // 떠 둔다 — 이 값이 "손패가 실제로 마주친 필드 카드 수"의 정답이다.
-        int preTurnCardMonthCount = field.Count(c => c.month == card.month);
-
         var r1 = GoStopRules.ResolveWithBomb(card, h, field, out bool bomb);
 
         // 2026-08-26 정정(사용자 확인) — 쪽/따닥/싹쓸이의 "마지막 턴" 예외는
@@ -2213,50 +2247,111 @@ public partial class GoStop3PGame : MonoBehaviour
         // 먼저, 필드 쪽 매칭 카드가 그 다음"으로 채워진다(손패 쪽 장수는
         // 폭탄이면 3장, 아니면 1장 — GoStopRules.Resolve/ResolveWithBomb의
         // 구성 순서를 그대로 따른 것).
+        // 2026-09-02 버그 수정 — 카드는 이제 fieldArea 직계 자식이 아니라
+        // pos 슬롯의 자식이라(2단 깊이) fieldArea.Find(spriteName)로는 못
+        // 찾는다(Transform.Find는 1단 깊이만 본다 — 항상 null을 돌려줘서
+        // 아래 matchedLanding이 한 번도 못 채워지고 있었다). 이 카드가
+        // 배정받은 슬롯(FieldSlotTransform)에서 바로 찾는다.
         int handSideCount = bomb ? 3 : 1;
         foreach (var fc in r1.captured.Skip(handSideCount))
         {
-            var go = fieldArea.Find(fc.spriteName);
+            var go = FieldSlotTransform(fc).Find(fc.spriteName);
             if (go != null) flyFrom[fc] = go.position;
         }
 
         // --- ① 손패 카드 슬램다운 ---
-        // handLandingWorld는 "그 달 슬롯의 중심"(오프셋 없음). 실제
-        // 고스트는 GhostMatchOffset으로 매칭 시에만 (x+15,y-15) 비켜
-        // 착지한다("필드에 매칭되는 패에 완벽하게 겹쳐서 어색하다" 신고,
-        // 2026-08-25 — 1차로 시도한 부채꼴 공식(±11px)은 "너무 적다"는
-        // 피드백으로 폐기하고 사용자가 직접 지정한 고정 오프셋으로
-        // 바꿨다). handActualLanding(실제 착지 지점, 오프셋 포함)은 뒤이어
-        // ②에서 조커가 나올 때 "손패 필드 포지션"으로 그대로 재사용한다.
-        Vector3 handLandingWorld = FieldSlotWorldPos(card.month);
-        Vector3 handActualLanding = handLandingWorld; // 조커 착지 참조용 — 아래에서 실제 값으로 갱신
+        // 2026-09-01: "깔린 패는 pos1~12 중 빈 자리에 + 애니메이션 싱크"
+        // 요청으로 착지 지점 계산을 FieldSlotWorldPos(카드)로 통일했다 —
+        // 이 함수가 곧 AssignFieldSlot을 거치므로, 여기서 정한 자리와
+        // DrawField가 나중에 실제로 그리는 자리가 절대 어긋날 수 없다
+        // (예전엔 애니메이션은 월 기준 그리드 공식, 실제 렌더링은 다른
+        // 공식을 따로 계산해서 싱크가 안 맞을 수 있었다 — 그 버그의 원인).
+        // GhostMatchOffset(매칭 시 카드끼리 겹쳐 보이지 않게 밀어내던
+        // 고정 오프셋)은 더 이상 필요 없다 — 이제 카드마다 완전히 다른
+        // pos 슬롯을 차지하므로 애초에 겹칠 일이 없다.
+        // 2026-09-02: "moveTo 포지션 대신 타겟의 transform 위치로" 요청으로
+        // 고스트/SlamDown이 계산된 Vector3가 아니라 pos 슬롯 마커
+        // (FieldSlotTransform)를 직접 타겟으로 받는다 — 고스트가 그 마커의
+        // 자식으로 attach되므로 착지 지점이 절대 어긋날 수 없다.
+        Vector3 handActualLanding = FieldSlotWorldPos(card); // 조커 리빌 지점 참조용(Vector3 스냅샷 그대로 필요)
         var handGhosts = new List<GameObject>();
+        // 2026-09-02(사용자 확인) — 매칭된 필드 카드가 있으면 손패 고스트는
+        // 그 카드가 "이미 렌더링된 자리"에서 FIELD_STACK_OFFSET만큼 밀려난
+        // 자리로 내려친다("짝이 맞는 필드패 위로 내려쳐지는" 손맛 —
+        // pos1~12 개별 슬롯 도입 이전부터 있던 의도인데, "카드마다 완전히
+        // 다른 슬롯을 차지한다"는 그 개편 때 실수로 함께 사라졌었다). 처음엔
+        // 정확히 그 위치(오프셋 0)로 내려쳤는데, "매칭 카드 바로 위에
+        // 딱 겹쳐서 떨어지지 말고 FIELD_STACK_OFFSET만큼 떨어진 자리에"
+        // 요청으로 정정 — DrawField가 같은 슬롯의 2번째 카드를 그릴 때
+        // 쓰는 것과 똑같은 오프셋 방향이라, 최종 렌더(뻑으로 이어질 경우)와
+        // 자연스럽게 이어진다. 기준 자리(mp)는 위 flyFrom 등록 루프가 이미
+        // 실측해 둔 값이다(뻑 무더기처럼 여러 장이 겹쳐 쌓인 자리면 그
+        // 겹친 자리 그대로) — 대상 오브젝트가 곧 파괴될 예정이라 Vector3
+        // 스냅샷으로 받는다(살아있는 Transform은 파괴와 동시에 고스트까지
+        // 같이 사라진다). 매칭이 없으면(그냥 필드에 놓이는 경우) 기존처럼
+        // 자기 자신의 새 빈 슬롯(살아있는 pos 마커)을 쓴다. r1.captured는
+        // 항상 "손패 쪽 카드 먼저, 필드 쪽 매칭 카드가 그 다음"이라
+        // Skip(손패 장수)의 첫 항목이 곧 매칭된 필드 카드다.
+        var matchedFieldCard = r1.captured.Skip(handSideCount).FirstOrDefault();
+        Vector3? matchedLanding = null;
+        if (matchedFieldCard != null && flyFrom.TryGetValue(matchedFieldCard, out var mp))
+            matchedLanding = mp + new Vector3(FIELD_STACK_OFFSET, -FIELD_STACK_OFFSET, 0f);
         if (bomb)
         {
             // r1.captured = [card, partner1, partner2, fieldMatch] — 앞 3장이
-            // 손패에서 나온 카드다. 파파팍 — 짧은 간격으로 하나씩 착지한다.
-            // 폭탄은 항상 매칭 상황이라(필드에 그 달 카드 1장 필수) 셋 다
-            // 같은 매칭 오프셋으로 착지 — 조커는 폭탄 턴엔 절대 안 나오므로
-            // (willDraw=false) handActualLanding 갱신은 필요 없다.
-            Vector3 bombLanding = handLandingWorld + (Vector3)GhostMatchOffset(preTurnCardMonthCount);
+            // 손패에서 나온 카드다. 파파팍 — 짧은 간격으로 하나씩, 매칭된
+            // 필드 카드가 있던 바로 그 자리 위로 한꺼번에 몰려든다.
             foreach (var hc in r1.captured.Take(3))
             {
-                var ghost = SpawnGhostCard(hc, bombLanding);
+                GameObject ghost; Vector3 landing;
+                if (matchedLanding.HasValue)
+                {
+                    landing = matchedLanding.Value;
+                    ghost = SpawnGhostCard(hc, landing);
+                    StartCoroutine(SlamDown(ghost.transform as RectTransform, landing));
+                }
+                else
+                {
+                    var target = FieldSlotTransform(hc);
+                    ghost = SpawnGhostCard(hc, target);
+                    // 2026-09-02 버그 수정 — target.position(pos 마커 자체의
+                    // 피벗 좌표, 보통 center)이 아니라 고스트가 실제로 놓인
+                    // 자리(ghost.transform.position, 카드 피벗은 top-center라
+                    // 마커 좌표와 카드 반 장 높이만큼 차이난다)를 landing으로
+                    // 써야 한다 — 안 그러면 나중에 DrawField가 그리는 "진짜"
+                    // 카드(고스트와 동일한 자리에 그려짐)와 flyFrom에 등록된
+                    // 옛 landing이 서로 어긋나서, 실제로는 안 움직인 카드가
+                    // "움직인 것"으로 오판돼 SlamIn이 엉뚱한 지점에서 시작해
+                    // 잠깐 아래로 처졌다가 제자리로 돌아오는 것처럼 보인다.
+                    landing = ghost.transform.position;
+                    StartCoroutine(SlamDown(ghost.transform as RectTransform, target));
+                }
                 handGhosts.Add(ghost);
-                StartCoroutine(SlamDown(ghost.transform as RectTransform));
-                flyFrom[hc] = bombLanding;
+                flyFrom[hc] = landing;
                 yield return new WaitForSeconds(0.07f);
             }
             yield return new WaitForSeconds(0.10f); // 마지막 카드가 실제로 착지할 여유
         }
         else
         {
-            Vector3 landing = handLandingWorld + (Vector3)GhostMatchOffset(preTurnCardMonthCount);
-            handActualLanding = landing;
-            var ghost = SpawnGhostCard(card, landing);
+            GameObject ghost; Vector3 landing;
+            if (matchedLanding.HasValue)
+            {
+                landing = matchedLanding.Value;
+                ghost = SpawnGhostCard(card, landing);
+                yield return StartCoroutine(SlamDown(ghost.transform as RectTransform, landing));
+            }
+            else
+            {
+                var target = FieldSlotTransform(card);
+                ghost = SpawnGhostCard(card, target);
+                // 위 bomb 분기와 같은 이유(2026-09-02) — target.position이 아니라
+                // 고스트가 실제로 놓인 자리를 landing으로 기록한다.
+                landing = ghost.transform.position;
+                yield return StartCoroutine(SlamDown(ghost.transform as RectTransform, target));
+            }
             handGhosts.Add(ghost);
             flyFrom[card] = landing;
-            yield return StartCoroutine(SlamDown(ghost.transform as RectTransform));
         }
 
         // --- ② 뒷패 슬램다운(있다면) ---
@@ -2268,34 +2363,33 @@ public partial class GoStop3PGame : MonoBehaviour
 
             if (drawn.isJoker)
             {
-                // 2026-08-25 2차 정정(사용자 지시) — "뒷패에서 조커가
-                // 나오면 내가 낸 손패 필드 포지션에 일단 놔줘." 필드
-                // 정중앙 고정안은 폐기하고, 방금 낸 손패가 실제로 착지한
-                // 자리(handActualLanding — 매칭이었으면 그 오프셋까지 포함된
-                // 실제 위치)에 그대로 놓는다.
-                Vector3 jokerLanding = handActualLanding;
-                deckGhost = SpawnGhostCard(drawn, jokerLanding);
-                yield return StartCoroutine(SlamDown(deckGhost.transform as RectTransform, dropHeight: 90f));
-                flyFrom[drawn] = jokerLanding;
+                // 조커는 자기만의 pos 슬롯에 착지한다(월이 없어 매칭 개념
+                // 자체가 없다 — ResolveBonusJoker가 곧 즉시 캡처하거나
+                // 뻑에 편입시킨다).
+                var target = FieldSlotTransform(drawn);
+                deckGhost = SpawnGhostCard(drawn, target);
+                // 위 손패 슬램과 같은 이유(2026-09-02) — target.position이
+                // 아니라 고스트의 실제 착지 자리를 flyFrom에 기록한다.
+                flyFrom[drawn] = deckGhost.transform.position;
+                yield return StartCoroutine(SlamDown(deckGhost.transform as RectTransform, target, dropHeight: 90f));
+            }
+            else if (couldBePpeok && drawn.month == card.month)
+            {
+                // 뻑이 형성되는 바로 그 순간 — 뒷패도 방금 손패가 몰려든
+                // 그 자리(3장째)로 겹쳐 쌓인다("뻑나면 3장이 겹쳐있어야"
+                // 요청).
+                var landing = flyFrom[card];
+                deckGhost = SpawnGhostCard(drawn, landing);
+                yield return StartCoroutine(SlamDown(deckGhost.transform as RectTransform, landing));
+                flyFrom[drawn] = landing;
             }
             else
             {
-                // 뒷패가 손패와 같은 달이면(=뻑이 형성될 수 있는 경우) 그
-                // 슬롯엔 이미 "원래 필드 카드 + 방금 착지한 손패" 두 장이
-                // 논리적으로 쌓여 있다 — 손패 쪽은 Resolve가 field에서
-                // 이미 지워버려서 직접 조회로는 안 잡히므로, 손패 계산 때
-                // 미리 떠 둔 preTurnCardMonthCount에 +1(손패 자신)을 더한다.
-                // 다른 달이면(가장 흔한 경우) field가 그 달에 대해서는
-                // 손패 처리로 전혀 안 건드려졌으니 그냥 직접 세면 된다
-                // ("뻑이 날 3번째 패는 오프셋 30,-30이 맞지?" 확인 요청 —
-                // preTurn(1) + 손패(1) = 2장째 → 2×(15,-15) = (30,-30)).
-                int deckStackCount = (drawn.month == card.month && r1.captured.Count > 0)
-                    ? preTurnCardMonthCount + 1
-                    : field.Count(c => c.month == drawn.month);
-                Vector3 slot = FieldSlotWorldPos(drawn.month) + (Vector3)GhostMatchOffset(deckStackCount);
-                deckGhost = SpawnGhostCard(drawn, slot);
-                yield return StartCoroutine(SlamDown(deckGhost.transform as RectTransform));
-                flyFrom[drawn] = slot;
+                var target = FieldSlotTransform(drawn);
+                deckGhost = SpawnGhostCard(drawn, target);
+                // 위와 같은 이유(2026-09-02).
+                flyFrom[drawn] = deckGhost.transform.position;
+                yield return StartCoroutine(SlamDown(deckGhost.transform as RectTransform, target));
             }
         }
 
@@ -2372,16 +2466,17 @@ public partial class GoStop3PGame : MonoBehaviour
 
         if (willDraw)
         {
-            DestroyGhost(deckGhost);
-
             if (drawn.isJoker)
             {
                 // "필드에 방금 나온 패" = 이번에 낸 손패가 매칭 안 돼 그대로
                 // 필드에 남은 경우(r1.captured가 비었으면 card가 필드에 있다)
                 // 그 카드다. 손패가 뭔가를 잡았으면 남은 카드가 없어 겹쳐놓을
                 // 대상이 없다 — 그런 경우엔 즉시 캡처로 단순화한다.
+                // ResolveBonusJoker의 첫 동작이 곧장 RebuildUI라 여기서
+                // 지워도 화면 공백이 없다(동기 구간).
+                DestroyGhost(deckGhost);
                 HwatuCard anchor = r1.captured.Count == 0 ? card : null;
-                yield return StartCoroutine(ResolveBonusJoker(seat, drawn, anchor, cap, isLastHandCard, handLandingWorld));
+                yield return StartCoroutine(ResolveBonusJoker(seat, drawn, anchor, cap, isLastHandCard, handActualLanding));
             }
             else
             {
@@ -2400,14 +2495,24 @@ public partial class GoStop3PGame : MonoBehaviour
                         r2 = chosen2;
                     }
                 }
+                // 2026-09-02(사용자 확인 — "슬램다운 끝나고 필드패 나올 때까지
+                // 텀이 있어서 카드가 깜빡거림") — 고스트 파괴를 여기로 늦췄다.
+                // 예전엔 willDraw 진입 직후(위 선택 팝업이 뜨기도 전에) 미리
+                // 지워서, ContinueChoice가 응답을 기다리는 몇 초 동안 뒷패가
+                // 화면에서 통째로 사라져 있었다 — 결과가 확정된 지금부터는
+                // 바로 아래 RebuildUI가 실제 카드를 그려주므로 여기서 지워야
+                // 공백이 없다.
+                DestroyGhost(deckGhost);
                 if (r2.captured.Count > 0)
                 {
                     // 필드 쪽 매칭 카드의 위치도 손패와 같은 방식으로 미리
                     // 기록해 둔다(뒷패 쪽은 항상 손패 없이 1장이라 handSideCount
-                    // 개념 없이 바로 Skip(1)).
+                    // 개념 없이 바로 Skip(1)). fieldArea.Find 대신
+                    // FieldSlotTransform을 쓰는 이유는 위 r1 루프와 동일
+                    // (카드가 pos 슬롯의 자식이라 1단 깊이 Find로는 못 찾는다).
                     foreach (var fc in r2.captured.Skip(1))
                     {
-                        var go = fieldArea.Find(fc.spriteName);
+                        var go = FieldSlotTransform(fc).Find(fc.spriteName);
                         if (go != null) flyFrom[fc] = go.position;
                     }
 
@@ -2878,7 +2983,7 @@ public partial class GoStop3PGame : MonoBehaviour
         state = State.GoStopChoice;
         pendingGoRawScore = rawScore;
         int displayScore = rawScore + goCount[PLAYER_SEAT]; // 이미 쌓인 고 보너스까지 반영해서 보여준다
-        ui?.ShowOverlay(new Color(.93f, .73f, .18f), $"{displayScore}점 달성!", displayScore.ToString(),
+        ui?.ShowOverlay(HwatuTheme.Gold, $"{displayScore}점 달성!", displayScore.ToString(),
             "고 하시겠습니까, 스톱 하시겠습니까?", "고", OnPlayerGo, "스톱", OnPlayerStop);
 
         // 2026-08-20: 이 함수는 항상 호스트 자신(PLAYER_SEAT)의 결정에서만
@@ -3176,7 +3281,7 @@ public partial class GoStop3PGame : MonoBehaviour
         }
 
         string title = winnerSeat == PLAYER_SEAT ? "승리!" : $"{SeatName(winnerSeat)} 승리";
-        Color col = winnerSeat == PLAYER_SEAT ? new Color(.93f, .73f, .18f) : new Color(.55f, .55f, .60f);
+        Color col = winnerSeat == PLAYER_SEAT ? HwatuTheme.Gold : new Color(.55f, .55f, .60f);
         // "이번 판 얼마를 벌었는지/잃었는지"가 최종 잔액만으론 안 보인다는 요청 —
         // 정산 직전 스냅샷(pendingMoneyBefore) 대비 내 변동을 부호와 함께 보여준다.
         // (파산으로 세션이 끝나는 판은 위에서 이미 전 좌석 money를 리셋했으므로

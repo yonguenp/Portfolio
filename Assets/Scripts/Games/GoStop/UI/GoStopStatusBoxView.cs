@@ -50,6 +50,8 @@ public class GoStopStatusBoxView : MonoBehaviour
     [SerializeField] RectTransform moneyIconRect;
     [SerializeField] TextMeshProUGUI moneyText;
     [SerializeField] RectTransform badgeArea;
+    [SerializeField] TextMeshProUGUI countsText; // "광 X · 멍 Y · 피 Z" — 목업 ScoreRow 우측 칸
+    [SerializeField] GameObject glow; // 2026-09-01: 현재 턴인 유저만 켜는 강조 글로우 — ApplyTurnState 참고
 
     [Header("색상 — 2026-08-24: 기본/현재턴 배경·글자색을 프리팹에서 직접\n조정할 수 있게 SerializeField로 뺐다. 예전엔 GoStop3PGame.FillSlot이\n이 값들을 코드에 직접 박아 넣고 있었다(#1B2244/#EDBA2E 등) — 이제\n이 프리팹을 열어 색만 바꾸면 4개 좌석(상단/좌/우/하단) 전부에\n반영된다. 기본값은 기존 하드코딩 값과 동일하게 맞춰서 색을 아직\n안 바꾼 기존 씬은 시각적으로 그대로다.")]
     [SerializeField] Color normalBgColor = new Color(0.106f, 0.133f, 0.267f, 0.88f);       // #1B2244 계열 — B안 표면색
@@ -76,7 +78,9 @@ public class GoStopStatusBoxView : MonoBehaviour
 
     // GoStop3PGame.BuildInfoBlock이 예전에 쓰던 것과 같은 세로 예산값 —
     // 루트 박스 높이는 여전히 이 값으로 고정한다(폭과 무관).
-    public const float TotalHeight = 102f;
+    // 2026-08-27(목업 정확히 일치) — GoStopOrientalMockup의 Seat_*_StatusBar가
+    // 전부 165 높이였다(예전 102는 목업과 무관한 값).
+    public const float TotalHeight = 165f;
 
     /// <summary>이 박스의 폭만 다시 설정한다. 2026-08-24(3차) — 사용자가
     /// 프리팹 안에 앵커 스트레치(Top/Body)+HorizontalLayoutGroup(Body·
@@ -98,15 +102,46 @@ public class GoStopStatusBoxView : MonoBehaviour
     /// <summary>선(딜러) 여부 — 슬롯 자체는 항상 같은 자리, 표시만 껐다 켠다.</summary>
     public void SetDealer(bool isDealer) => dealerIcon.gameObject.SetActive(isDealer);
 
+    /// <summary>ScoreRow 우측의 "광 X · 멍 Y · 피 Z" 요약 — 목업에 있고 이
+    /// 프리팹엔 빠져 있던 항목이라 새로 추가했다. 피는 장수가 아니라
+    /// EffectivePiValue 합(쌍피=2)으로 넘겨받는다 — 실제 점수 집계와
+    /// 같은 기준이라야 숫자가 의미 있다.</summary>
+    public void SetCounts(int gwang, int meong, int pi)
+    {
+        if (countsText) countsText.text = $"광 {gwang} · 멍 {meong} · 피 {pi}";
+    }
+
+    // 오리엔탈 목업(panel_cream/panel_cream_gold, ui.md §9·§10) 참고 —
+    // "패널이 통째로 골드로 뒤집힌다"에서 "크림 패널은 그대로 두고 테두리만
+    // 얇은 다크그린 → 두꺼운 골드로 바뀐다"로 전환했다. 예전엔 background.color
+    // 를 통째로 solid highlightBgColor로 덮어써서(틴트) 배경이 완전히 다른
+    // 색 블록처럼 보였는데, 이제 normalBgColor(=크림)를 두 상태 다 채움색으로
+    // 쓰고 테두리 색·두께만 바꾼다 — RoundedRectBordered가 채움+테두리를
+    // 한 텍스처에 같이 구우므로 img.color는 흰색으로 고정(틴트하면 그 대비가
+    // 죽는다는 이 프로젝트 공통 원칙). 크기·모서리는 이 컴포넌트 전용으로
+    // 고정(96/20) — Configure가 sizeDelta로 실제 크기를 조절하므로 9-slice
+    // 텍스처 자체는 작아도 된다. HwatuShapes.RoundedRectBordered가 이미
+    // (크기,반경,테두리폭,채움,테두리) 조합별로 캐싱하므로 여기서 따로
+    // 캐시를 둘 필요는 없다.
+    static Sprite PanelSprite(Color fill, Color border, int borderWidth) =>
+        HwatuShapes.RoundedRectBordered(96, 20, borderWidth, fill, border);
+
     /// <summary>배경·이름/고점수/금액 글자색을 기본↔현재턴 강조 상태로
     /// 전환한다. 예전엔 <c>GoStop3PGame.FillSlot</c>이 이 네 색을 직접
     /// 골라 각 컴포넌트에 대입했는데, 이제 이 프리팹의 <see
     /// cref="normalBgColor"/> 등 필드로 색 자체를 디자인하고 이 메서드는
-    /// "지금 어느 상태냐"만 전달받는다. 이름 라벨만 강조 시 볼드로
-    /// 바뀐다(고점수/금액은 굵기 그대로) — 기존 동작과 동일.</summary>
+    /// "지금 어느 상태냐"만 전달받는다.</summary>
     public void ApplyTurnState(bool highlight)
     {
-        if (background) background.color = highlight ? highlightBgColor : normalBgColor;
+        if (glow) glow.SetActive(highlight); // 현재 턴(또는 고/스톱 선택 중)인 유저만 켠다
+        if (!background) return;
+        // normalBgColor는 항상 채움색(크림)으로 쓰고, highlightBgColor는
+        // 강조 시 테두리색(골드)으로 쓴다 — 평소엔 얇고 옅은 다크그린
+        // 테두리, 내 턴엔 두껍고 진한 골드 테두리로 확 눈에 띄게 한다.
+        background.sprite = highlight
+            ? PanelSprite(normalBgColor, highlightBgColor, 7)
+            : PanelSprite(normalBgColor, HwatuTheme.DarkGreen, 3);
+        background.color = Color.white; // 색은 스프라이트에 이미 구워져 있다
     }
 
     /// <summary>이 좌석이 이번 판 배지 표시 대상이 아닐 때(쉬는 좌석, 빈
@@ -143,7 +178,8 @@ public class GoStopStatusBoxView : MonoBehaviour
     }
 
     // 꺼진 상태 공통 색 — GoStop3PGame.BadgeDimBg/BadgeDimFg와 동일한 값
-    // (그 상수들은 이제 이 컴포넌트가 대신 들고 있다).
-    public static readonly Color DimBg = new Color(0.106f, 0.133f, 0.267f, 0.95f); // #1B2244 계열 — B안 표면색
-    public static readonly Color DimFg = new Color(1f, 1f, 1f, 0.62f);
+    // (그 상수들은 이제 이 컴포넌트가 대신 들고 있다). 오리엔탈 팔레트로
+    // 통일 — 크림 배경 위에서 짙은 텍스트가 보이도록 DimFg도 뒤집었다.
+    public static readonly Color DimBg = HwatuTheme.WarmCream;
+    public static readonly Color DimFg = new Color(HwatuTheme.TextSecondary.r, HwatuTheme.TextSecondary.g, HwatuTheme.TextSecondary.b, 0.7f);
 }
