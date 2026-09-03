@@ -1695,14 +1695,26 @@ public partial class GoStop3PGame
     /// <paramref name="weighted"/>는 피 존 전용 — GridLayoutGroup은 "장수"만
     /// 세고 피 값(쌍피=2)을 모르므로 그냥 두면 줄마다 무조건 5장이 된다.
     /// 보이지 않는 필러 칸으로 그리드가 쌍피를 "2칸짜리"로 착각하게
-    /// 만든다 — 쌍피 1장이면 그 줄은 4장(2+1+1+1=5피), 쌍피 2장이면
-    /// 3장(2+2+1=5피)이 된다.
-    /// <br/>2026-09-03(사용자 확인) — 필러를 그 쌍피 카드 바로 뒤가 아니라
-    /// **그 줄의 오른쪽 끝**에 모아서 둔다(카드들 사이에 안 끼어 있게).
-    /// 그래서 카드 하나씩 바로바로 그리는 대신, 먼저 "이번 줄에 들어갈
-    /// 카드들"을 weight 합이 5를 넘기 전까지 모았다가 한 줄 분량이 차면
-    /// (`FlushRow`) 그 줄의 실제 카드 전부를 먼저 그리고 그 다음에
-    /// 그 줄이 필요로 하는 필러 개수만큼 이어서 그린다.
+    /// 만든다. 필러는 그 줄의 오른쪽 끝에 모아서 둔다(카드들 사이에 안
+    /// 끼어 있게) — 먼저 "이번 줄에 들어갈 카드들"을 weight 합이 5가
+    /// 될 때까지 모았다가 한 줄 분량이 차면(`FlushRow`) 그 줄의 실제
+    /// 카드 전부를 먼저 그리고 그 다음에 그 줄이 필요로 하는 필러
+    /// 개수만큼 이어서 그린다.
+    /// <br/>2026-09-03(사용자 확인) — <b>줄이 어중간하게 안 차는 걸
+    /// 최대한 피한다.</b> 예: 홑피 4장+쌍피 1장을 순서대로 넣으면(홑피가
+    /// 먼저 4장 쌓여 weight=4) 쌍피(weight2)가 그대로는 4+2=6으로
+    /// 넘친다 — 이때 그냥 새 줄을 시작하면 "홑피만 4장인 줄"과 "쌍피
+    /// 혼자인 줄"로 갈라져 점수 계산 시 헷갈린다는 지적을 받았다. 이
+    /// 게임의 피 값은 1(홑피)·2(쌍피)뿐이라 <b>이 오버플로는 수학적으로
+    /// 항상 "줄이 정확히 4, 새 카드가 쌍피(2)"인 경우뿐</b>이다(0~3에
+    /// 1이나 2를 더하면 항상 5 이하라 절대 안 넘친다) — 그래서 그 줄의
+    /// 마지막 카드가 홑피(weight1)면 그 한 장만 빼서 쌍피를 대신
+    /// 넣으면 정확히 5가 된다. 뺀 홑피는 다음 줄 맨 앞으로 넘긴다
+    /// (순서 보존 — "먼저 가져온 순으로" 원칙을 최대한 지키면서 딱
+    /// 한 장만 밀려난다). 줄 마지막이 쌍피라 뺄 수 없으면(빼도 2가
+    /// 남아 정확히 안 맞음 — 애초에 홀수 weight를 짝수 카드로는 못
+    /// 채운다) 줄을 있는 그대로(4/5) 닫는다 — 수학적으로 더 나은
+    /// 방법이 없는 경우다.
     /// <br/>필러는 카드에 붙어 따라다닐 필요가 없다 — 이 함수가 매
     /// RebuildUI마다 ClearChildren으로 존을 통째로 비우고 cards 목록
     /// 그대로 다시 채우므로, 카드가 뻑·피뺏기 등으로 다른 곳에 가면
@@ -1729,25 +1741,50 @@ public partial class GoStop3PGame
         }
 
         var rowCards = new List<HwatuCard>();
-        int rowWeight = 0, rowFillers = 0;
+        int rowWeight = 0;
 
         void FlushRow()
         {
+            if (rowCards.Count == 0) return;
             foreach (var c in rowCards) MakeOne(c);
-            for (int i = 0; i < rowFillers; i++)
+            int fillers = rowCards.Count(c => c.EffectivePiValue == 2);
+            for (int i = 0; i < fillers; i++)
                 new GameObject("PiWeightFiller", typeof(RectTransform)).transform.SetParent(zone, false);
             rowCards.Clear();
             rowWeight = 0;
-            rowFillers = 0;
         }
 
         foreach (var c in cards)
         {
             int w = c.EffectivePiValue == 2 ? 2 : 1;
-            if (rowWeight + w > 5 && rowCards.Count > 0) FlushRow();
-            rowCards.Add(c);
-            rowWeight += w;
-            if (w == 2) rowFillers++;
+
+            if (rowWeight + w <= 5)
+            {
+                rowCards.Add(c);
+                rowWeight += w;
+            }
+            else // 수학적으로 rowWeight==4 && w==2인 경우뿐
+            {
+                var last = rowCards[rowCards.Count - 1];
+                if (last.EffectivePiValue != 2)
+                {
+                    rowCards.RemoveAt(rowCards.Count - 1); // 마지막 홑피를 빼고
+                    rowCards.Add(c);                        // 쌍피를 넣어 정확히 5
+                    rowWeight = 5;
+                    FlushRow();
+                    rowCards.Add(last);                     // 뺀 홑피로 다음 줄 시작
+                    rowWeight = 1;
+                }
+                else
+                {
+                    FlushRow();          // 스왑 불가 — 4로 못 채운 채 닫기
+                    rowCards.Add(c);
+                    rowWeight = w;
+                }
+                continue;
+            }
+
+            if (rowWeight == 5) FlushRow();
         }
         FlushRow();
     }
