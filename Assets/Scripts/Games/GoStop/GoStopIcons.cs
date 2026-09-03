@@ -308,6 +308,12 @@ public static class GoStopIcons
     public static void SpawnBurst(RectTransform parent, Vector2 localPos, Color color, int count = 12)
     {
         if (parent == null) return;
+
+        // 2026-09-03 — "필드 이펙트가 터질 때 바람 파티클(모티프)도 같이
+        // 터지는 연출" 요청. 이 함수를 8개 필드 이펙트 호출부가 전부
+        // 공유하므로, 여기 한 줄만 얹으면 전부 자동으로 같이 터진다.
+        GoStopWindParticles.Instance?.Burst(localPos);
+
         for (int i = 0; i < count; i++)
         {
             var go = new GameObject("Particle", typeof(RectTransform));

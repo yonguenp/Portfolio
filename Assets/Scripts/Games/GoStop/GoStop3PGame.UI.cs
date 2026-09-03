@@ -168,6 +168,12 @@ public partial class GoStop3PGame
         latticeImg.raycastTarget = false;
         latticeRT.SetAsFirstSibling();
 
+        // 2026-09-03 — "밋밋한 화면을 방해하지 않는 선에서 채우는" 배경
+        // 바람 파티클. BackgroundPattern 바로 위(=게임 콘텐츠보다는 항상
+        // 아래)에 붙는다 — GoStopWindParticles.Ensure 안에서 sibling
+        // index를 직접 관리한다.
+        GoStopWindParticles.Ensure(root, root.parent.parent as RectTransform);
+
         // HUD를 통째로 껐으므로(Start()의 SetHudVisible(false)) 뒤로가기
         // 버튼도 같이 사라졌다 — 작은 나가기 버튼 하나만 둔다.
         // 2026-08-18: "우측하단으로 옮기고, 누르면 바로 나가지 말고
