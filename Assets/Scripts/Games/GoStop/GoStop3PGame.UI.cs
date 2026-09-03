@@ -1694,17 +1694,25 @@ public partial class GoStop3PGame
     /// pending을 순회하며 애니메이션을 시작해야 목적지가 정확하다.</summary>
     /// <paramref name="weighted"/>는 피 존 전용 — GridLayoutGroup은 "장수"만
     /// 세고 피 값(쌍피=2)을 모르므로 그냥 두면 줄마다 무조건 5장이 된다.
-    /// 쌍피 카드 바로 뒤에 보이지 않는 필러 칸을 하나 끼워 넣어 그리드가
-    /// 그 카드를 "2칸짜리"로 착각하게 만든다 — 쌍피 1장이면 그 줄은 4장
-    /// (2+1+1+1=5피), 쌍피 2장이면 3장(2+2+1=5피)이 된다. 필러는 그 카드에
-    /// 붙어 따라다닐 필요가 없다 — 이 함수가 매 RebuildUI마다 ClearChildren
-    /// 으로 존을 통째로 비우고 cards 목록 그대로 다시 채우므로, 카드가
-    /// 뻑·피뺏기 등으로 다른 곳에 가면 다음 프레임엔 애초에 이 목록에 안
-    /// 들어있어 필러도 자동으로 같이 사라진다.
+    /// 보이지 않는 필러 칸으로 그리드가 쌍피를 "2칸짜리"로 착각하게
+    /// 만든다 — 쌍피 1장이면 그 줄은 4장(2+1+1+1=5피), 쌍피 2장이면
+    /// 3장(2+2+1=5피)이 된다.
+    /// <br/>2026-09-03(사용자 확인) — 필러를 그 쌍피 카드 바로 뒤가 아니라
+    /// **그 줄의 오른쪽 끝**에 모아서 둔다(카드들 사이에 안 끼어 있게).
+    /// 그래서 카드 하나씩 바로바로 그리는 대신, 먼저 "이번 줄에 들어갈
+    /// 카드들"을 weight 합이 5를 넘기 전까지 모았다가 한 줄 분량이 차면
+    /// (`FlushRow`) 그 줄의 실제 카드 전부를 먼저 그리고 그 다음에
+    /// 그 줄이 필요로 하는 필러 개수만큼 이어서 그린다.
+    /// <br/>필러는 카드에 붙어 따라다닐 필요가 없다 — 이 함수가 매
+    /// RebuildUI마다 ClearChildren으로 존을 통째로 비우고 cards 목록
+    /// 그대로 다시 채우므로, 카드가 뻑·피뺏기 등으로 다른 곳에 가면
+    /// 다음 프레임엔 애초에 이 목록에 안 들어있어 필러도 자동으로 같이
+    /// 사라진다.
     void FillCapZone(RectTransform zone, List<HwatuCard> cards, List<(RectTransform rt, Vector3 from, Vector3? hit)> pending, bool weighted = false)
     {
         HwatuUI.ClearChildren(zone);
-        foreach (var c in cards)
+
+        void MakeOne(HwatuCard c)
         {
             var go = HwatuUI.MakeCard(c, zone, Vector2.zero, CAP_W, CAP_H, null, false);
             if (flyFrom.TryGetValue(c, out var from))
@@ -1712,9 +1720,36 @@ public partial class GoStop3PGame
                 Vector3? hit = flyViaField.TryGetValue(c, out var hitPoint) ? hitPoint : (Vector3?)null;
                 pending.Add(((RectTransform)go.transform, from, hit));
             }
-            if (weighted && c.EffectivePiValue == 2)
-                new GameObject("PiWeightFiller", typeof(RectTransform)).transform.SetParent(zone, false);
         }
+
+        if (!weighted)
+        {
+            foreach (var c in cards) MakeOne(c);
+            return;
+        }
+
+        var rowCards = new List<HwatuCard>();
+        int rowWeight = 0, rowFillers = 0;
+
+        void FlushRow()
+        {
+            foreach (var c in rowCards) MakeOne(c);
+            for (int i = 0; i < rowFillers; i++)
+                new GameObject("PiWeightFiller", typeof(RectTransform)).transform.SetParent(zone, false);
+            rowCards.Clear();
+            rowWeight = 0;
+            rowFillers = 0;
+        }
+
+        foreach (var c in cards)
+        {
+            int w = c.EffectivePiValue == 2 ? 2 : 1;
+            if (rowWeight + w > 5 && rowCards.Count > 0) FlushRow();
+            rowCards.Add(c);
+            rowWeight += w;
+            if (w == 2) rowFillers++;
+        }
+        FlushRow();
     }
 
     void FlushPendingCapAnimations(RectTransform container, List<(RectTransform rt, Vector3 from, Vector3? hit)> pending)
