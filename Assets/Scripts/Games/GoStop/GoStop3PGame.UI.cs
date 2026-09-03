@@ -1683,7 +1683,16 @@ public partial class GoStop3PGame
     /// 옛 위치가 잡힌다. 호출자가 4개 존을 다 채운 뒤
     /// LayoutRebuilder.ForceRebuildLayoutImmediate로 강제로 확정시키고 나서야
     /// pending을 순회하며 애니메이션을 시작해야 목적지가 정확하다.</summary>
-    void FillCapZone(RectTransform zone, List<HwatuCard> cards, List<(RectTransform rt, Vector3 from, Vector3? hit)> pending)
+    /// <paramref name="weighted"/>는 피 존 전용 — GridLayoutGroup은 "장수"만
+    /// 세고 피 값(쌍피=2)을 모르므로 그냥 두면 줄마다 무조건 5장이 된다.
+    /// 쌍피 카드 바로 뒤에 보이지 않는 필러 칸을 하나 끼워 넣어 그리드가
+    /// 그 카드를 "2칸짜리"로 착각하게 만든다 — 쌍피 1장이면 그 줄은 4장
+    /// (2+1+1+1=5피), 쌍피 2장이면 3장(2+2+1=5피)이 된다. 필러는 그 카드에
+    /// 붙어 따라다닐 필요가 없다 — 이 함수가 매 RebuildUI마다 ClearChildren
+    /// 으로 존을 통째로 비우고 cards 목록 그대로 다시 채우므로, 카드가
+    /// 뻑·피뺏기 등으로 다른 곳에 가면 다음 프레임엔 애초에 이 목록에 안
+    /// 들어있어 필러도 자동으로 같이 사라진다.
+    void FillCapZone(RectTransform zone, List<HwatuCard> cards, List<(RectTransform rt, Vector3 from, Vector3? hit)> pending, bool weighted = false)
     {
         HwatuUI.ClearChildren(zone);
         foreach (var c in cards)
@@ -1694,6 +1703,8 @@ public partial class GoStop3PGame
                 Vector3? hit = flyViaField.TryGetValue(c, out var hitPoint) ? hitPoint : (Vector3?)null;
                 pending.Add(((RectTransform)go.transform, from, hit));
             }
+            if (weighted && c.EffectivePiValue == 2)
+                new GameObject("PiWeightFiller", typeof(RectTransform)).transform.SetParent(zone, false);
         }
     }
 
@@ -1721,7 +1732,7 @@ public partial class GoStop3PGame
         FillCapZone(zones.gwang, gwang, pending);
         FillCapZone(zones.yeol, yeol, pending);
         FillCapZone(zones.ddi, ddi, pending);
-        FillCapZone(zones.pi, pi, pending);
+        FillCapZone(zones.pi, pi, pending, weighted: true);
         FlushPendingCapAnimations(playerCapArea, pending);
     }
 
@@ -1741,7 +1752,7 @@ public partial class GoStop3PGame
         FillCapZone(zones.gwang, gwang, pending);
         FillCapZone(zones.yeol, yeol, pending);
         FillCapZone(zones.ddi, ddi, pending);
-        FillCapZone(zones.pi, pi, pending);
+        FillCapZone(zones.pi, pi, pending, weighted: true);
         FlushPendingCapAnimations(container, pending);
     }
 

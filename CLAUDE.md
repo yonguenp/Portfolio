@@ -9307,3 +9307,46 @@ private 메서드 그대로 리플렉션으로 호출해 8가지 전부(고도�
   로직 자체는 이번에 전혀 안 건드렸고(호출 시그니처만 확장), `FireAchievement`/
   `FireGwangAchievement`는 정확히 그 함수가 넘기는 것과 같은 모양의
   데이터로 직접 검증했으니 위험은 낮다고 판단했다.
+
+## 고스톱 — Cap 피 존 GridLayoutGroup이 쌍피 값을 무시하던 버그 (2026-09-03)
+
+"캡에 피 놓을 때 5장씩 쌓아 올라가는데, 쌍피는 한 장당 2개로 쳐서 로우에
+쌍피가 1장 껴있으면 4장, 2장 껴있으면 3장이어야 하는데 무조건 5장이 된다"는
+신고. 원인은 목업 이식 세션(`EnsureCapLayoutHierarchy`, 2026-08-27)에서
+광/끗/띠/피 4존을 전부 진짜 Unity `GridLayoutGroup`(고정 5열)으로 통일한
+것 — 그리드는 "장수"만 셀 뿐 카드의 `EffectivePiValue`(쌍피=2)를 전혀
+모른다. 예전(v10, 2인/4인 공용) `HwatuUI.GroupIntoRows(cards, maxPerRow,
+weighted)`가 정확히 이 문제를 풀던 함수였는데, 그리드 기반으로 갈아타면서
+피 존만 그 가중치 인식을 잃은 것이었다.
+
+**해결 — 사용자가 준 두 방안 중 방안 2(그리드 유지 + 투명 더미)를 택했다.**
+방안 1(그리드를 버리고 피만 직접 좌표 계산)도 가능했지만, 이 파일의
+Cap 렌더링(`FillCapZone`)이 **매 `RebuildUI()`마다 존을 통째로
+`ClearChildren` 후 `cards` 목록 그대로 다시 채우는 구조**라, 방안 2가
+우려했던 "피뺏기 등 액션에서 더미가 카드를 따라다녀야 한다"는 문제
+자체가 애초에 성립하지 않았다 — 카드가 다른 곳으로 가면 다음 리빌드
+시점에 그 카드 자체가 이 존의 `cards` 목록에서 빠지므로, 더미도 자동으로
+같이 안 그려진다. 그래서 그리드(광/끗/띠와 일관된 구조)를 그대로 두고
+더미만 끼워 넣는 쪽이 코드 변경이 훨씬 작았다.
+
+`FillCapZone`에 `weighted` 매개변수를 추가 — 쌍피(`EffectivePiValue==2`)
+카드를 만든 직후 `Image`/`Button` 없는 빈 `RectTransform`(`PiWeightFiller`)을
+같은 부모(zone)에 sibling으로 하나 더 만든다. `GridLayoutGroup`은 자식의
+개별 크기를 안 보고 `cellSize`로 전부 균일하게 배치하므로 더미에
+sizeDelta를 따로 안 줘도 그리드 한 칸을 그대로 차지한다 — 쌍피 카드
+바로 다음 sibling이라 "그 카드가 2칸짜리"인 것처럼 그리드가 착각하게
+만드는 효과. `DrawPlayerCaptured`/`DrawAiCaptured` 양쪽 다
+`FillCapZone(zones.pi, pi, pending, weighted: true)`로 호출부만 한 줄씩
+바꿨다(광/끗/띠는 가중치 개념이 없어 그대로 `weighted` 기본값 false).
+
+**검증(Play 모드 라이브, 사용자가 설명한 시나리오 그대로 재현).** 내
+획득패에 피 7장(1행: 쌍피1+홑피3, 2행: 쌍피2+홑피1)을 강제로 채우고
+`RebuildUI()`를 직접 호출 — 피 존의 자식 순서가 정확히
+`[쌍피, PiWeightFiller, 홑피, 홑피, 홑피, 쌍피, PiWeightFiller, 쌍피,
+PiWeightFiller, 홑피]`(총 10개=그리드 5열 기준 2행)로 나와, 1행은 실제
+카드 4장(쌍피 1장 포함, 5피), 2행은 실제 카드 3장(쌍피 2장 포함, 5피)로
+사용자가 요구한 규칙과 정확히 일치했다. `GridLayoutGroup`은 sibling
+순서/개수로 줄바꿈을 계산하므로(FixedColumnCount=5) 이 자식 배열이 곧
+"1행에 5칸, 그중 쌍피가 2칸씩 차지"를 그대로 보장한다. 콘솔 에러 0건
+(무관한 CLI 자체의 타임아웃 1건만 있었음 — Play 모드 재시작 직후의
+기존 패턴).
