@@ -2327,7 +2327,7 @@ public partial class GoStop3PGame : MonoBehaviour
                 // 더 높이서(dropHeight) 더 빠르게(dropDur) 떨어뜨리고
                 // 펀치 스케일(punchScale)도 키워서 타격감을 올린다.
                 StartCoroutine(SlamDown(ghost.transform as RectTransform, target,
-                    dropHeight: 230f, dropDur: 0.07f, punchDur: 0.12f, punchScale: 1.4f));
+                    dropHeight: 230f, dropDur: 0.07f, punchDur: 0.12f, punchScale: 1.4f, cardMonth: hc.month));
                 handGhosts.Add(ghost);
                 flyFrom[hc] = landing;
                 yield return new WaitForSeconds(0.07f);
@@ -2347,7 +2347,7 @@ public partial class GoStop3PGame : MonoBehaviour
             // "움직인 것"으로 오판돼 SlamIn이 엉뚱한 지점에서 시작해 잠깐
             // 아래로 처졌다가 제자리로 돌아오는 것처럼 보인다.
             var landing = ghost.transform.position;
-            yield return StartCoroutine(SlamDown(ghost.transform as RectTransform, target));
+            yield return StartCoroutine(SlamDown(ghost.transform as RectTransform, target, cardMonth: card.month));
             handGhosts.Add(ghost);
             flyFrom[card] = landing;
         }
@@ -2369,7 +2369,7 @@ public partial class GoStop3PGame : MonoBehaviour
                 // 위 손패 슬램과 같은 이유(2026-09-02) — target.position이
                 // 아니라 고스트의 실제 착지 자리를 flyFrom에 기록한다.
                 flyFrom[drawn] = deckGhost.transform.position;
-                yield return StartCoroutine(SlamDown(deckGhost.transform as RectTransform, target, dropHeight: 90f));
+                yield return StartCoroutine(SlamDown(deckGhost.transform as RectTransform, target, dropHeight: 90f, cardMonth: drawn.month));
             }
             else if (couldBePpeok && drawn.month == card.month)
             {
@@ -2389,7 +2389,7 @@ public partial class GoStop3PGame : MonoBehaviour
                 // 김빠지는 결과라, 다른 착지보다 낮게(dropHeight)·느리게
                 // (dropDur)·거의 안 튕기게(punchScale≈1) 힘없이 내려놓는다.
                 yield return StartCoroutine(SlamDown(deckGhost.transform as RectTransform, target,
-                    dropHeight: 60f, dropDur: 0.22f, punchDur: 0.16f, punchScale: 1.06f));
+                    dropHeight: 60f, dropDur: 0.22f, punchDur: 0.16f, punchScale: 1.06f, cardMonth: drawn.month));
                 flyFrom[drawn] = landing;
             }
             else
@@ -2398,7 +2398,7 @@ public partial class GoStop3PGame : MonoBehaviour
                 deckGhost = SpawnGhostCard(drawn, target);
                 // 위와 같은 이유(2026-09-02).
                 flyFrom[drawn] = deckGhost.transform.position;
-                yield return StartCoroutine(SlamDown(deckGhost.transform as RectTransform, target));
+                yield return StartCoroutine(SlamDown(deckGhost.transform as RectTransform, target, cardMonth: drawn.month));
             }
         }
 

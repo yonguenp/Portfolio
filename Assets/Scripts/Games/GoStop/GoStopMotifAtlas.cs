@@ -23,6 +23,42 @@ public static class GoStopMotifAtlas
     static Texture2D cached;
     public static Texture2D Texture => cached != null ? cached : (cached = Build());
 
+    static Sprite[] monthSprites;
+
+    /// <summary>월(1~12)에 해당하는 낱장 Sprite — <see cref="Build"/>의
+    /// Cell(col,row) 배치와 정확히 같은 순서(idx=month-1, col=idx%Cols,
+    /// row=idx/Cols)를 그대로 재사용한다. 2026-09-03 — "필드에 패가 나올 때
+    /// 그 달에 맞는 파티클(예: 1월→소나무)" 요청으로 추가.
+    /// <br/><br/>
+    /// <b>왜 Grid 모드가 아니라 Sprite를 직접 잘라 쓰는가</b> — Build()의
+    /// 주석대로 이 텍스처는 SetPixels32 좌표계(좌하단 원점)로 그려지는데,
+    /// ParticleSystem의 TextureSheetAnimation Grid 모드는 프레임 번호를
+    /// 왼쪽위부터 행 우선으로 센다 — 둘의 순서가 어긋나서 "몇 번 프레임이
+    /// 몇 월인지"를 정확히 맞추려면 Unity 내부 규칙을 추측해야 했다.
+    /// 랜덤으로 아무거나 고르는 <see cref="GoStopWindParticles"/>의 기존
+    /// 배경 파티클은 그 어긋남이 상관없었지만(문서 참고), 이번엔 "정확히
+    /// 그 달"이 요구사항이라 추측이 위험했다. `Sprite.Create(Rect)`는
+    /// SetPixels32와 똑같이 텍스처 픽셀 좌표(좌하단 원점)를 그대로
+    /// 받으므로, Cell()이 그린 자리를 그대로 오려내면 방향을 추측할
+    /// 필요 자체가 없다 — 이게 이 방식을 고른 이유다.</summary>
+    public static Sprite ForMonth(int month)
+    {
+        if (monthSprites == null) BuildSprites();
+        int idx = Mathf.Clamp(month - 1, 0, Cols * Rows - 1);
+        return monthSprites[idx];
+    }
+
+    static void BuildSprites()
+    {
+        var tex = Texture;
+        monthSprites = new Sprite[Cols * Rows];
+        for (int i = 0; i < monthSprites.Length; i++)
+        {
+            int col = i % Cols, row = i / Cols;
+            monthSprites[i] = Sprite.Create(tex, new Rect(col * CellPx, row * CellPx, CellPx, CellPx), new Vector2(0.5f, 0.5f), CellPx);
+        }
+    }
+
     static Texture2D Build()
     {
         int w = Cols * CellPx, h = Rows * CellPx;

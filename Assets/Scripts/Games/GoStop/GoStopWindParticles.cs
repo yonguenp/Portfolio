@@ -32,6 +32,8 @@ public class GoStopWindParticles : MonoBehaviour
     ParticleSystem ambientPS;
     UIParticle burstUip;
     ParticleSystem burstPS;
+    UIParticle cardUip;
+    ParticleSystem cardPS;
 
     // UIParticle 기본 scale3D=(10,10,10) — 캔버스 px ÷ 이 값 = 시뮬레이션 유닛.
     const float SimScale = 10f;
@@ -95,6 +97,26 @@ public class GoStopWindParticles : MonoBehaviour
         ConfigureShared(burstPS);
         ConfigureBurst(burstPS);
         burstUip.RefreshParticles();
+
+        // 2026-09-03 — 카드가 필드에 착지하는 순간 그 달의 모티프만
+        // 정확히 골라 터뜨리는 전용 시스템. burstPS와 굳이 분리한 이유는
+        // burstPS는 "12개 중 아무거나 랜덤"이 목적(Grid 모드)이라 매번
+        // 프레임을 강제로 특정 값으로 덮어쓰면 그 설계 의도와 충돌하기
+        // 쉽다 — 새 시스템 하나를 따로 두는 편이 서로 간섭할 걱정이 없다.
+        var cardHost = new GameObject("WindCardMotif", typeof(RectTransform));
+        cardHost.transform.SetParent(canvasRoot, false);
+        var cardRT = (RectTransform)cardHost.transform;
+        cardRT.anchorMin = cardRT.anchorMax = new Vector2(0.5f, 0.5f);
+        cardRT.sizeDelta = Vector2.zero;
+        cardUip = cardHost.AddComponent<UIParticle>();
+
+        var cardPsGo = new GameObject("PS", typeof(ParticleSystem));
+        cardPsGo.transform.SetParent(cardHost.transform, false);
+        cardPS = cardPsGo.GetComponent<ParticleSystem>();
+        cardPS.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        cardPsGo.GetComponent<ParticleSystemRenderer>().sharedMaterial = Mat();
+        ConfigureCardMotif(cardPS);
+        cardUip.RefreshParticles();
     }
 
     /// <summary>두 시스템이 공유하는 설정 — 아틀라스에서 랜덤으로 한 칸을
@@ -205,5 +227,72 @@ public class GoStopWindParticles : MonoBehaviour
         if (burstPS == null) return;
         var pos = new Vector3(canvasLocalPos.x / SimScale, canvasLocalPos.y / SimScale, 0f);
         burstPS.Emit(new ParticleSystem.EmitParams { position = pos }, count);
+    }
+
+    /// <summary>카드 착지 전용(Sprites 모드, 단일 스프라이트) — 필드에 몇
+    /// 월 카드가 나타났는지에 정확히 맞춰 그 달의 모티프(예: 1월→소나무)
+    /// 만 짧게 확 퍼뜨린다. <see cref="GoStopMotifAtlas.ForMonth"/>가
+    /// 매번 그 자리(인덱스 0)의 스프라이트를 갈아끼운 뒤 바로 <c>Emit</c>
+    /// 하므로(동기 호출 — 같은 프레임 안에 다음 호출이 또 와도 서로
+    /// 안 섞인다) 여러 카드가 연달아 착지해도 각자 자기 달의 모티프로
+    /// 정확히 갈린다. 조커(month=0)나 범위 밖 값은 조용히 무시한다.</summary>
+    public void BurstCardMotif(Vector2 canvasLocalPos, int month, int count = 5)
+    {
+        if (cardPS == null || month < 1 || month > 12) return;
+        var sprite = GoStopMotifAtlas.ForMonth(month);
+        if (sprite == null) return;
+        var tsa = cardPS.textureSheetAnimation;
+        tsa.SetSprite(0, sprite);
+        var pos = new Vector3(canvasLocalPos.x / SimScale, canvasLocalPos.y / SimScale, 0f);
+        cardPS.Emit(new ParticleSystem.EmitParams { position = pos }, count);
+    }
+
+    /// <summary>카드 착지 버스트 전용 설정 — 상시 루프(ambient)·이벤트
+    /// 랜덤버스트(burst)와 달리 텍스처시트 모드가 Grid가 아니라
+    /// <see cref="ParticleSystemAnimationMode.Sprites"/>다(위 <see cref="ForMonth"/>
+    /// 문서의 어긋남 문제를 피하려는 선택). 초기 placeholder 스프라이트를
+    /// 하나 <c>AddSprite</c>해 인덱스 0을 만들어 둬야 이후 <see cref="BurstCardMotif"/>
+    /// 의 <c>SetSprite(0, ...)</c>가 갈아끼울 자리가 생긴다.</summary>
+    void ConfigureCardMotif(ParticleSystem ps)
+    {
+        var main = ps.main;
+        main.playOnAwake = false;
+        main.loop = false;
+        main.duration = 1f;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(0.35f, 0.55f);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(20f, 40f);
+        main.startSize = new ParticleSystem.MinMaxCurve(1.1f, 1.8f);
+        main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
+        main.gravityModifier = 0.15f;
+        main.simulationSpace = ParticleSystemSimulationSpace.Local;
+        main.maxParticles = 30;
+        main.startColor = Color.white;
+
+        var emission = ps.emission;
+        emission.rateOverTime = 0f;
+
+        var shape = ps.shape;
+        shape.shapeType = ParticleSystemShapeType.Circle;
+        shape.radius = 0.08f;
+
+        var tsa = ps.textureSheetAnimation;
+        tsa.enabled = true;
+        tsa.mode = ParticleSystemAnimationMode.Sprites;
+        tsa.animation = ParticleSystemAnimationType.WholeSheet;
+        tsa.frameOverTime = new ParticleSystem.MinMaxCurve(0f);
+        tsa.cycleCount = 1;
+        tsa.AddSprite(GoStopMotifAtlas.ForMonth(1)); // placeholder — 인덱스 0을 만들어 둔다
+
+        var rot = ps.rotationOverLifetime;
+        rot.enabled = true;
+        rot.z = new ParticleSystem.MinMaxCurve(-0.8f, 0.8f);
+
+        var col = ps.colorOverLifetime;
+        col.enabled = true;
+        var grad = new Gradient();
+        grad.SetKeys(
+            new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(Color.white, 1f) },
+            new[] { new GradientAlphaKey(0.9f, 0f), new GradientAlphaKey(0.9f, 0.5f), new GradientAlphaKey(0f, 1f) });
+        col.color = grad;
     }
 }

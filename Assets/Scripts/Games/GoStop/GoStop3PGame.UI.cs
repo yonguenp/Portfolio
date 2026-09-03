@@ -2280,7 +2280,7 @@ public partial class GoStop3PGame
     /// 오프셋(anchorOffset = rt.position − target.position)을 한 번 구해서
     /// 매 프레임 그 보정값을 다시 더한다 — target이 움직여도(GridLayoutGroup
     /// 등) 정확한 피벗 보정이 유지된다.</summary>
-    IEnumerator SlamDown(RectTransform rt, RectTransform target, float dropHeight = 170f, float dropDur = 0.10f, float punchDur = 0.12f, float punchScale = 1.22f)
+    IEnumerator SlamDown(RectTransform rt, RectTransform target, float dropHeight = 170f, float dropDur = 0.10f, float punchDur = 0.12f, float punchScale = 1.22f, int cardMonth = 0)
     {
         if (rt == null || target == null) yield break;
         Vector3 anchorOffset = rt.position - target.position;
@@ -2300,6 +2300,12 @@ public partial class GoStop3PGame
         if (rt == null || target == null) yield break;
         rt.position = target.position + anchorOffset;
         SpawnImpactFlash(rt);
+        // 2026-09-03 — "필드에 패 나올 때 그 달에 맞는 파티클(1월→소나무 등)"
+        // 요청. 임팩트 플래시와 같은 순간(착지 직후)에 카드 월별 모티프
+        // 버스트를 같이 띄운다 — cardMonth<=0(조커, 또는 호출부가 아직
+        // 이 파라미터를 안 넘기는 경우)이면 SpawnCardMotifBurst 내부에서
+        // 조용히 무시된다.
+        if (cardMonth >= 1 && cardMonth <= 12) SpawnCardMotifBurst(rt, cardMonth);
 
         t = 0f;
         while (t < punchDur)
@@ -2378,6 +2384,21 @@ public partial class GoStop3PGame
             Vector2 localPos = stableParent.InverseTransformPoint(at.position);
             GoStopIcons.SpawnBurst(stableParent, localPos, new Color(1f, 0.9f, 0.6f), count: 5);
         }
+    }
+
+    /// <summary>카드가 필드에 착지한 자리에 그 달의 모티프 파티클(1월→소나무
+    /// 등, <see cref="GoStopMotifAtlas"/>)을 정확히 터뜨린다. <see cref="GoStopWindParticles.Burst"/>
+    /// 의 문서화된 계약대로 Canvas 기준 좌표(ContentArea가 아니라 그
+    /// 두 단계 위)로 변환해서 넘긴다 — ContentArea 기준으로 넘기면 HUD
+    /// 높이만큼 어긋날 수 있다는 <see cref="ShowActionPopup"/>의 기존
+    /// 경고와 같은 이유(이번엔 HUD가 꺼져 있어 지금 당장은 우연히 맞지만,
+    /// 계약대로 정확히 맞춰 둔다).</summary>
+    void SpawnCardMotifBurst(RectTransform at, int month)
+    {
+        var canvasRoot = ui != null ? ui.ContentArea.parent.parent as RectTransform : null;
+        if (canvasRoot == null) return;
+        Vector2 localPos = canvasRoot.InverseTransformPoint(at.position);
+        GoStopWindParticles.Instance?.BurstCardMotif(localPos, month);
     }
 
     IEnumerator FlashAndDestroy(RectTransform rt, Image img)

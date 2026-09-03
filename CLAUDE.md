@@ -9654,3 +9654,66 @@ Tane+Tanzaku 둘 다 있어 필드선택 팝업이 뜬 것을 `pendingFieldChoic
 8번 연속 재적용해도 매번 정확히 6으로 고정되는 것(누적 없음)까지
 확인했다. 콘솔은 CLI 자체의 5초 타임아웃 1건(무관한 환경 특성)만
 있었고 게임 코드발 예외는 0건.
+
+## 고스톱 — 필드 착지 파티클을 카드 월별 모티프로 (2026-09-03)
+
+"필드에 패나올때 나오는 파티클 해당 패에 매칭되는 파티클로 설정해줄수있나
+예를들어 1월 패가 필드에 나올땐 1월에 해당하는 소나무 파티클" —
+`GoStopWindParticles`의 기존 배경 파티클은 전부 "12개 모티프 중 아무거나
+랜덤"이 목적이라(상시 루프·이벤트 버스트 둘 다) 특정 카드의 월과 정확히
+맞출 방법이 없었다. 카드가 필드에 착지하는 순간(뻑/쪽 등 이벤트가 아니라
+매 턴 카드를 낼 때마다)에 그 카드의 달과 정확히 일치하는 모티프를 새로
+붙였다.
+
+**Grid 모드 프레임 순서를 추측하지 않고 `Sprite.Create(Rect)`로 우회했다.**
+`GoStopMotifAtlas.Build()`의 기존 주석이 이미 경고해 둔 문제 — 텍스처는
+`SetPixels32` 좌표계(좌하단 원점)로 그려지는데 ParticleSystem의 Grid
+텍스처시트 모드는 프레임 번호를 왼쪽위부터 행 우선으로 센다. 랜덤으로
+아무거나 고르는 기존 파티클은 이 어긋남이 상관없었지만, 이번엔 "정확히
+그 달"이 요구사항이라 Unity 내부 규칙을 추측하는 건 위험했다(맞았는지
+틀렸는지 확인할 스크린샷도 이 환경에서 못 믿는다). `Sprite.Create(texture,
+rect, pivot)`은 `SetPixels32`와 완전히 같은 텍스처 픽셀 좌표(좌하단
+원점)를 그대로 받는 잘 정의된 API라 방향을 추측할 필요 자체가 없다 —
+`GoStopMotifAtlas.ForMonth(month)`가 `Build()`의 `Cell(col,row)` 배치와
+정확히 같은 인덱스 공식(idx=month-1, col=idx%4, row=idx/4)으로 12장을
+미리 잘라 캐싱해 둔다.
+
+**`GoStopWindParticles`에 전용 `cardPS`를 새로 하나 더 뒀다** — 기존
+`burstPS`(이벤트용, Grid 모드, 랜덤 프레임)를 재사용해 프레임만 강제로
+덮어쓰는 방법도 가능했지만, "랜덤"이라는 그 시스템의 설계 의도와 부딪힐
+여지가 있어 아예 분리했다. `cardPS`는 `TextureSheetAnimationMode.Sprites`
+(Grid 아님)로 설정하고, `BurstCardMotif(canvasLocalPos, month, count)`가
+매 호출마다 `tsa.SetSprite(0, GoStopMotifAtlas.ForMonth(month))`로 슬롯
+하나를 그 달의 스프라이트로 갈아끼운 뒤 곧바로 `Emit()`한다 — `Emit`은
+동기 호출이라 그 프레임 안에서 만들어지는 파티클은 그 시점의 설정을
+그대로 반영하므로, 같은 프레임에 다른 달의 카드가 연달아 착지해도 서로
+안 섞인다.
+
+**착지 시점 훅 — `SlamDown`(RectTransform target 오버로드)에 `cardMonth`
+파라미터를 추가.** 필드에 카드가 착지하는 5개 지점(`PlaySeq` 안 —
+①폭탄 3장 반복, ①일반 손패, ②조커, ②뻑 형성, ②일반 뒷패)이 전부 이
+오버로드 하나를 공유하고 있어서, 기존 `SpawnImpactFlash(rt)` 바로
+다음에 `if (cardMonth >= 1 && cardMonth <= 12) SpawnCardMotifBurst(rt,
+cardMonth);` 한 줄만 끼워 넣었다. 5개 호출부 전부에 `cardMonth:
+hc.month`/`card.month`/`drawn.month`를 넘기도록 인자만 추가했다 —
+조커(month=0)는 이 카드 자체 필드가 원래 0이라 자연스럽게 걸러진다(별도
+분기 불필요). `SpawnCardMotifBurst`는 `SpawnImpactFlash`가 이미 확립한
+"ContentArea가 아니라 Canvas 레벨(`ContentArea.parent.parent`)로 좌표를
+변환해야 `GoStopWindParticles.Burst`류 API의 문서화된 계약과 맞는다"는
+원칙(`ShowActionPopup`의 기존 경고와 동일 — HUD가 켜지면 ContentArea가
+Canvas와 어긋날 수 있다)을 그대로 따랐다.
+
+**검증(Play 모드 라이브, 리플렉션).** ①`GoStopMotifAtlas.ForMonth`를
+직접 호출해 1월→rect(0,0,48,48), 8월→rect(144,48,48,48)로 `Cell()`
+배치와 정확히 일치하는 것, month=0/99 같은 범위 밖 값이 1/12로 정확히
+클램프되는 것(참조 동일성으로 확인) 확인. ②`BurstCardMotif`를 직접 두 번
+연달아 다른 달로 호출해 `tsa.GetSprite(0)`이 매번 정확히 그 달의
+스프라이트로 갈리는 것(이전 달과 참조가 다름을 확인해 "안 갈리고
+그대로 남는" 실패 모드도 배제) 확인. ③실제 게임 플레이(매칭 안 되는
+1월 광을 `OnPlayerPlay`로 실제로 냄) — 손패 랜딩(1월) 버스트가 발사된
+뒤, 자동으로 이어진 덱뒤집기(9월) 랜딩 버스트가 슬롯을 9월로 다시
+갈아끼운 것까지 `field`/`fieldChoicePopup` 상태와 교차 확인해(9월
+카드가 필드에 이미 있던 9월 페어와 매칭돼 필드선택 팝업이 뜬 것 — 정확히
+"뒷패가 9월이었다"는 방증) 실제 플레이 경로에서도 카드마다 서로 다른
+달의 모티프가 순서대로 정확히 걸리는 것을 간접 확인했다. 콘솔 예외 0건
+(CLI 자체의 5초 타임아웃 몇 건만, 무관한 환경 특성).
