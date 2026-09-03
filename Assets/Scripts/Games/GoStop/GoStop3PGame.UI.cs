@@ -1270,8 +1270,10 @@ public partial class GoStop3PGame
             {
                 if (goLbl != null) goLbl.text = $"쉬는 중 {sitOutReason}";
                 statusBoxView[slot]?.HideAllBadges(); // 쉬는 좌석은 이번 판 캡처가 없어 배지가 의미 없다 — 지난 상태가 안 남게 리셋
+                statusBoxView[slot]?.SetDim(true);
                 return;
             }
+            statusBoxView[slot]?.SetDim(false); // 슬롯이 영구적이라 쉬다가 다시 참가한 판엔 명시적으로 꺼줘야 한다
 
             int seatScore = GoStopRules.CalcScore(captured[seat], sweeps[seat]).Total;
             if (goLbl != null)
@@ -1287,6 +1289,7 @@ public partial class GoStop3PGame
             {
                 if (statusText[slot]) statusText[slot].text = "";
                 statusBoxView[slot]?.HideAllBadges();
+                statusBoxView[slot]?.SetDim(false); // 이 슬롯이 지난 판엔 쉬는 좌석이었을 수 있다 — dim이 안 남게 리셋
                 continue;
             }
             bool myTurn = state == State.Turn && currentSeat == seat;

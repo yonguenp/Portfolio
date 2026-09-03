@@ -76,6 +76,28 @@ public class GoStopStatusBoxView : MonoBehaviour
     public TextMeshProUGUI MoneyText => moneyText;
     public RectTransform BadgeArea => badgeArea;
 
+    // 2026-09-03 — "유저가 쉬는 중이면 dim 켜줘" 요청. 배경/글자/배지를
+    // 각각 따로 흐리게 칠하는 대신 CanvasGroup.alpha 하나로 박스 전체를
+    // 균일하게 반투명 처리한다 — ApplyTurnState/DrawBadgeStrip이 그 위에
+    // 뭘 그리든 순서와 무관하게 항상 올바르게 흐려진다. 프리팹에는 아직
+    // CanvasGroup이 없어서(에셋을 안 건드리고) 런타임에 없으면 하나
+    // 붙인다 — 이 파일의 다른 GetOrAdd류 방어 패턴과 동일.
+    CanvasGroup dimGroup;
+
+    /// <summary>이번 판에 이 좌석이 쉬는 중(광팔이/참가 포기)이면 true —
+    /// 상태창 전체를 반투명하게 흐린다. 슬롯이 영구적이라(매턴 재생성
+    /// 안 됨) 쉬지 않는 정상 상태로 돌아올 때도 반드시 false로 다시
+    /// 불러줘야 지난 판의 dim이 안 남는다.</summary>
+    public void SetDim(bool active)
+    {
+        if (dimGroup == null)
+        {
+            dimGroup = GetComponent<CanvasGroup>();
+            if (dimGroup == null) dimGroup = gameObject.AddComponent<CanvasGroup>();
+        }
+        dimGroup.alpha = active ? 0.45f : 1f;
+    }
+
     // GoStop3PGame.BuildInfoBlock이 예전에 쓰던 것과 같은 세로 예산값 —
     // 루트 박스 높이는 여전히 이 값으로 고정한다(폭과 무관).
     // 2026-08-27(목업 정확히 일치) — GoStopOrientalMockup의 Seat_*_StatusBar가
