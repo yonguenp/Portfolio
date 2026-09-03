@@ -1588,6 +1588,12 @@ public partial class GoStop3PGame
                     var finalPos = (go.transform as RectTransform).position;
                     if ((finalPos - from).sqrMagnitude > 1f)
                         StartCoroutine(SlamIn(go.transform as RectTransform, from));
+                    else
+                        GoStopFX.SetArtShadow(go, true); // 사실상 제자리 — 애니메이션 없이 바로 "놓임" 표시
+                }
+                else
+                {
+                    GoStopFX.SetArtShadow(go, true); // 이번 리빌드에서 안 움직이는 정적 카드
                 }
             }
         }
@@ -1731,6 +1737,10 @@ public partial class GoStop3PGame
             {
                 Vector3? hit = flyViaField.TryGetValue(c, out var hitPoint) ? hitPoint : (Vector3?)null;
                 pending.Add(((RectTransform)go.transform, from, hit));
+            }
+            else
+            {
+                GoStopFX.SetArtShadow(go, true); // 이번 리빌드에서 안 움직이는 정적 카드
             }
         }
 
@@ -2089,7 +2099,11 @@ public partial class GoStop3PGame
             rt.localScale = baseScale * s;
             yield return null;
         }
-        if (rt != null) rt.localScale = baseScale;
+        if (rt != null)
+        {
+            rt.localScale = baseScale;
+            GoStopFX.SetArtShadow(rt.gameObject, true); // 착지 애니메이션 완료 — 이제 "놓임" 그림자 표시
+        }
     }
 
     /// <summary>이동(감속) + 도착 시 임팩트 플래시 + 펀치 스케일 — 목적지가
@@ -2125,7 +2139,11 @@ public partial class GoStop3PGame
             rt.localScale = baseScale * s;
             yield return null;
         }
-        if (rt != null) rt.localScale = baseScale;
+        if (rt != null)
+        {
+            rt.localScale = baseScale;
+            GoStopFX.SetArtShadow(rt.gameObject, true); // 착지 애니메이션 완료 — 이제 "놓임" 그림자 표시
+        }
     }
 
     // ── 2026-08-23: 카드 애니메이션 시퀀스 재설계 ──────────────

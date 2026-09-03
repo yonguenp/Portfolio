@@ -36,6 +36,22 @@ public static class GoStopFX
         fx.shadowBlurIntensity = 0.4f;
     }
 
+    /// <summary>2026-09-03 — 카드 "Art" 자식에 사용자가 미리 심어둔 그림자
+    /// UIEffect(<c>CardFront.prefab</c>, 기본 비활성)를 켜고 끈다. "패가
+    /// 놓여있다"는 표현이 목적이라, 날아다니는 도중(SlamIn/SlamDown 진행
+    /// 중)이 아니라 <b>착지 애니메이션이 완전히 끝난 뒤</b>에만 켠다 —
+    /// <see cref="GoStop3PGame.DrawField"/>/<c>FillCapZone</c>의 정적
+    /// 카드(이번 리빌드에서 안 움직이는 카드)는 즉시, 움직이는 카드는
+    /// <c>FlyAndPunch</c> 코루틴이 끝나는 시점에 호출한다.</summary>
+    public static void SetArtShadow(GameObject cardGo, bool on)
+    {
+        if (cardGo == null) return;
+        var art = cardGo.transform.Find("Art");
+        if (art == null) return;
+        var fx = art.GetComponent<UIEffect>();
+        if (fx != null) fx.enabled = on;
+    }
+
     /// <summary>하이라이트 링(낼 수 있는 패, 조준 타겟, 필드 선택 후보 등)에
     /// 자동 반복 샤이니 스윕을 건다 — <c>edgeShinyAutoPlaySpeed</c> 하나면
     /// 코루틴 없이 계속 훑고 지나간다. 정적 금색 링보다 "지금 여기 주목"이라는
