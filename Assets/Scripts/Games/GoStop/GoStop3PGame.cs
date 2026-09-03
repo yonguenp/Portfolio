@@ -2199,6 +2199,12 @@ public partial class GoStop3PGame : MonoBehaviour
         {
             heundeulCount[seat]++;
             Toast(seat, $"{card.month}월 흔들기");
+            // 2026-09-04 — "흔드는 패 3장이 화면 전면에 크게 나오고 페이드"
+            // 요청. h는 아직 card를 안 뺀 시점이라(ResolveWithBomb가 이
+            // 블록 다음에야 불린다) 그 달 카드 정확히 3장을 그대로 잡을
+            // 수 있다 — 뒤에서 잡으려 하면 이미 손에서 빠진 뒤라 못 잡는다.
+            GoStopVectorEffect.Ensure().Play($"{SeatName(seat)}이(가) {card.month}월 흔들기!",
+                HwatuTheme.Gold, h.Where(c => c.month == card.month).ToList());
         }
 
         bool wasFirstPlay = !playedFirstHandCard[seat];
@@ -2267,6 +2273,11 @@ public partial class GoStop3PGame : MonoBehaviour
         {
             bombCount[seat]++;
             if (shookMonths[seat].Add(card.month)) heundeulCount[seat]++;
+            // 2026-09-04 — 폭탄도 흔들기의 즉시실행 버전이라 같은 이펙트를
+            // 띄운다(사용자 요청). r1.captured = [card, partner1, partner2,
+            // fieldMatch] — 앞 3장이 손패 쪽(=흔든 패 그 자체)이다.
+            GoStopVectorEffect.Ensure().Play($"{SeatName(seat)}이(가) {card.month}월 폭탄!",
+                new Color(1.0f, 0.35f, 0.15f), r1.captured.Take(3).ToList());
         }
 
         bool willDraw = !bomb && drawPile.Count > 0;
