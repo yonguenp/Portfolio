@@ -1331,6 +1331,7 @@ public partial class GoStop3PGame
 
         flyFrom.Clear();
         flyViaField.Clear();
+        flyFromSize.Clear();
 
         CheckEmergencies();
 
@@ -1664,7 +1665,7 @@ public partial class GoStop3PGame
             // 살짝 겹쳐 쌓인 느낌을 낸다(원래 CapStack이 overlap=14로 겹쳐
             // 쌓던 것과 같은 목적, GridLayoutGroup에선 spacing이 그 역할).
             glg.cellSize = new Vector2(CAP_W, CAP_H);
-            glg.spacing = new Vector2(-10f, -10f);
+            glg.spacing = new Vector2(-27.5f, -20f);
             glg.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
             glg.constraintCount = 5;
             glg.childAlignment = TextAnchor.LowerCenter;
@@ -1726,7 +1727,7 @@ public partial class GoStop3PGame
     /// 그대로 다시 채우므로, 카드가 뻑·피뺏기 등으로 다른 곳에 가면
     /// 다음 프레임엔 애초에 이 목록에 안 들어있어 필러도 자동으로 같이
     /// 사라진다.
-    void FillCapZone(RectTransform zone, List<HwatuCard> cards, List<(RectTransform rt, Vector3 from, Vector3? hit)> pending, bool weighted = false)
+    void FillCapZone(RectTransform zone, List<HwatuCard> cards, List<(RectTransform rt, HwatuCard card, Vector3 from, Vector3? hit, Vector2 fromSize)> pending, bool weighted = false)
     {
         HwatuUI.ClearChildren(zone);
 
@@ -1736,7 +1737,10 @@ public partial class GoStop3PGame
             if (flyFrom.TryGetValue(c, out var from))
             {
                 Vector3? hit = flyViaField.TryGetValue(c, out var hitPoint) ? hitPoint : (Vector3?)null;
-                pending.Add(((RectTransform)go.transform, from, hit));
+                // 2026-09-04 — 등록이 없으면(대부분의 경우) 필드/더미에서
+                // 온 것으로 본다 — flyFromSize 문서 참고.
+                Vector2 fromSize = flyFromSize.TryGetValue(c, out var sz) ? sz : new Vector2(FIELD_W, FIELD_H);
+                pending.Add(((RectTransform)go.transform, c, from, hit, fromSize));
             }
             else
             {
@@ -1799,15 +1803,128 @@ public partial class GoStop3PGame
         FlushRow();
     }
 
-    void FlushPendingCapAnimations(RectTransform container, List<(RectTransform rt, Vector3 from, Vector3? hit)> pending)
+    void FlushPendingCapAnimations(RectTransform container, List<(RectTransform rt, HwatuCard card, Vector3 from, Vector3? hit, Vector2 fromSize)> pending)
     {
         if (pending.Count == 0) return;
         LayoutRebuilder.ForceRebuildLayoutImmediate(container);
-        foreach (var (rt, from, hit) in pending)
+        var capSize = new Vector2(CAP_W, CAP_H);
+        foreach (var (rt, card, from, hit, fromSize) in pending)
         {
-            if (hit.HasValue) StartCoroutine(SlamInViaField(rt, from, hit.Value));
-            else StartCoroutine(SlamIn(rt, from));
+            if (fromSize == capSize)
+            {
+                // 2026-09-04 — 다른 획득패에서 온 카드(피뺏기)는 원래도
+                // CAP_W/H 그대로라 크기 튠이 필요 없다 — 기존 방식 그대로.
+                if (hit.HasValue) StartCoroutine(SlamInViaField(rt, from, hit.Value));
+                else StartCoroutine(SlamIn(rt, from));
+            }
+            else
+            {
+                // 필드/손패/뒷면 등 다른 크기에서 온 카드 — SlamToCap 참고.
+                StartCoroutine(SlamToCap(rt, card, from, fromSize, hit));
+            }
         }
+    }
+
+    /// <summary>2026-09-04 — "필드에있는게 뿅사라지고 캡에 들어갈 사이즈로
+    /// 뿅변하는게 이상해" 신고로 추가. <paramref name="rt"/>(획득패 자리에
+    /// 이미 만들어진 "진짜" 카드)는 <see cref="EnsureCapLayoutHierarchy"/>의
+    /// GridLayoutGroup 자식이라 sizeDelta를 직접 튠해도 다음 레이아웃
+    /// 패스마다 cellSize로 강제로 되돌아간다(그리드가 자식 크기·위치를
+    /// 전부 통제) — 그래서 진짜 오브젝트는 끝까지 숨겨 두고(CanvasGroup
+    /// alpha 0), 레이아웃 그룹 밖(ui.ContentArea)에 별도 고스트를 하나
+    /// 띄워 위치+크기를 동시에 자유롭게 보간한 뒤, 도착하면 고스트를
+    /// 지우고 진짜 카드를 그 순간 드러낸다 — 이미 정확히 같은 자리·같은
+    /// 크기라 이어붙는 지점에서 티가 안 난다.
+    /// <br/>레이아웃 리빌드(<see cref="LayoutRebuilder.ForceRebuildLayoutImmediate"/>)
+    /// 는 이 코루틴이 시작되기 전에 이미 끝나 있으므로(FlushPendingCapAnimations
+    /// 참고) <c>rt.position</c>은 이 시점에 이미 최종 확정값이다 — 매 프레임
+    /// 다시 읽을 필요 없이 한 번만 스냅샷해서 쓴다(그리드 자식이 날아다니는
+    /// 동안 다시 움직일 리 없다).</summary>
+    IEnumerator SlamToCap(RectTransform rt, HwatuCard card, Vector3 from, Vector2 fromSize, Vector3? hit)
+    {
+        if (rt == null) yield break;
+        var cg = rt.gameObject.GetComponent<CanvasGroup>();
+        if (cg == null) cg = rt.gameObject.AddComponent<CanvasGroup>();
+        cg.alpha = 0f;
+        cg.blocksRaycasts = false;
+        cg.interactable = false;
+
+        Vector3 to = rt.position;
+        Vector2 toSize = new Vector2(CAP_W, CAP_H);
+
+        var stableParent = ui != null ? ui.ContentArea : null;
+        if (stableParent == null) { cg.alpha = 1f; cg.blocksRaycasts = true; cg.interactable = true; yield break; }
+
+        var ghostGo = HwatuUI.MakeCard(card, stableParent, Vector2.zero, fromSize.x, fromSize.y, null, false);
+        var ghost = ghostGo.transform as RectTransform;
+        ghost.position = from;
+
+        if (hit.HasValue)
+        {
+            // 2단 경유(필드에서 짝을 실제로 친 자리를 거쳐 감) — 1구간(필드
+            // 안에서의 이동)은 출발·경유지 둘 다 필드 크기라 사이즈가 안
+            // 바뀐다. 2구간에서만 획득패 크기로 줄어든다.
+            float t1 = CaptureFlightDistanceT(Vector3.Distance(from, hit.Value));
+            yield return FlyAndPunchGhost(ghost, from, hit.Value, fromSize, fromSize,
+                Mathf.Lerp(0.09f, 0.30f, t1), Mathf.Lerp(0.10f, 0.16f, t1));
+            if (ghost == null) { if (rt != null) { cg.alpha = 1f; cg.blocksRaycasts = true; cg.interactable = true; } yield break; }
+
+            float t2 = CaptureFlightDistanceT(Vector3.Distance(hit.Value, to));
+            yield return FlyAndPunchGhost(ghost, hit.Value, to, fromSize, toSize,
+                Mathf.Lerp(0.14f, 0.34f, t2), Mathf.Lerp(0.16f, 0.22f, t2));
+        }
+        else
+        {
+            float t01 = CaptureFlightDistanceT(Vector3.Distance(from, to));
+            yield return FlyAndPunchGhost(ghost, from, to, fromSize, toSize,
+                Mathf.Lerp(0.11f, 0.38f, t01), Mathf.Lerp(0.14f, 0.22f, t01));
+        }
+
+        if (rt != null)
+        {
+            cg.alpha = 1f;
+            cg.blocksRaycasts = true;
+            cg.interactable = true;
+            GoStopFX.SetArtShadow(rt.gameObject, true);
+        }
+        if (ghost != null) Destroy(ghost.gameObject);
+    }
+
+    /// <summary><see cref="FlyAndPunch"/>와 같은 위치 이동+임팩트+펀치
+    /// 스케일이지만, 그 사이 <c>sizeDelta</c>도 <paramref name="fromSize"/>→
+    /// <paramref name="toSize"/>로 같이 보간한다 — 레이아웃 그룹의 통제를
+    /// 안 받는 고스트 전용이라 sizeDelta를 직접 건드려도 안전하다. 펀치
+    /// 배율(1.28)은 <see cref="FlyAndPunch"/>와 통일해서 같은 타격감을 낸다.</summary>
+    IEnumerator FlyAndPunchGhost(RectTransform ghost, Vector3 from, Vector3 to, Vector2 fromSize, Vector2 toSize, float flyDur, float punchDur)
+    {
+        Vector3 baseScale = ghost.localScale;
+
+        float t = 0f;
+        while (t < flyDur)
+        {
+            t += Time.deltaTime;
+            float p = 1f - Mathf.Pow(1f - Mathf.Clamp01(t / flyDur), 3f); // ease-out
+            if (ghost == null) yield break;
+            ghost.position = Vector3.Lerp(from, to, p);
+            ghost.sizeDelta = Vector2.Lerp(fromSize, toSize, p);
+            yield return null;
+        }
+        if (ghost == null) yield break;
+        ghost.position = to;
+        ghost.sizeDelta = toSize;
+        SpawnImpactFlash(ghost);
+
+        t = 0f;
+        while (t < punchDur)
+        {
+            t += Time.deltaTime;
+            float p = Mathf.Clamp01(t / punchDur);
+            float s = p < 0.4f ? Mathf.Lerp(1f, 1.28f, p / 0.4f) : Mathf.Lerp(1.28f, 1f, (p - 0.4f) / 0.6f);
+            if (ghost == null) yield break;
+            ghost.localScale = baseScale * s;
+            yield return null;
+        }
+        if (ghost != null) ghost.localScale = baseScale;
     }
 
     void DrawPlayerCaptured()
@@ -1819,7 +1936,7 @@ public partial class GoStop3PGame
         var pi = cap.Where(c => c.EffectiveKind == HwatuKind.Pi).OrderBy(c => c.month).ToList();
 
         var zones = EnsureCapLayoutHierarchy(playerCapArea);
-        var pending = new List<(RectTransform, Vector3, Vector3?)>();
+        var pending = new List<(RectTransform, HwatuCard, Vector3, Vector3?, Vector2)>();
         FillCapZone(zones.gwang, gwang, pending);
         FillCapZone(zones.yeol, yeol, pending);
         FillCapZone(zones.ddi, ddi, pending);
@@ -1839,7 +1956,7 @@ public partial class GoStop3PGame
 
         var container = capAreaAI[slot];
         var zones = EnsureCapLayoutHierarchy(container);
-        var pending = new List<(RectTransform, Vector3, Vector3?)>();
+        var pending = new List<(RectTransform, HwatuCard, Vector3, Vector3?, Vector2)>();
         FillCapZone(zones.gwang, gwang, pending);
         FillCapZone(zones.yeol, yeol, pending);
         FillCapZone(zones.ddi, ddi, pending);

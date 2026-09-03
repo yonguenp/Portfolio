@@ -283,7 +283,7 @@ public partial class GoStop3PGame : MonoBehaviour
     // 각자 다른 크기(62×86 / 44×59)였는데 이제 하나로 통일한다 — Cap 카드
     // 렌더링이 GridLayoutGroup.cellSize로 넘어가면서(EnsureCapLayoutHierarchy
     // 참고) 이 상수가 사실상 "그리드 셀 크기" 그 자체가 됐다.
-    const float CAP_W = 30f, CAP_H = 49f; // 2026-09-01: 높이만 SampleCard 비율(120:196)로 재계산
+    const float CAP_W = 44f, CAP_H = 73f;
     const float CAP_AI_W = CAP_W, CAP_AI_H = CAP_H; // 점수 상세 팝업 등 옛 호출부 호환용 별칭
     // 2026-08-20: 손패 7장이 Back 컨테이너 폭을 넘치는 문제를 처음엔
     // BACK_W(34→18)를 줄여서 고쳤는데, "뒷패가 일그러진다"는 신고로
@@ -403,6 +403,18 @@ public partial class GoStop3PGame : MonoBehaviour
     // 짝을 맞춰 가져온다"는 손맛이 없었다). 매칭으로 캡처된 카드가 그
     // 필드패가 있던 자리를 거쳐 가도록, 그 좌표를 임시로 담아둔다.
     readonly Dictionary<HwatuCard, Vector3> flyViaField = new();
+
+    // 2026-09-04 — "필드에있는게 뿅사라지고 캡에 들어갈 사이즈로 뿅변하는게
+    // 이상해" 신고로 추가. flyFrom은 위치만 기억하고 카드가 그 순간 실제로
+    // 몇 픽셀 크기였는지는 몰랐다 — FillCapZone이 늘 CAP_W/CAP_H로만
+    // 만들어서, 필드(FIELD_W/H, 120×196)에 있던 카드가 획득패(44×73)로
+    // 넘어가는 순간 크기가 즉시 스냅됐다(위치만 부드럽게 이어지고 크기는
+    // 한순간에 바뀌는 게 "뿅" 하고 보이는 정체). 대부분의 flyFrom 등록은
+    // 필드/더미에서 온 것이라(둘 다 FIELD_W/H와 같은 크기) 기본값을
+    // FIELD_W/H로 두고, 실제로 다른 크기에서 오는 두 경우(피뺏기 — 다른
+    // 획득패에서 옴, CAP_W/H / 손패에서 곧장 낸 조커 — HAND_W/H나
+    // BACK_W/H)만 각 등록 지점에서 명시적으로 채운다.
+    readonly Dictionary<HwatuCard, Vector2> flyFromSize = new();
 
     Coroutine toastHideCo;
 
@@ -1297,6 +1309,7 @@ public partial class GoStop3PGame : MonoBehaviour
         achievedFired.Clear();
         flyFrom.Clear();
         flyViaField.Clear();
+        flyFromSize.Clear();
         // 2026-09-02 버그 수정 — "pos1이 비어있는데 다른 슬롯부터 찬다"는
         // 신고로 발견. fieldSlotAssign이 그동안 한 번도 안 지워졌다 —
         // SyncFieldSlotAssignments의 반납 조건(버그 5 수정, "field에 없고
@@ -1559,8 +1572,21 @@ public partial class GoStop3PGame : MonoBehaviour
         if (slot < 0) return;
         var area = slot == 0 ? playerCapArea : (slot <= 3 ? capAreaAI[slot] : null);
         if (area == null) return;
-        var t = area.Find(card.spriteName);
-        if (t != null) flyFrom[card] = t.position;
+        // 2026-09-04 버그 수정 — area.Find(spriteName)은 1단 깊이만 본다.
+        // EnsureCapLayoutHierarchy 이후 실제 카드는 "광"/"끗띠/끗"/"끗띠/띠"/
+        // "피" 리프 존 밑(2단 깊이)에 있어서 이 Find는 항상 null이었다 —
+        // flyFrom이 한 번도 안 채워져서 피뺏기 애니메이션 자체가 아예
+        // 안 걸리고 있었다(카드가 그냥 팝업하듯 나타났다). 4개 리프 존
+        // 경로를 직접 시도한다 — Transform.Find는 "/"로 다단 경로도 찾는다.
+        var t = area.Find("광/" + card.spriteName)
+            ?? area.Find("끗띠/끗/" + card.spriteName)
+            ?? area.Find("끗띠/띠/" + card.spriteName)
+            ?? area.Find("피/" + card.spriteName);
+        if (t != null)
+        {
+            flyFrom[card] = t.position;
+            flyFromSize[card] = new Vector2(CAP_W, CAP_H); // 다른 획득패에서 옴 — 크기 변화 없음
+        }
     }
 
     int PpeokMoney() => 3 * WON_PER_POINT * stakeMultiplier;
@@ -2074,6 +2100,13 @@ public partial class GoStop3PGame : MonoBehaviour
         RectTransform originSlot = seat == PLAYER_SEAT ? FindHandSlot(joker)
             : (originSlotIdx == 1 || originSlotIdx == 3) ? backArea[originSlotIdx] : fieldArea;
         flyFrom[joker] = originSlot != null ? originSlot.position : fieldArea.position;
+        // 2026-09-04 — 손패 조커는 필드를 안 거치고 곧장 Cap으로 가므로,
+        // 직전 위치 branch(originSlot)와 정확히 같은 기준으로 크기도
+        // 갈라야 한다 — 내 손패면 HAND_W/H, 옆 좌석 뒷면 더미면 BACK_W/H,
+        // 그 외(상단 등, 뒷면 표시가 없는 자리)는 FIELD_W/H로 근사한다.
+        flyFromSize[joker] = seat == PLAYER_SEAT ? new Vector2(HAND_W, HAND_H)
+            : (originSlotIdx == 1 || originSlotIdx == 3) ? new Vector2(BACK_W, BACK_H)
+            : new Vector2(FIELD_W, FIELD_H);
 
         h.Remove(joker);
         cap.Add(joker);

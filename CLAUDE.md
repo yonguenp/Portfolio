@@ -9717,3 +9717,102 @@ Canvas와 어긋날 수 있다)을 그대로 따랐다.
 "뒷패가 9월이었다"는 방증) 실제 플레이 경로에서도 카드마다 서로 다른
 달의 모티프가 순서대로 정확히 걸리는 것을 간접 확인했다. 콘솔 예외 0건
 (CLI 자체의 5초 타임아웃 몇 건만, 무관한 환경 특성).
+
+## 고스톱 — 필드→획득패 캡처 크기 팝(pop) 제거 + 관련 끊김 전수 점검 (2026-09-04)
+
+"패가 캡으로 들어갈때 필드에있는게 뿅사라지고 캡에 들어갈 사이즈로
+뿅변하는게 이상해 사이즈도 tween으로 부드럽게 움직이게 해줘 모든연출이
+전부다 끊기는 듯한 연출이 있는거같은데 그런부분들 다 체크해서 고스트와
+실제 오브젝트가 이어지게끔 만들어주면 좋을것같아." — 사용자가 직접
+`CAP_W/CAP_H`(30×49→44×73)와 그리드 spacing을 손으로 키운 직후("layoutgroup
+관련 수정했으니 참고") 나온 요청. 서브에이전트로 이 프로젝트의 모든
+카드 크기 상수(`FIELD_W/H`=120×196, `HAND_W/H`=128×210, `CAP_W/H`=44×73,
+`BACK_W/H`=46×75, `PILE_W/H`=120×196)와 모든 고스트↔실제오브젝트
+핸드오프 지점을 전수 조사해 실제 팝 발생 지점을 확정했다.
+
+**실제 팝은 필드→Cap 캡처 한 곳뿐이었다.** 손패→필드(둘 다 FIELD_W/H로
+동일), 딜링 애니메이션(고스트가 `localScale=0`으로 사라진 뒤에야 실제
+카드가 생겨서 애초에 크기 다른 프레임이 안 보임)은 이미 무해했다. 반면
+필드→Cap은 `FillCapZone`의 `MakeOne`이 `HwatuUI.MakeCard(c, zone,
+Vector2.zero, CAP_W, CAP_H, ...)`로 **처음부터 CAP_W/H로 실제 오브젝트를
+만들고**, `FlushPendingCapAnimations`가 `LayoutRebuilder.
+ForceRebuildLayoutImmediate`로 그 즉시 GridLayoutGroup이 위치·크기를
+확정시킨 **뒤에야** `SlamIn`(위치만 보간)을 시작한다 — 크기는 애니메이션
+시작 전에 이미 스냅돼 있었다. `SlamIn`/`SlamInViaField`/`FlyAndPunch`
+전부 `sizeDelta`를 만지는 코드가 아예 없다는 것도 확인했다(`localScale`
+펀치 바운스만 있음).
+
+**"직접 sizeDelta를 튠하면 된다"가 안 통하는 이유 — GridLayoutGroup이
+자식의 sizeDelta/위치를 매 레이아웃 패스마다 강제로 되돌린다.** Cap 존은
+`EnsureCapLayoutHierarchy`가 만든 `GridLayoutGroup`(`cellSize=CAP_W/H`)의
+자식이다 — 자식 RectTransform의 sizeDelta가 바뀌면 Unity가 그 즉시 부모
+레이아웃 그룹을 dirty 표시해 다음 캔버스 업데이트에서 다시 강제로
+`cellSize`로 되돌린다. 즉 레이아웃 그룹 자식인 채로는 크기를 절대
+직접 튠할 수 없다 — 손패→필드 착지 때 이미 쓰던 "고스트가 날아다니고
+실제 오브젝트는 이미 제자리에 완성돼 있다가 마지막에 넘겨받는다" 패턴을
+그대로 가져와야 했다.
+
+**구조 — `SlamToCap` + `FlyAndPunchGhost`(신규, `GoStop3PGame.UI.cs`).**
+`MakeOne`이 실제 Cap 오브젝트를 만들고 나면(그리드가 이미 CAP_W/H·최종
+위치로 확정) `CanvasGroup.alpha=0`으로 완전히 숨긴다 — 슬롯 자체는
+그리드에 여전히 카운트되므로(`SetActive`로 끄면 그리드가 슬롯을 아예
+없는 걸로 치고 나머지 카드가 당겨져 밀린다 — alpha만 낮추는 이유) 다른
+카드 배치는 전혀 안 흔들린다. 동시에 `ui.ContentArea`(레이아웃 그룹
+바깥, 안 지워지는 안정된 부모)에 **원래 있던 크기**(`fromSize` — 필드면
+FIELD_W/H, 손패에서 곧장 낸 조커면 HAND_W/H 등)로 고스트를 하나 만들어
+`from`(원래 위치) → 실제 오브젝트의 이미 확정된 최종 위치까지, 위치와
+크기(sizeDelta)를 **같은 루프 안에서 동시에** 보간한다(`FlyAndPunchGhost`
+— 기존 `FlyAndPunch`와 이동+임팩트+펀치 로직은 동일하되 sizeDelta 보간이
+추가됨, 펀치 배율 1.28도 통일). 도착하면 고스트를 지우고 실제 오브젝트를
+그 순간 드러낸다(alpha=1) — 이미 정확히 같은 자리·같은 크기라 이어붙는
+지점이 안 보인다. 필드에서 짝을 실제로 친 자리를 거쳐 가는 2단 경유
+(`hit` 있는 경우, 예전 `SlamInViaField`와 같은 상황)도 지원한다 — 1구간
+(필드 안에서의 이동)은 둘 다 필드 크기라 사이즈가 그대로, 2구간에서만
+Cap 크기로 줄어든다.
+
+**원본 크기를 정확히 알아야 했다 — `flyFromSize` 신설.** 기존 `flyFrom`
+(위치만 기억)은 카드가 그 순간 몇 픽셀이었는지 몰랐다. `flyFrom[X]=Y`로
+등록되는 지점이 15곳쯤 있는데, 서브에이전트로 하나하나 추적한 결과
+**12곳은 전부 필드/더미에서 온 것**(FIELD_W/H와 PILE_W/H가 숫자까지
+같은 120×196이라 전부 동일 취급 가능)이었고, 예외는 딱 둘뿐이었다:
+- `RegisterPiFly`(피뺏기) — 다른 좌석의 Cap에서 옴, CAP_W/H(=목적지와
+  같아서 애초에 크기 변화가 없다).
+- `PlayJokerFromHandSeq`(손패 조커를 곧장 냄, 필드를 안 거침) — 내
+  좌석이면 HAND_W/H, 옆좌석 뒷면 더미면 BACK_W/H, 그 외(상단 등 뒷면
+  표시가 없는 자리)는 FIELD_W/H로 근사.
+
+이 분포 덕에 `flyFromSize`를 모든 등록 지점에 일일이 채우는 대신, **기본값을
+FIELD_W/H로 두고 위 두 예외 지점에서만** 명시적으로 다른 값을 넣는 구조로
+끝났다(`FillCapZone`의 `MakeOne`이 `flyFromSize.TryGetValue(c, out var sz) ?
+sz : new Vector2(FIELD_W, FIELD_H)`) — 12곳을 건드릴 필요가 없었다.
+`flyFromSize`도 `flyFrom`/`flyViaField`와 같은 생명주기(매 `RebuildUI`
+끝에서 Clear, `NewGameSeq`에서도 Clear)로 맞췄다.
+
+**덤으로 발견한 진짜 버그 — 피뺏기 애니메이션이 이 세션 내내(아마 그
+이전부터) 한 번도 안 걸리고 있었다.** `RegisterPiFly`가 `area.Find(card.
+spriteName)`로 카드를 찾는데, `area`(Cap 컨테이너) 밑에 카드는 실제로
+2단 깊이(`컨테이너→광/끗띠→끗/끗띠→띠/피→카드`)에 있다 — `Transform.
+Find`는 슬래시 없는 plain name으로는 1단 깊이만 본다. 즉 이 Find는
+**항상 null**을 돌려주고 있었고, `flyFrom[card]`가 결국 한 번도 안
+채워져서 피뺏기로 이동하는 카드는 그냥 팝업하듯 나타났다(뻑/폭탄/쪽 등
+다른 캡처 경로는 전부 `FieldSlotTransform(card).Find(...)`처럼 2단
+깊이를 직접 찾는 방식으로 이미 고쳐져 있었는데 이 함수만 놓쳐 있었다).
+`area.Find("광/"+spriteName) ?? area.Find("끗띠/끗/"+spriteName) ?? ...`
+로 4개 리프 존 경로를 직접 시도하도록 고쳤다 — `EnsureCapLayoutHierarchy`
+가 만드는 정확히 그 4개 이름이라 재사용성 걱정 없이 확정된 경로다.
+
+**검증(Play 모드 라이브, 리플렉션).** ①`StartCoroutine`이 첫 yield까지
+동기 실행한다는 이 프로젝트의 기존 트릭으로 `SlamToCap` 착수 직후
+상태를 잡음 — 실제 Cap 오브젝트는 `alpha=0, sizeDelta=(44,73)`(이미
+숨겨진 채 최종 크기로 그리드에 고정), 동시에 생성된 고스트는
+`sizeDelta≈(118,193)`(FIELD_W/H에서 막 보간을 시작한 값, 아직 온전히
+120×196은 아님 — 첫 프레임 한 틱만큼 이미 진행됐다는 뜻) — 두 오브젝트가
+동시에 존재하며 각자 의도한 시작 상태인 것을 확인. ②1초 뒤 재확인 —
+실제 오브젝트 `alpha=1, sizeDelta=(44,73)`(정확한 최종값), 고스트는
+완전히 파괴됨(ContentArea에 잔여물 0). ③`RegisterPiFly`를 직접 호출해
+`flyFrom`/`flyFromSize`가 **이제는** 정상적으로 채워지는 것(수정 전이면
+영원히 비어 있었을 것) 확인, 크기도 정확히 (44,73) 확인. ④폭탄(4장 동시
+캡처, 3월 광+띠+피2장)을 실제로 재현 — 4장 전부 `captured[0]`에 정확히
+들어가고 전부 44×73으로 정착, ContentArea에 고스트 잔여물 0. ⑤25턴
+자연 진행 스트레스 테스트(참가선언·필드선택·9월열끗 팝업 자동 응답 포함)
+— 콘솔 에러·예외 0건.
