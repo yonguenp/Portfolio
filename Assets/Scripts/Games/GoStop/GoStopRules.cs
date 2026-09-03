@@ -486,35 +486,52 @@ public static class GoStopRules
     /// <summary>
     /// <paramref name="myThreshold"/> — 피박 인정 상한(2인 맞고는 7,
     /// 3인 이상 고스톱은 <see cref="PI_BAK_THRESHOLD_3P"/>=5). 내 피가 0보다
-    /// 크고 이 값 이하인 상태에서, 상대 중 누구라도 피 10장(<see cref="HwatuCard.EffectivePiValue"/>
-    /// 합) 이상을 모았으면 위험.
+    /// 크고 이 값 이하인 상태에서, 상대 중 누구라도 <b>피로 실제 점수를 낸
+    /// 상태</b>(<see cref="CalcScore"/>의 피 항목 &gt; 0, 즉 <see cref="HwatuCard.EffectivePiValue"/>
+    /// 합 10장 이상)면 위험.
+    /// <br/>2026-09-04 정정(사용자 확인) — "해당하는 조건으로 1점 이상 낸
+    /// 상대가 있을 때만 활성화"라는 원칙을 명시적으로 만족시키려고
+    /// 카운트 임계값을 직접 재구현하는 대신 <see cref="CalcScore"/>가 실제로
+    /// 몇 점을 냈는지 그대로 물어보도록 바꿨다 — 수치상 결과는 이전(피
+    /// 10장 이상)과 같지만, 채점 공식이 나중에 바뀌어도 이 배지가 자동으로
+    /// 같이 맞기 때문에 임계값을 두 곳에서 따로 관리하다 어긋날 위험이
+    /// 없어진다.
     /// </summary>
     public static bool IsLivePiBakRisk(List<HwatuCard> mine, IEnumerable<List<HwatuCard>> others, int myThreshold)
     {
         int myPi = mine.Where(c => c.EffectiveKind == HwatuKind.Pi).Sum(c => c.EffectivePiValue);
         if (myPi <= 0 || myPi > myThreshold) return false;
-        return others.Any(o => o.Where(c => c.EffectiveKind == HwatuKind.Pi).Sum(c => c.EffectivePiValue) >= 10);
+        return others.Any(o => CalcScore(o, 0).pi > 0);
     }
 
-    /// <summary>내가 광이 하나도 없는데 상대 중 누구라도 광 3장 이상을 모았으면 위험.</summary>
+    /// <summary>내가 광으로 이미 점수를 낸 상태(광 3장 이상)면 광박 대상이
+    /// 아니다(그대로 유지 — 실제 규칙은 "상대가 광을 하나도 못 모았다"는
+    /// 개수 0 여부라 점수 유무와 무관). 상대 쪽은 <b>광으로 실제 점수를
+    /// 낸 상대</b>(<see cref="CalcScore"/>의 광 항목 &gt; 0, 즉 광 3장 이상 —
+    /// 비3광이든 일반3광이든 4광·5광이든 전부 &gt;0)가 있을 때만 위험.
+    /// 2026-09-04 정정 — 위 <see cref="IsLivePiBakRisk"/>와 같은 이유로
+    /// CalcScore를 직접 물어보게 바꿨다.</summary>
     public static bool IsLiveGwangBakRisk(List<HwatuCard> mine, IEnumerable<List<HwatuCard>> others)
     {
         if (mine.Count(c => c.kind == HwatuKind.Gwang) > 0) return false;
-        return others.Any(o => o.Count(c => c.kind == HwatuKind.Gwang) >= 3);
+        return others.Any(o => CalcScore(o, 0).gwang > 0);
     }
 
-    /// <summary>멍박 실시간 위험 판정 — 정식 "멍따"(동물 그림 열끗) 점수 규칙은
-    /// 이 프로젝트가 의도적으로 안 넣었으므로(2인판 문서 참고), 열끗 전체를
-    /// "멍" 패로 취급하는 단순화된 기준을 쓴다(피박/광박과 같은 성격의
-    /// 실시간 안내 배지 — 실제 정산 로직에 연결된 페널티는 아니다). 덱에
-    /// 열끗이 총 9장뿐이라(광5·열끗9·띠10·피24) <see cref="MEONG_BAK_THRESHOLD"/>
-    /// (5장)를 과반 기준으로 잡았다. 내가 열끗 0장인데 상대 중 누구라도
-    /// 그 이상을 모았으면 위험.</summary>
-    public const int MEONG_BAK_THRESHOLD = 5;
+    /// <summary>멍박 실시간 위험 판정 — 정식 "멍따"(동물 그림 열끗) 점수
+    /// 규칙 자체는 이 프로젝트가 의도적으로 안 넣었지만(2인판 문서 참고),
+    /// "열끗 5장부터 1점씩"(<see cref="CalcScore"/>의 <c>yeolkkeut</c> 항목)과
+    /// "고도리 3장(5점)"은 실제로 구현돼 있다 — 상대가 <b>열끗 관련으로
+    /// 실제 점수를 낸 상태</b>(그 둘 중 하나라도 &gt;0)면 "멍박" 위험으로
+    /// 본다. 2026-09-04 정정(사용자 확인) — 예전엔 "열끗 5장 이상"만
+    /// 봐서, 고도리 3장을 전부 모았지만 총 열끗이 5장 미만인(예: 정확히
+    /// 3장, 전부 고도리) 드문 경우를 놓쳤다 — 실제로는 고도리만으로도
+    /// 5점을 내는 상태인데 위험 표시가 안 됐다. 이제 두 조건을 OR로
+    /// 묶어서 어느 쪽으로든 점수가 나면 잡는다(기존에 잡던 경우를 못
+    /// 잡게 되는 회귀는 없다 — 순수하게 더 넓게 잡을 뿐이다).</summary>
     public static bool IsLiveMeongBakRisk(List<HwatuCard> mine, IEnumerable<List<HwatuCard>> others)
     {
         if (mine.Count(c => c.EffectiveKind == HwatuKind.Yeolkkeut) > 0) return false;
-        return others.Any(o => o.Count(c => c.EffectiveKind == HwatuKind.Yeolkkeut) >= MEONG_BAK_THRESHOLD);
+        return others.Any(o => { var s = CalcScore(o, 0); return s.yeolkkeut > 0 || s.godori > 0; });
     }
 
     /// <summary>총통 — 딜 받은 손패에 같은 달 4장(그 달 전부)이 통째로 있는가.
