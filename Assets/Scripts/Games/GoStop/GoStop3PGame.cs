@@ -566,6 +566,22 @@ public partial class GoStop3PGame : MonoBehaviour
             captured[s] = GoStopStateSnapshot.Dec(snap.CapturedFor(s));
         }
         field = GoStopStateSnapshot.Dec(snap.field);
+        // 2026-09-03 버그 수정 — "pos4가 비는데 pos7부터 차는데" 재신고 —
+        // 위 NewGameSeq의 fieldSlotAssign.Clear()는 호스트 전용 경로라
+        // 게스트에서는 한 번도 안 걸렸다. GoStopStateSnapshot.Dec는 스냅샷이
+        // 올 때마다(사실상 매 RebuildUI) HwatuCard를 전부 새로
+        // new(...)하는데, HwatuCard는 값 동등성이 아니라 참조 동일성으로
+        // 다뤄지는 게 이 프로젝트의 설계(카드 리스트 Remove/Contains 전부
+        // 참조 기준) — 그래서 fieldSlotAssign(Dictionary<HwatuCard,int>)에
+        // 남아있던 지난 스냅샷의 카드 키들은 새 스냅샷의 field/captured
+        // 어디에도 절대 못 걸린다(전부 새 인스턴스라 참조가 다르다).
+        // SyncFieldSlotAssignments의 반납 조건("field에 없고 captured에
+        // 있다")도 구조적으로 영원히 성립할 수 없어 죽은 키가 게스트
+        // 세션 내내(여러 판을 거쳐도) 계속 쌓였다 — 게스트는 NewGame()을
+        // 직접 호출하지 않으므로 그 Clear()의 혜택을 못 받는다. 스냅샷마다
+        // 카드 인스턴스가 통째로 갈리는 이상 이전 배정은 어차피 무의미
+        // 하므로, 여기서도 매번 통째로 비운다.
+        fieldSlotAssign.Clear();
         drawPile = new List<HwatuCard>();
         for (int i = 0; i < snap.drawPileCount; i++) drawPile.Add(new HwatuCard(0, HwatuKind.Pi, "Joker_1", piValue: 1, isJoker: true));
         // ↑ 더미는 개수만 온다(위 GoStopStateSnapshot 문서 참고) — 실제로

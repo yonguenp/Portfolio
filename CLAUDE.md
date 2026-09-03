@@ -9604,3 +9604,53 @@ Tane+Tanzaku 둘 다 있어 필드선택 팝업이 뜬 것을 `pendingFieldChoic
 > 판단했다(예외 없이 조용히 이상해졌다는 점에서 코드 버그로 볼 근거가
 > 없었다). 핵심 검증(그림자 on/off 네 가지 경로)은 이미 그 이전에
 > 전부 예외 없이 확인이 끝난 뒤였으므로 추가 조사 없이 넘어갔다.
+
+## 고스톱 — 게스트 전용 필드 슬롯 누수 (fieldSlotAssign, 네트워크) (2026-09-03)
+
+"pos 빈자리 pos 1부터 12까지 순서대로 찾는거 맞아? pos4가 비는데 pos7부터
+차는데" — 2026-09-02에 이미 고친 "pos1이 비어있는데 다른 슬롯부터 찬다"
+버그(`fieldSlotAssign`이 판을 거듭해도 안 지워지던 것, `NewGameSeq`에
+`.Clear()` 추가로 해결)와 정확히 같은 증상군의 재발 신고. `AssignFieldSlot`
+(`GoStop3PGame.UI.cs`)/`SyncFieldSlotAssignments`/모든 `field.Remove(...)`
+호출부(2인·3~4인·`GoStopRules.cs` 전부)를 서브에이전트로 전수 감사했지만
+**호스트·단일 클라이언트 경로 자체는 이미 완전히 무결했다** — 모든 카드
+제거가 예외 없이 어느 좌석의 `captured[]`로 이어졌다.
+
+**진짜 원인은 네트워크 게스트 쪽에만 있었다.** `ApplyNetworkSnapshot`
+(호스트 스냅샷을 받을 때마다 실행 — 사실상 매 `RebuildUI`)이
+`field = GoStopStateSnapshot.Dec(snap.field);`로 매번 `field`를 통째로
+새 리스트로 갈아치우는데, `Dec`(`GoStopDeck.Decode`)는 스냅샷이 올 때마다
+`HwatuCard`를 전부 `new(...)`로 새로 만든다 — 그런데 `HwatuCard`는 이
+프로젝트가 이미 여러 번 명시한 설계대로 **값 동등성이 아니라 참조
+동일성**으로 다뤄진다(`Equals`/`GetHashCode` 오버라이드 없음, 모든
+`List.Contains`/`Remove`가 참조 기준). 그래서 `fieldSlotAssign`
+(`Dictionary<HwatuCard,int>`)에 남아있던 **지난 스냅샷의 카드 키들은
+새 스냅샷의 `field`/`captured` 어디에도 참조가 안 맞아 절대 못 걸린다**
+— `SyncFieldSlotAssignments`의 반납 조건("field에 없고 captured에
+있다")이 게스트에서는 구조적으로 영원히 성립할 수 없어, 죽은 키가
+세션 내내(판이 몇 번을 넘어가도) 계속 쌓였다. 호스트 전용인
+`NewGameSeq`의 `.Clear()`는 게스트가 `NewGame()`을 직접 호출하는 경로
+자체가 없어서(`SetNewGameAction(isNetworkGuest ? null : NewGame)`)
+전혀 도움이 안 됐다 — 정확히 같은 증상이 왜 "고쳤는데도" 재발했는지의
+답이었다.
+
+`ApplyNetworkSnapshot`의 `field` 재할당 직후 `fieldSlotAssign.Clear();`
+한 줄을 추가했다 — 카드 인스턴스 자체가 스냅샷마다 통째로 갈리는 이상
+이전 배정을 유지할 근거 자체가 없으므로, 게스트는 매 스냅샷마다
+`AssignFieldSlot`이 새로 (하지만 그 판 안에서는 일관되게) 재배정하게
+했다. `HwatuCard`에 값 동등성을 넣거나 `fieldSlotAssign`을 `spriteName`
+기준으로 다시 키잉하는 대안도 있었지만, 참조 동일성은 이 프로젝트
+전역에 걸쳐 이미 확정된 설계라(다른 수십 곳의 `Remove`/`Contains`가
+그 전제로 짜여 있다) 건드리지 않고 가장 좁은 지점만 고쳤다.
+
+**검증(Play 모드 라이브, 리플렉션).** 호스트 상태를 직접 스플라이스해
+필드 6장을 채운 뒤 `BuildSnapshot()`으로 실제 스냅샷을 뽑고, 적용
+*전* `fieldSlotAssign`의 키(호스트 카드 인스턴스) 6개를 미리 기억해
+둔 채 `ApplyNetworkSnapshot(snap)`을 직접 호출 — 적용 후
+`fieldSlotAssign.Count=6`(정상, field와 정확히 일치)이면서 옛 호스트
+인스턴스 키는 **0개**만 남는 것을 확인했다(수정 전이었다면 이 6개가
+전부 죽은 채로 남아있었을 것 — `field.Contains`/`captured.Contains`
+둘 다 새 인스턴스 기준이라 옛 키를 절대 못 잡기 때문). 같은 스냅샷을
+8번 연속 재적용해도 매번 정확히 6으로 고정되는 것(누적 없음)까지
+확인했다. 콘솔은 CLI 자체의 5초 타임아웃 1건(무관한 환경 특성)만
+있었고 게임 코드발 예외는 0건.
