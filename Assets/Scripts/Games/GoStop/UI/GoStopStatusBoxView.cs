@@ -76,26 +76,20 @@ public class GoStopStatusBoxView : MonoBehaviour
     public TextMeshProUGUI MoneyText => moneyText;
     public RectTransform BadgeArea => badgeArea;
 
-    // 2026-09-03 — "유저가 쉬는 중이면 dim 켜줘" 요청. 배경/글자/배지를
-    // 각각 따로 흐리게 칠하는 대신 CanvasGroup.alpha 하나로 박스 전체를
-    // 균일하게 반투명 처리한다 — ApplyTurnState/DrawBadgeStrip이 그 위에
-    // 뭘 그리든 순서와 무관하게 항상 올바르게 흐려진다. 프리팹에는 아직
-    // CanvasGroup이 없어서(에셋을 안 건드리고) 런타임에 없으면 하나
-    // 붙인다 — 이 파일의 다른 GetOrAdd류 방어 패턴과 동일.
-    CanvasGroup dimGroup;
+    // 2026-09-03 — "유저가 쉬는 중이면 dim 켜줘" 요청. 처음엔 CanvasGroup.alpha로
+    // 코드에서 흐리는 방식으로 짰는데, 사용자가 "코드로 조절하라는 게 아니라
+    // 프리팹에 이미 만들어둔 Dim 오브젝트를 켜달라는 것"이라고 정정 — 프리팹
+    // 안에 사용자가 직접 만들어 둔 "Dim"(전체 스트레치 Image, 기본 비활성)을
+    // SerializeField로 참조해서 SetActive만 토글한다.
+    [SerializeField] GameObject dimOverlay;
 
     /// <summary>이번 판에 이 좌석이 쉬는 중(광팔이/참가 포기)이면 true —
-    /// 상태창 전체를 반투명하게 흐린다. 슬롯이 영구적이라(매턴 재생성
-    /// 안 됨) 쉬지 않는 정상 상태로 돌아올 때도 반드시 false로 다시
-    /// 불러줘야 지난 판의 dim이 안 남는다.</summary>
+    /// 프리팹의 Dim 오브젝트를 켠다. 슬롯이 영구적이라(매턴 재생성 안 됨)
+    /// 쉬지 않는 정상 상태로 돌아올 때도 반드시 false로 다시 불러줘야
+    /// 지난 판의 dim이 안 남는다.</summary>
     public void SetDim(bool active)
     {
-        if (dimGroup == null)
-        {
-            dimGroup = GetComponent<CanvasGroup>();
-            if (dimGroup == null) dimGroup = gameObject.AddComponent<CanvasGroup>();
-        }
-        dimGroup.alpha = active ? 0.45f : 1f;
+        if (dimOverlay) dimOverlay.SetActive(active);
     }
 
     // GoStop3PGame.BuildInfoBlock이 예전에 쓰던 것과 같은 세로 예산값 —

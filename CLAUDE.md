@@ -9358,28 +9358,41 @@ PiWeightFiller, 홑피]`(총 10개=그리드 5열 기준 2행)로 나와, 1행�
 "쉬는 중 (참가 포기)" 문구는 띄우고 있었지만 배경/글자에 별도 흐림
 처리는 없었다.
 
-`GoStopStatusBoxView`에 `SetDim(bool)`을 추가 — 배경·이름·고점수·금액·
-배지를 각각 따로 흐리게 칠하는 대신 `CanvasGroup.alpha`(0.45/1) 하나로
-박스 전체를 균일하게 반투명 처리한다. `ApplyTurnState`/`DrawBadgeStrip`이
-그 위에 뭘 그리든 호출 순서와 무관하게 항상 올바르게 흐려진다는 게
-이 방식의 장점. 프리팹엔 아직 CanvasGroup이 없어서(프리팹 에셋은 안
-건드림) 런타임에 `GetComponent`로 없으면 `AddComponent`하는 GetOrAdd
-패턴을 썼다 — 이 클래스의 다른 방어적 패턴(`EnsureCapLayoutHierarchy`의
-LayoutGroup 재사용 등)과 같은 원칙.
+**1차 시도(CanvasGroup, 되돌림) — "코드로 조절하라는 말이 아니라
+프리팹에 dim을 켜달라는 것"이라는 정정을 받았다.** 처음엔
+`GoStopStatusBoxView`에 `CanvasGroup.alpha`로 박스 전체를 흐리는
+`SetDim(bool)`을 만들었는데, 커밋 직전 `git status`에서 손 안 댄
+`StatusBoxView.prefab`이 이미 수정돼 있는 걸 발견했다 — diff를 보니
+사용자가 프리팹 에디터에서 **직접 "Dim"이라는 이름의 GameObject**
+(전체 스트레치 Image, 기본 비활성, 회갈색 반투명)를 이미 만들어 둔
+상태였다. 처음엔 "제가 안 건드린 파일이 바뀌어 있다"고만 보고하고
+커밋은 보류했는데, 사용자가 바로 "그 Dim 오브젝트를 SetActive로 켜
+달라는 뜻이었다"고 확인해줬다 — 코드에서 새로 만들 필요 없이 이미
+있는 걸 참조만 하면 되는 상황이었다.
 
-`FillSlot`(슬롯 1~3과 "나" 슬롯 0을 공유하는 함수라 한 곳만 고치면 전
-좌석에 다 적용된다)의 쉬는 좌석 분기에 `SetDim(true)`를 추가하고, 정상
-분기(쉬지 않음)엔 `SetDim(false)`를 명시적으로 넣었다 — 이 4개
-StatusBoxView 슬롯은 매판 재생성되는 게 아니라 영구히 재사용되므로,
-쉬다가 다음 판에 다시 참가하면 반드시 꺼줘야 지난 판의 dim이 안 남는다
-(`HideAllBadges()`가 이미 같은 이유로 매판 명시적으로 불리고 있던
-것과 동일한 원칙). `seat < 0`(참가자 수가 적어 슬롯 자체가 비는 경우)
-분기에도 같은 이유로 `SetDim(false)`를 추가했다 — 그 슬롯이 지난
-판엔 쉬는 좌석이었을 수 있어서다.
+**최종 구현.** `SetDim`의 내용을 CanvasGroup 방식에서
+`[SerializeField] GameObject dimOverlay;`를 `SetActive(active)`로
+토글하는 방식으로 교체했다. 컴파일해서 `dimOverlay` 필드가 실제로
+존재하게 만든 뒤, `PrefabUtility.LoadPrefabContents` +
+`SerializedObject.FindProperty("dimOverlay").objectReferenceValue =
+그 Dim GameObject` + `PrefabUtility.SaveAsPrefabAsset`로 프리팹 자체에
+참조를 구워 넣었다(이 프로젝트가 여러 번 써온 프리팹 필드 와이어링
+패턴 — `OverlayCard`/`StatusBoxView` 초기 프리팹화 세션 등과 동일).
 
-**검증(Play 모드 라이브).** 4인 게임에서 좌석2를 강제로
-`sittingOutSeat`로 지정하고 `RebuildUI()` 직접 호출 → 좌석2가 매핑된
-슬롯(slotSeat 실측으로 확인)만 `CanvasGroup.alpha=0.45`, 나머지 3슬롯은
-`alpha=1`인 것 확인. 이어서 `sittingOutSeat=-1`(전원 참가)로 바꾸고
-다시 `RebuildUI()` → 방금 흐려졌던 슬롯이 정확히 `alpha=1`로 복귀하는
-것까지(리셋 경로) 확인했다. 콘솔 에러 0건.
+> **함정 — `PrefabUtility.UnloadPrefabContents(root)` 다음 줄에서
+> `root`(또는 그 자식)의 프로퍼티를 읽으면 "destroyed but you are
+> still trying to access it" 예외가 난다.** 로그 문자열을 만들려고
+> `dimT.name`을 `UnloadPrefabContents` 호출 **뒤에** 읽었다가 걸렸다 —
+> `LoadPrefabContents`가 만드는 임시 씬 오브젝트는 `Unload` 시점에
+> 실제로 파괴되므로, 필요한 값은 반드시 Unload 전에 지역 변수로
+> 미리 뽑아둘 것. (다행히 저장(`SaveAsPrefabAsset`) 자체는
+> `Unload` 전에 이미 끝나 있어서 이 예외와 무관하게 와이어링은
+> 정상적으로 저장돼 있었다 — 프리팹 파일을 직접 grep해서 확인.)
+
+**검증(Play 모드 라이브).** 4인 게임의 4개 슬롯 전부에서
+`dimOverlay`가 실제로 그 "Dim" GameObject로 와이어링돼 있는 것 확인
+(reflection으로 private 필드 직접 조회). 좌석2를 `sittingOutSeat`로
+강제 지정 → `RebuildUI()` → 좌석2가 매핑된 슬롯(slotSeat 실측 확인)만
+`dim.activeSelf=True`, 나머지 3슬롯은 `False`. `sittingOutSeat=-1`
+(전원 참가)로 되돌리고 다시 `RebuildUI()` → 방금 켜졌던 슬롯이
+정확히 `False`로 복귀하는 것까지(리셋 경로) 확인했다. 콘솔 에러 0건.
