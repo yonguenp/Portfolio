@@ -2399,6 +2399,40 @@ public partial class GoStop3PGame
         if (rt != null) rt.localScale = baseScale;
     }
 
+    /// <summary>2026-09-04(사용자 확인 — "뒷패가 까질 때 DrawPile 뭉치에서
+    /// cardback 하나가 뒤집어져서 나오는 느낌이 약하다") — <paramref
+    /// name="rt"/>(이미 앞면으로 렌더링돼 있는 고스트, 위쪽 hover 자리에
+    /// 정지해 있다) 바로 위에 카드 뒷면 이미지를 겹쳐 놓고, 잠깐 그대로
+    /// 보여준 뒤 가로 폭만 0으로 줄여 사라지게 한다 — 뒷면이 좌우로 접히듯
+    /// 얇아지며 사라지면 그 밑에 이미 있던 앞면(rt)이 "뒤집혀서 드러난"
+    /// 것처럼 보인다. rt 자신의 스프라이트를 바꿀 필요가 없어서(그러면
+    /// 이 뒤에 이어지는 착지 로직이 어떤 카드가 진짜인지 헷갈릴 위험이
+    /// 있다) 덧대는 방식을 택했다. 뒷면은 rt와 같은 부모(pos 슬롯)의
+    /// 자식이라, rt가 도중에 파괴되면(예: 판이 갑자기 끝나는 등) 뒷면도
+    /// 계층 구조를 따라 자동으로 같이 사라진다.</summary>
+    IEnumerator FlipRevealBack(RectTransform rt)
+    {
+        if (rt == null) yield break;
+        var back = HwatuUI.MakeCardBack(rt.parent, rt.anchoredPosition, rt.sizeDelta.x, rt.sizeDelta.y);
+        back.SetAsLastSibling(); // rt(앞면) 바로 위에 그려지도록 보장
+
+        yield return new WaitForSeconds(0.05f); // "뒷면이 나왔다"를 눈에 담을 짧은 틈
+        if (back == null) yield break;
+
+        const float flipDur = 0.12f;
+        Vector3 baseScale = back.localScale;
+        float t = 0f;
+        while (t < flipDur)
+        {
+            t += Time.deltaTime;
+            float p = Mathf.Clamp01(t / flipDur);
+            if (back == null) yield break;
+            back.localScale = new Vector3(baseScale.x * (1f - p), baseScale.y, baseScale.z);
+            yield return null;
+        }
+        if (back != null) Destroy(back.gameObject);
+    }
+
     /// <summary>"공중에서 내려치는" 슬램 모션 — 목적지가 살아있는 Transform인
     /// 경우 전용(pos 슬롯 마커처럼 앞으로도 유지되는 대상). <paramref
     /// name="target"/>의 position을 매 프레임 다시 읽는다("moveTo 포지션이
@@ -2419,7 +2453,9 @@ public partial class GoStop3PGame
     /// 맛이 있으면" 요청) — 0보다 크면 낙하를 시작하기 전, 위쪽에 뜬 채로
     /// 그 횟수만큼 살짝 부풀었다 줄어드는 걸 반복한다("정체를 확인했지만
     /// 아직 결과는 모른다"는 긴장의 순간). 뒷패(덱카드)를 까는 모든
-    /// 지점에서만 쓰고, 이미 결과를 아는 손패 슬램에는 안 쓴다.</summary>
+    /// 지점에서만 쓰고, 이미 결과를 아는 손패 슬램에는 안 쓴다. 같은
+    /// 신호로 <see cref="FlipRevealBack"/>(카드 뒷면이 잠깐 보였다가
+    /// 뒤집히며 사라지는 연출)도 이 펄스보다 먼저 건다.</summary>
     IEnumerator SlamDown(RectTransform rt, RectTransform target, float dropHeight = 170f, float dropDur = 0.10f, float punchDur = 0.12f, float punchScale = 1.22f, int cardMonth = 0, int suspensePulses = 0)
     {
         if (rt == null || target == null) yield break;
@@ -2429,6 +2465,15 @@ public partial class GoStop3PGame
 
         if (suspensePulses > 0)
         {
+            // 2026-09-04(사용자 확인 — "뒷패가 까질 때 cardback 하나가
+            // 뒤집어져서 나오는 느낌이 약하다") — 기존 흔들림 펄스보다
+            // 먼저, 카드 뒷면이 잠깐 보였다가 뒤집히며 사라지는 연출을
+            // 건다. suspensePulses>0은 이미 "이건 뒷패(=결과를 모르고
+            // 지켜보는 덱카드) 슬램"이라는 신호라, 손패 슬램
+            // (suspensePulses=0)에는 이 연출이 전혀 안 걸린다.
+            yield return FlipRevealBack(rt);
+            if (rt == null || target == null) yield break;
+
             float susDur = suspensePulses * 0.11f;
             float st = 0f;
             while (st < susDur)
