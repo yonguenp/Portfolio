@@ -9950,3 +9950,87 @@ refresh --force --compile`는 이 세션의 Pipeline 서버 커맨드 목록에
 안에 하나도 없던 달, 6월 — Tane/Kasu_1/Kasu_2 3장)로 흔들기를 다시
 실행 — `cardRow`의 3개 자식 전부 `hasVectorImage=True`(수정 전이었다면
 2/3이 빈 자리)로 확인. 콘솔 에러 0건.
+
+## 고스톱 — 착지 애니메이션에 "완급"(쪼는 맛/호쾌한 맛/힘없는 맛) 추가 (2026-09-04)
+
+"이제 애니메이팅 연출은 끊김없이 자연스러운데 좀 심심하다, 완급이 없다 —
+쪼는 맛/호쾌한 맛/힘없이 실망한 느낌이 패를 낼 때마다·뒷패를 깔 때마다
+들어가면 재밌겠다"는 요청. 이미 폭탄("쎄게")·뻑 형성("힘없이") 두 특수
+케이스만 전용 프리셋(`dropHeight`/`dropDur`/`punchDur`/`punchScale`)을
+직접 부르고 있었고, 그 외 **모든** 착지(①손패 슬램·②뒷패 슬램·덱만
+넘기는 턴)는 전부 같은 기본값 하나로 뭉뚱그려져 있었다 — 정확히
+"심심하다"는 지적의 원인이었다.
+
+**`LandingMood(bool willCapture, bool bigCapture)` — 결과 기반 완급
+프리셋 헬퍼(`GoStop3PGame.UI.cs`).** 폭탄/뻑 형성이 쓰는 전용 프리셋은
+그대로 두고, 나머지 모든 착지가 이 함수 하나로 통일된다:
+- 못 먹음(`willCapture=false`) → **힘없이**: dropHeight 95·dropDur
+  0.13·punchDur 0.09·punchScale 1.08(거의 안 튕김).
+- 먹음(`willCapture=true`) → **호쾌**: dropHeight 190·dropDur 0.085·
+  punchDur 0.13·punchScale 1.30.
+- 이미 3장 쌓인 자리를 마저 먹음(`bigCapture`, 뻑 먹기 등 4장 통짜
+  회수) → **더 호쾌**: dropHeight 220·dropDur 0.07·punchDur 0.14·
+  punchScale 1.38(폭탄의 1.4에 근접).
+
+**①손패 슬램**은 이미 `r1`이 계산돼 있어 결과를 정확히 아는 착지다 —
+`matchedFieldCard != null`이 `willCapture`, `matchedSlot.childCount>=3`
+(고스트를 붙이기 **전**에 잰 값)이 `bigCapture`.
+
+**②뒷패 슬램(일반 분기, 조커·뻑형성 제외)**은 아직 `GoStopRules.Resolve`를
+안 부른 시점이라 결과가 코드상 확정 전인데, `field`가 이미 r1이 갱신해
+둔 상태라(그 사이 field를 건드리는 코드가 없다) `FieldSlotTransform(drawn)
+.childCount > 0`을 미리 훑어보면 `Resolve`가 나중에 낼 답과 정확히
+일치한다 — 이 값으로 같은 `LandingMood`를 그대로 쓴다.
+
+**`suspensePulses`(신규, `SlamDown(RectTransform, RectTransform, ...)`
+전용) — "쪼는 맛"은 뒷패 전용.** 낙하 시작 전 위쪽에 뜬 채로 N회
+sine 파형(±6% 스케일, 회당 0.11초)으로 살짝 부풀었다 줄어드는 걸
+반복한다 — "카드 정체는 봤지만 아직 결과는 모른다"는 짧은 긴장 비트.
+손패(이미 뭘 내는지 아는 착지)에는 안 걸고, **뒷패를 까는 모든 지점**
+(조커/뻑형성/일반 3곳 + `DeckOnlySeq`)에 `suspensePulses: 2`(=0.22초)를
+공통으로 건다 — 결과와 무관하게 "뭐가 나올지" 자체가 매번 진짜
+서스펜스이기 때문. 뻑 형성 분기는 특히 이 조합이 잘 맞는다 — 펄스로
+잠깐 불안하게 만든 뒤 힘없이 떨어뜨려 "어? 뻑이잖아..."라는 확인의
+순간을 준다.
+
+**`DeckOnlySeq`(손패 없이 덱만 넘기는 턴)도 같은 체계로 승격.** 예전엔
+이 경로만 `flyFrom` 등록 후 `SlamIn`(수평 이동)으로 조용히 흘러들어
+왔다 — "뒷패를 깔 때마다"라는 요청 문구가 이 경로도 명시적으로
+포함하므로, PlaySeq의 ②와 완전히 같은 고스트+SlamDown(펄스+무드) 패턴을
+새로 얹었다. 고스트 파괴 타이밍도 PlaySeq의 r2 처리와 같은 이유로
+"결과가 확정된 뒤(선택 팝업 대기 끝난 뒤), RebuildUI 직전"으로 맞췄다
+(2026-09-02에 잡은 "슬램다운 끝나고 필드패 나올 때까지 텀이 있어서
+카드가 깜빡거림" 버그의 재발 방지 — 동일 원칙을 새 경로에도 그대로
+적용).
+
+**검증(Play 모드 라이브, 컴파일 클린 확인 후 실제 게임 완주).** 4인
+게임을 새로 시작해 리플렉션으로 딜러뽑기 픽·참가선언·필드선택·9월열끗·
+카드플레이·고스톱선택 전부를 자동 응답하며 처음부터 GameOver까지
+완주시켰다(약 37스텝, 손패 소진·덱 소진·자연스러운 고/스톱 판정까지
+전부 거침). 콘솔은 이 플레이 세션 동안(00:36~00:38) 전부 기존에 이미
+있던 환경 노이즈뿐(exec 5초 타임아웃, "자동화 모드 아님" 경고, `—`
+글리프 폰트 폴백 경고 — 전부 이 프로젝트에 이미 문서화된 무관한
+잡음)이고, `NullReferenceException`을 포함한 실제 코드발 예외는 **0건**.
+
+> **함정 — `unity command eval`의 Roslyn 스크립팅 컨텍스트에서
+> `System.Func<string,object> gf = n => t.GetField(n, bf).GetValue(go);`
+> 같은 람다 클로저가 `t`/`bf`/`go`를 캡처하면 원인 불명으로 나중 호출이
+> `NullReferenceException`을 던지는 경우가 있었다.** 개별 필드 접근은
+> 전부 정상 동작했는데, 람다로 감싸서 여러 필드를 한 번에 읽으려 하면
+> 간헐적으로 깨졌다 — 원인을 못 밝혔지만(이 세션의 exec 관련 환경
+> 불안정과 같은 계열일 가능성), 람다 없이 `t.GetField(...).GetValue(go)`를
+> 매번 직접 풀어서 쓰는 것으로 완전히 우회됐다. **여러 필드를 한 번에
+> 읽는 리플렉션 스크립트를 짤 때 원인 불명의 NRE가 나면, 먼저 람다
+> 헬퍼를 걷어내고 직접 호출로 바꿔볼 것.**
+>
+> **함정(진짜 원인 아니었던 것) — `hand[]`가 전부 null인 상태를 "게임이
+> 깨졌다"로 오판할 뻔했다.** `BeginWithSeatCount(4)` 호출 뒤 `state`
+> 필드를 읽었더니 `Turn`이 나와서 "정상 진행 중"이라고 판단했는데, 이건
+> `enum State { Turn, GoStopChoice, GameOver }`에서 `Turn`이 마침
+> 기본값(0)이라 **아직 `NewGameSeq()`가 딜을 시작하기 전 시점**에도
+> 우연히 같은 값으로 읽힌 것이었다 — 실제로는 선 뽑기 연출
+> (`DetermineDealerSeq`)이 내 카드 선택을 기다리며 멈춰 있었다(`dealerDrawPopup.
+> dim.gameObject.activeSelf=True`). **`state`만 보고 "게임이 정상
+> 진행 중"이라 판단하지 말 것** — `Turn`은 초기화 이전에도 나올 수 있는
+> 값이라, `dealerDetermined`/각 팝업의 `dim.activeSelf`까지 같이 확인해야
+> "진짜로 시작됐는지"를 알 수 있다.

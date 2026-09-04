@@ -2381,6 +2381,13 @@ public partial class GoStop3PGame : MonoBehaviour
         else
         {
             var target = matchedSlot != null ? matchedSlot : FieldSlotTransform(card);
+            // 2026-09-04(사용자 확인) — 손패는 이미 어떤 패를 내는지 아는
+            // 상태라 "결과를 아는" 착지다 — 먹는지(matchedFieldCard!=null)
+            // 아닌지에 따라 호쾌/힘없이를 갈라준다. matchedSlot에 이미 3장이
+            // 쌓여 있으면(뻑 무더기를 마저 먹는 4번째 장) 더 세게 친다.
+            bool willCapture = matchedFieldCard != null;
+            bool bigCapture = willCapture && matchedSlot != null && matchedSlot.childCount >= 3;
+            var mood = LandingMood(willCapture, bigCapture);
             var ghost = SpawnGhostCard(card, target);
             // 2026-09-02 — target.position(pos 마커 자체의 피벗 좌표, 보통
             // center)이 아니라 고스트가 실제로 놓인 자리(ghost.transform.position,
@@ -2391,7 +2398,9 @@ public partial class GoStop3PGame : MonoBehaviour
             // "움직인 것"으로 오판돼 SlamIn이 엉뚱한 지점에서 시작해 잠깐
             // 아래로 처졌다가 제자리로 돌아오는 것처럼 보인다.
             var landing = ghost.transform.position;
-            yield return StartCoroutine(SlamDown(ghost.transform as RectTransform, target, cardMonth: card.month));
+            yield return StartCoroutine(SlamDown(ghost.transform as RectTransform, target,
+                dropHeight: mood.dropHeight, dropDur: mood.dropDur, punchDur: mood.punchDur, punchScale: mood.punchScale,
+                cardMonth: card.month));
             handGhosts.Add(ghost);
             flyFrom[card] = landing;
         }
@@ -2413,7 +2422,9 @@ public partial class GoStop3PGame : MonoBehaviour
                 // 위 손패 슬램과 같은 이유(2026-09-02) — target.position이
                 // 아니라 고스트의 실제 착지 자리를 flyFrom에 기록한다.
                 flyFrom[drawn] = deckGhost.transform.position;
-                yield return StartCoroutine(SlamDown(deckGhost.transform as RectTransform, target, dropHeight: 90f, cardMonth: drawn.month));
+                // 2026-09-04 — 뒷패는 "뭐가 나올지 모르는" 유일한 순간이라
+                // 모든 덱 뒤집기(조커 포함)에 짧은 긴장 펄스를 건다.
+                yield return StartCoroutine(SlamDown(deckGhost.transform as RectTransform, target, dropHeight: 90f, cardMonth: drawn.month, suspensePulses: 2));
             }
             else if (couldBePpeok && drawn.month == card.month)
             {
@@ -2432,17 +2443,31 @@ public partial class GoStop3PGame : MonoBehaviour
                 // 2026-09-02(사용자 확인) — 뻑은 "아무도 못 먹고 묶이는"
                 // 김빠지는 결과라, 다른 착지보다 낮게(dropHeight)·느리게
                 // (dropDur)·거의 안 튕기게(punchScale≈1) 힘없이 내려놓는다.
+                // 2026-09-04 — 이 순간이야말로 가장 "쪼는" 순간이다(뒷패가
+                // 방금 낸 손패와 같은 달인 걸 보는 그 찰나) — 펄스를 걸고
+                // 나서 힘없이 떨어뜨린다("어? 뻑이잖아..." 하는 느낌).
                 yield return StartCoroutine(SlamDown(deckGhost.transform as RectTransform, target,
-                    dropHeight: 60f, dropDur: 0.22f, punchDur: 0.16f, punchScale: 1.06f, cardMonth: drawn.month));
+                    dropHeight: 60f, dropDur: 0.22f, punchDur: 0.16f, punchScale: 1.06f, cardMonth: drawn.month, suspensePulses: 2));
                 flyFrom[drawn] = landing;
             }
             else
             {
                 var target = FieldSlotTransform(drawn);
+                // 2026-09-04(사용자 확인) — 뒷패는 실제로 코드가 아는 정보
+                // (field는 r1이 이미 갱신해 둔 상태라 GoStopRules.Resolve와
+                // 같은 답이 나온다)로도 결과를 미리 알 수 있지만, 화면에는
+                // 아직 "뒤집기 전"처럼 보여야 하므로 펄스로 긴장을 준 뒤
+                // 결과에 맞는 완급(호쾌/힘없이)으로 떨어뜨린다 — target에
+                // 이미 카드가 있으면(같은 달) 곧 잡아먹힐 패라는 뜻.
+                bool willCapture = target.childCount > 0;
+                bool bigCapture = willCapture && target.childCount >= 3;
+                var mood = LandingMood(willCapture, bigCapture);
                 deckGhost = SpawnGhostCard(drawn, target);
                 // 위와 같은 이유(2026-09-02).
                 flyFrom[drawn] = deckGhost.transform.position;
-                yield return StartCoroutine(SlamDown(deckGhost.transform as RectTransform, target, cardMonth: drawn.month));
+                yield return StartCoroutine(SlamDown(deckGhost.transform as RectTransform, target,
+                    dropHeight: mood.dropHeight, dropDur: mood.dropDur, punchDur: mood.punchDur, punchScale: mood.punchScale,
+                    cardMonth: drawn.month, suspensePulses: 2));
             }
         }
 
@@ -2678,7 +2703,20 @@ public partial class GoStop3PGame : MonoBehaviour
             // 가리킨다. 이 턴은 손이 이미 다 떨어진 뒤(그 마지막 턴은 이미
             // 지났다)라 더 이상 예외 대상이 아니다 — 항상 정상적으로
             // 쪽/따닥/싹쓸이가 붙는다(allowSweep 기본값 true 그대로).
-            flyFrom[drawn] = drawPileArea.position;
+            // 2026-09-04(사용자 확인) — "뒷패를 깔때마다" 요청으로 덱만
+            // 넘기는 턴도 PlaySeq의 ② 뒷패 슬램다운과 같은 고스트+SlamDown
+            // (긴장 펄스 + 결과별 완급)으로 통일했다 — 예전엔 이 턴만
+            // flyFrom만 등록해 두고 SlamIn(수평 이동)으로 조용히 흘러들어
+            // 왔다.
+            var target = FieldSlotTransform(drawn);
+            bool willCaptureNow = target.childCount > 0;
+            var deckMood = LandingMood(willCaptureNow, willCaptureNow && target.childCount >= 3);
+            var deckGhost = SpawnGhostCard(drawn, target);
+            flyFrom[drawn] = deckGhost.transform.position;
+            yield return StartCoroutine(SlamDown(deckGhost.transform as RectTransform, target,
+                dropHeight: deckMood.dropHeight, dropDur: deckMood.dropDur, punchDur: deckMood.punchDur, punchScale: deckMood.punchScale,
+                cardMonth: drawn.month, suspensePulses: 2));
+
             var r = GoStopRules.Resolve(drawn, field);
             if (r.choiceCandidates != null)
             {
@@ -2694,6 +2732,11 @@ public partial class GoStop3PGame : MonoBehaviour
                     r = chosen;
                 }
             }
+            // 2026-09-04 — 위 손패 r2 처리와 같은 이유(2026-09-02 주석 참고,
+            // "슬램다운 끝나고 필드패 나올 때까지 텀이 있어서 카드가
+            // 깜빡거림") — 선택 팝업 대기 동안 뒷패가 화면에서 사라지지
+            // 않도록 결과가 확정된 지금(RebuildUI 직전)에야 고스트를 지운다.
+            DestroyGhost(deckGhost);
             HwatuCard dualPending = null;
             if (r.captured.Count > 0)
             {

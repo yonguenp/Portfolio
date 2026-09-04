@@ -1668,6 +1668,7 @@ public partial class GoStop3PGame
             glg.spacing = new Vector2(-27.5f, -20f);
             glg.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
             glg.constraintCount = 5;
+            glg.startCorner = GridLayoutGroup.Corner.LowerLeft;
             glg.childAlignment = TextAnchor.LowerCenter;
             glg.startAxis = GridLayoutGroup.Axis.Horizontal;
             return (RectTransform)go.transform;
@@ -2338,6 +2339,22 @@ public partial class GoStop3PGame
         foreach (var g in list) DestroyGhost(g);
     }
 
+    /// <summary>2026-09-04(사용자 확인 — "쪼는 맛, 호쾌한 맛, 힘없이 실망한
+    /// 느낌이 들게, 패를 낼 때마다/뒷패를 깔 때마다 유저 심리가 들어가면
+    /// 좋겠다") — 착지 결과에 따라 <see cref="SlamDown"/>의 완급을 정해준다.
+    /// 폭탄("쎄게")·뻑 형성("힘없이")은 이미 각자 전용 프리셋을 직접
+    /// 부르고 있어 이 함수를 안 거친다 — 나머지 모든 착지(①손패 슬램·
+    /// ②뒷패 슬램·덱만 넘기는 턴)가 이걸로 통일된다. 못 먹으면(그냥
+    /// 필드에 놓임) 낮고 느리고 거의 안 튕기는 김빠진 낙하, 먹으면 높고
+    /// 빠르고 크게 튕기는 호쾌한 낙하, 이미 3장 쌓인 자리를 마저 먹으면
+    /// (뻑 먹기 등 4장을 한 번에 쓸어가는 순간) 그보다 한 단계 더 세게.</summary>
+    (float dropHeight, float dropDur, float punchDur, float punchScale) LandingMood(bool willCapture, bool bigCapture)
+    {
+        if (bigCapture) return (220f, 0.07f, 0.14f, 1.38f);   // 호쾌 — 왕창 쓸어감
+        if (willCapture) return (190f, 0.085f, 0.13f, 1.30f); // 호쾌 — 평범한 캡처
+        return (95f, 0.13f, 0.09f, 1.08f);                     // 힘없이 — 아무것도 못 먹고 그냥 놓임
+    }
+
     /// <summary>"공중에서 내려치는" 슬램 모션 — 목적지가 정적 스냅샷(Vector3)인
     /// 경우 전용(예: 매칭된 필드 카드의 이미 렌더링된 자리 — 그 오브젝트는
     /// 곧 파괴될 예정이라 살아있는 Transform을 못 쓴다). 착지 지점 위쪽에서
@@ -2396,13 +2413,35 @@ public partial class GoStop3PGame
     /// 기준으로 target 밑에 정확히 배치해 뒀으므로, 생성 직후의 실제
     /// 오프셋(anchorOffset = rt.position − target.position)을 한 번 구해서
     /// 매 프레임 그 보정값을 다시 더한다 — target이 움직여도(GridLayoutGroup
-    /// 등) 정확한 피벗 보정이 유지된다.</summary>
-    IEnumerator SlamDown(RectTransform rt, RectTransform target, float dropHeight = 170f, float dropDur = 0.10f, float punchDur = 0.12f, float punchScale = 1.22f, int cardMonth = 0)
+    /// 등) 정확한 피벗 보정이 유지된다.
+    /// <br/>
+    /// <paramref name="suspensePulses"/>(2026-09-04, "뒷패를 깔때마다 쪼는
+    /// 맛이 있으면" 요청) — 0보다 크면 낙하를 시작하기 전, 위쪽에 뜬 채로
+    /// 그 횟수만큼 살짝 부풀었다 줄어드는 걸 반복한다("정체를 확인했지만
+    /// 아직 결과는 모른다"는 긴장의 순간). 뒷패(덱카드)를 까는 모든
+    /// 지점에서만 쓰고, 이미 결과를 아는 손패 슬램에는 안 쓴다.</summary>
+    IEnumerator SlamDown(RectTransform rt, RectTransform target, float dropHeight = 170f, float dropDur = 0.10f, float punchDur = 0.12f, float punchScale = 1.22f, int cardMonth = 0, int suspensePulses = 0)
     {
         if (rt == null || target == null) yield break;
         Vector3 anchorOffset = rt.position - target.position;
         Vector3 baseScale = rt.localScale;
         rt.position = target.position + anchorOffset + new Vector3(0f, dropHeight, 0f); // 시작점(타겟 위쪽)
+
+        if (suspensePulses > 0)
+        {
+            float susDur = suspensePulses * 0.11f;
+            float st = 0f;
+            while (st < susDur)
+            {
+                st += Time.deltaTime;
+                float wobble = 1f + 0.06f * Mathf.Sin(st / 0.11f * Mathf.PI * 2f);
+                if (rt == null || target == null) yield break;
+                rt.localScale = baseScale * wobble;
+                yield return null;
+            }
+            if (rt == null || target == null) yield break;
+            rt.localScale = baseScale;
+        }
 
         float t = 0f;
         while (t < dropDur)
