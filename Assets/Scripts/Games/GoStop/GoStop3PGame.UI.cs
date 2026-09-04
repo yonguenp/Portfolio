@@ -2401,15 +2401,19 @@ public partial class GoStop3PGame
 
     /// <summary>2026-09-04(사용자 확인 — "뒷패가 까질 때 DrawPile 뭉치에서
     /// cardback 하나가 뒤집어져서 나오는 느낌이 약하다") — <paramref
-    /// name="rt"/>(이미 앞면으로 렌더링돼 있는 고스트, 위쪽 hover 자리에
-    /// 정지해 있다) 바로 위에 카드 뒷면 이미지를 겹쳐 놓고, 잠깐 그대로
-    /// 보여준 뒤 가로 폭만 0으로 줄여 사라지게 한다 — 뒷면이 좌우로 접히듯
-    /// 얇아지며 사라지면 그 밑에 이미 있던 앞면(rt)이 "뒤집혀서 드러난"
-    /// 것처럼 보인다. rt 자신의 스프라이트를 바꿀 필요가 없어서(그러면
-    /// 이 뒤에 이어지는 착지 로직이 어떤 카드가 진짜인지 헷갈릴 위험이
-    /// 있다) 덧대는 방식을 택했다. 뒷면은 rt와 같은 부모(pos 슬롯)의
-    /// 자식이라, rt가 도중에 파괴되면(예: 판이 갑자기 끝나는 등) 뒷면도
-    /// 계층 구조를 따라 자동으로 같이 사라진다.</summary>
+    /// name="rt"/>(이미 앞면으로 렌더링돼 있는 고스트) 바로 위에 카드
+    /// 뒷면 이미지를 겹쳐 놓고, 잠깐 그대로 보여준 뒤 세로 높이만 0으로
+    /// 줄여 사라지게 한다("좌우로 접히니 뒷면 이미지랑 겹쳐 보인다,
+    /// 상하로 접히게 해달라"는 2차 수정 — 세로로 접히듯 얇아지며 사라지면
+    /// 그 밑에 이미 있던 앞면(rt)이 "뒤집혀서 드러난" 것처럼 보인다).
+    /// rt 자신의 스프라이트를 바꿀 필요가 없어서(그러면 이 뒤에 이어지는
+    /// 착지 로직이 어떤 카드가 진짜인지 헷갈릴 위험이 있다) 덧대는 방식을
+    /// 택했다. 뒷면은 rt와 같은 부모(pos 슬롯)의 자식이라, rt가 도중에
+    /// 파괴되면(예: 판이 갑자기 끝나는 등) 뒷면도 계층 구조를 따라
+    /// 자동으로 같이 사라진다. 호출 시점의 <c>rt.position</c>이 곧 이
+    /// 연출이 벌어지는 자리다 — <see cref="SlamDown"/>이 이 함수를 부르기
+    /// 전에 <c>rt.position</c>을 DrawPile 위로 옮겨두므로(2차 수정, 아래
+    /// 참고) 결과적으로 더미 위에서 뒤집힌다.</summary>
     IEnumerator FlipRevealBack(RectTransform rt)
     {
         if (rt == null) yield break;
@@ -2427,7 +2431,10 @@ public partial class GoStop3PGame
             t += Time.deltaTime;
             float p = Mathf.Clamp01(t / flipDur);
             if (back == null) yield break;
-            back.localScale = new Vector3(baseScale.x * (1f - p), baseScale.y, baseScale.z);
+            // 2026-09-04 2차 수정(사용자 확인) — "좌우로 접히니 뒷면 이미지랑
+            // 겹쳐 보인다, 상하로 접히게 해달라" — x축 대신 y축을 줄인다
+            // (가로 폭은 그대로 두고 세로만 접히듯 얇아진다).
+            back.localScale = new Vector3(baseScale.x, baseScale.y * (1f - p), baseScale.z);
             yield return null;
         }
         if (back != null) Destroy(back.gameObject);
@@ -2450,30 +2457,56 @@ public partial class GoStop3PGame
     /// 등) 정확한 피벗 보정이 유지된다.
     /// <br/>
     /// <paramref name="suspensePulses"/>(2026-09-04, "뒷패를 깔때마다 쪼는
-    /// 맛이 있으면" 요청) — 0보다 크면 낙하를 시작하기 전, 위쪽에 뜬 채로
-    /// 그 횟수만큼 살짝 부풀었다 줄어드는 걸 반복한다("정체를 확인했지만
-    /// 아직 결과는 모른다"는 긴장의 순간). 뒷패(덱카드)를 까는 모든
-    /// 지점에서만 쓰고, 이미 결과를 아는 손패 슬램에는 안 쓴다. 같은
-    /// 신호로 <see cref="FlipRevealBack"/>(카드 뒷면이 잠깐 보였다가
-    /// 뒤집히며 사라지는 연출)도 이 펄스보다 먼저 건다.</summary>
+    /// 맛이 있으면" 요청) — 0보다 크면 뒷패 전용 시퀀스로 들어간다.
+    /// 뒷패(덱카드)를 까는 모든 지점에서만 쓰고, 이미 결과를 아는 손패
+    /// 슬램에는 안 쓴다.
+    /// <br/>
+    /// 2026-09-04 2차 수정(사용자 확인 — "매칭되는 패 있을 땐 필드 위로,
+    /// 없으면 빈 곳에서 애니메이팅되기 때문에 뭐가 나오는지 뻔하게
+    /// 노출된다") — 예전엔 낙하 시작점(hover 자리, target 바로 위)에서
+    /// 곧장 <see cref="FlipRevealBack"/>을 걸었는데, hover 자리 자체가
+    /// 이미 target(매칭 슬롯이면 그 카드 위, 빈 슬롯이면 빈 자리) 근처라
+    /// 뒤집히기도 전에 위치만으로 결과가 샜다. 이제 <b>DrawPile 위로
+    /// 옮겨서</b> 그 자리에서 뒤집은 뒤에야 hover 자리까지 날아간다 —
+    /// 뒤집히기 전까지는 화면 어디를 봐도 "더미에서 막 나온 카드"로만
+    /// 보이고, 그 이후(흔들림 펄스 → 낙하 → 충격 이펙트)는 예전과
+    /// 동일하다.</summary>
     IEnumerator SlamDown(RectTransform rt, RectTransform target, float dropHeight = 170f, float dropDur = 0.10f, float punchDur = 0.12f, float punchScale = 1.22f, int cardMonth = 0, int suspensePulses = 0)
     {
         if (rt == null || target == null) yield break;
         Vector3 anchorOffset = rt.position - target.position;
         Vector3 baseScale = rt.localScale;
-        rt.position = target.position + anchorOffset + new Vector3(0f, dropHeight, 0f); // 시작점(타겟 위쪽)
+        Vector3 hoverPos = target.position + anchorOffset + new Vector3(0f, dropHeight, 0f); // 낙하 시작점(타겟 바로 위)
 
         if (suspensePulses > 0)
         {
-            // 2026-09-04(사용자 확인 — "뒷패가 까질 때 cardback 하나가
-            // 뒤집어져서 나오는 느낌이 약하다") — 기존 흔들림 펄스보다
-            // 먼저, 카드 뒷면이 잠깐 보였다가 뒤집히며 사라지는 연출을
-            // 건다. suspensePulses>0은 이미 "이건 뒷패(=결과를 모르고
-            // 지켜보는 덱카드) 슬램"이라는 신호라, 손패 슬램
-            // (suspensePulses=0)에는 이 연출이 전혀 안 걸린다.
+            // 2026-09-04 2차 수정(사용자 확인 — "매칭되는 패가 있을 땐
+            // 필드 위로, 없으면 빈 곳에서 애니메이팅되기 때문에 뭐가
+            // 나오는지 뻔하게 노출된다") — hover 위치 자체가 이미 target
+            // (매칭 슬롯이면 카드 위, 빈 슬롯이면 빈 자리) 근처라 뒤집기
+            // 전부터 위치만 보고도 결과가 샜다. 이제 DrawPile 위에서
+            // 뒷면을 먼저 보여주고 뒤집은 뒤에야 최종 자리(hover) 쪽으로
+            // 날아간다 — 뒤집히기 전까지는 화면 어디를 봐도 "그냥 더미
+            // 위에 뜬 카드"로만 보인다.
+            rt.position = drawPileArea.position;
             yield return FlipRevealBack(rt);
             if (rt == null || target == null) yield break;
 
+            Vector3 flyStart = rt.position;
+            float flyT = 0f;
+            const float flyDur = 0.16f;
+            while (flyT < flyDur)
+            {
+                flyT += Time.deltaTime;
+                float p = 1f - Mathf.Pow(1f - Mathf.Clamp01(flyT / flyDur), 3f); // ease-out
+                if (rt == null || target == null) yield break;
+                rt.position = Vector3.Lerp(flyStart, hoverPos, p);
+                yield return null;
+            }
+            if (rt == null || target == null) yield break;
+            rt.position = hoverPos;
+
+            // 기존 흔들림 펄스(문제 삼지 않은 부분)는 그대로 유지.
             float susDur = suspensePulses * 0.11f;
             float st = 0f;
             while (st < susDur)
@@ -2486,6 +2519,10 @@ public partial class GoStop3PGame
             }
             if (rt == null || target == null) yield break;
             rt.localScale = baseScale;
+        }
+        else
+        {
+            rt.position = hoverPos; // 손패 슬램 — 기존과 동일(더미 경유 없음)
         }
 
         float t = 0f;
