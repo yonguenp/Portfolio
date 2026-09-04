@@ -201,15 +201,6 @@ public class GoStopDealingCard : MonoBehaviour
     IEnumerator Run(RectTransform rt, Vector3 from, Vector3 to)
     {
         const float flyDur = 0.22f;
-        // 2026-09-04(사용자 확인 — "포지션만 이동하니까 역동적인 느낌이
-        // 없다, 카드가 휘거나 뒤집어지는 느낌을 섞어달라") — 딜링도 예외가
-        // 아니다. 카드 뒷면이 짧게 한 바퀴 감기며 날아가다 도착할 때
-        // 정렬되는 딜러 플러리시 느낌. 고정 길이 애니메이션이라
-        // GoStop3PGame.UI.cs의 DynamismFor 같은 완급 스케일 없이 그냥
-        // 고정값 하나로 충분하다.
-        float spinDeg = Random.Range(70f, 150f) * (Random.value < 0.5f ? 1f : -1f);
-        Quaternion baseRotation = rt.localRotation;
-        Vector3 flyBaseScale = rt.localScale;
         float t = 0f;
         while (t < flyDur)
         {
@@ -217,15 +208,10 @@ public class GoStopDealingCard : MonoBehaviour
             t += Time.deltaTime;
             float p = 1f - Mathf.Pow(1f - Mathf.Clamp01(t / flyDur), 3f); // ease-out
             rt.position = Vector3.Lerp(from, to, p);
-            rt.localRotation = baseRotation * Quaternion.Euler(0f, 0f, spinDeg * (1f - p));
-            float flipP = Mathf.Sin(p * Mathf.PI);
-            rt.localScale = new Vector3(flyBaseScale.x * (1f - 0.35f * flipP), flyBaseScale.y, flyBaseScale.z);
             yield return null;
         }
         if (rt == null) yield break;
         rt.position = to;
-        rt.localRotation = baseRotation;
-        rt.localScale = flyBaseScale;
 
         // 도착하면 살짝 튕겼다 줄어들며 사라진다 — 실제 카드가 그 자리에
         // 바로 이어서 나타나므로(RebuildUI) 길게 끌 필요가 없다.
