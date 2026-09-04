@@ -1899,6 +1899,14 @@ public partial class GoStop3PGame
     IEnumerator FlyAndPunchGhost(RectTransform ghost, Vector3 from, Vector3 to, Vector2 fromSize, Vector2 toSize, float flyDur, float punchDur)
     {
         Vector3 baseScale = ghost.localScale;
+        Quaternion baseRotation = ghost.localRotation;
+        // 2026-09-04 — 위 FlyAndPunch와 같은 이유. sizeDelta 보간(가로/세로
+        // 실제 크기 변화)과 이 회전·localScale.x 찌그러짐은 서로 다른
+        // 프로퍼티라 겹쳐 써도 안전하다 — 최종 폭 = sizeDelta.x ×
+        // localScale.x라 "크기가 줄며 동시에 살짝 뒤집히는" 자연스러운
+        // 합성이 된다.
+        var (spinDeg, flipDip) = DynamismFor(Mathf.InverseLerp(0.09f, 0.38f, flyDur));
+        float spinDir = Random.value < 0.5f ? 1f : -1f;
 
         float t = 0f;
         while (t < flyDur)
@@ -1908,11 +1916,16 @@ public partial class GoStop3PGame
             if (ghost == null) yield break;
             ghost.position = Vector3.Lerp(from, to, p);
             ghost.sizeDelta = Vector2.Lerp(fromSize, toSize, p);
+            ghost.localRotation = baseRotation * Quaternion.Euler(0f, 0f, spinDir * spinDeg * (1f - p));
+            float flipP = Mathf.Sin(p * Mathf.PI);
+            ghost.localScale = new Vector3(baseScale.x * (1f - flipDip * flipP), baseScale.y, baseScale.z);
             yield return null;
         }
         if (ghost == null) yield break;
         ghost.position = to;
         ghost.sizeDelta = toSize;
+        ghost.localRotation = baseRotation;
+        ghost.localScale = baseScale;
         SpawnImpactFlash(ghost);
 
         t = 0f;
@@ -2193,6 +2206,13 @@ public partial class GoStop3PGame
     IEnumerator FlyAndPunch(RectTransform rt, Vector3 from, Vector3 to, float flyDur, float punchDur)
     {
         Vector3 baseScale = rt.localScale;
+        Quaternion baseRotation = rt.localRotation;
+        // 2026-09-04 — flyDur 자체가 이미 "이 비행이 얼마나 먼/중요한
+        // 이동인지"를 반영한다(CaptureFlightDistanceT 기반, 짧으면 스냅·
+        // 길면 화면을 가로지르는 캡처 비행) — 그 값을 그대로 회전·뒤집힘
+        // 강도로 재사용한다.
+        var (spinDeg, flipDip) = DynamismFor(Mathf.InverseLerp(0.09f, 0.38f, flyDur));
+        float spinDir = Random.value < 0.5f ? 1f : -1f;
 
         float t = 0f;
         while (t < flyDur)
@@ -2201,10 +2221,17 @@ public partial class GoStop3PGame
             float p = 1f - Mathf.Pow(1f - Mathf.Clamp01(t / flyDur), 3f); // ease-out
             if (rt == null) yield break;
             rt.position = Vector3.Lerp(from, to, p);
+            // 스핀은 날아가는 동안 풀리며 도착 순간 정렬되고(1-p), 뒤집힘은
+            // 비행 중간에서 가장 얇아졌다 도착과 함께 원래 폭으로 돌아온다.
+            rt.localRotation = baseRotation * Quaternion.Euler(0f, 0f, spinDir * spinDeg * (1f - p));
+            float flipP = Mathf.Sin(p * Mathf.PI);
+            rt.localScale = new Vector3(baseScale.x * (1f - flipDip * flipP), baseScale.y, baseScale.z);
             yield return null;
         }
         if (rt == null) yield break;
         rt.position = to;
+        rt.localRotation = baseRotation;
+        rt.localScale = baseScale;
         SpawnImpactFlash(rt);
 
         t = 0f;
@@ -2233,6 +2260,10 @@ public partial class GoStop3PGame
     IEnumerator FlyAndPunch(RectTransform rt, Vector3 from, RectTransform target, float flyDur, float punchDur)
     {
         Vector3 baseScale = rt.localScale;
+        Quaternion baseRotation = rt.localRotation;
+        // 2026-09-04 — 위 Vector3 오버로드와 같은 이유로 flyDur에서 강도를 뽑는다.
+        var (spinDeg, flipDip) = DynamismFor(Mathf.InverseLerp(0.09f, 0.38f, flyDur));
+        float spinDir = Random.value < 0.5f ? 1f : -1f;
 
         float t = 0f;
         while (t < flyDur)
@@ -2241,10 +2272,15 @@ public partial class GoStop3PGame
             float p = 1f - Mathf.Pow(1f - Mathf.Clamp01(t / flyDur), 3f); // ease-out
             if (rt == null || target == null) yield break;
             rt.position = Vector3.Lerp(from, target.position, p);
+            rt.localRotation = baseRotation * Quaternion.Euler(0f, 0f, spinDir * spinDeg * (1f - p));
+            float flipP = Mathf.Sin(p * Mathf.PI);
+            rt.localScale = new Vector3(baseScale.x * (1f - flipDip * flipP), baseScale.y, baseScale.z);
             yield return null;
         }
         if (rt == null || target == null) yield break;
         rt.position = target.position;
+        rt.localRotation = baseRotation;
+        rt.localScale = baseScale;
         SpawnImpactFlash(rt);
 
         t = 0f;
@@ -2355,6 +2391,23 @@ public partial class GoStop3PGame
         return (95f, 0.13f, 0.09f, 1.08f);                     // 힘없이 — 아무것도 못 먹고 그냥 놓임
     }
 
+    /// <summary>2026-09-04(사용자 확인 — "포지션만 이동하니까 역동적인 느낌이
+    /// 없다, rotation/skew로 카드가 휘거나 뒤집어지는 느낌을 섞어달라") —
+    /// 이동 애니메이션에 회전+뒤집힘을 더한다. RectTransform은 진짜 셰어
+    /// (skew/전단)를 지원하지 않고 UIEffect 패키지에도 없어서, 대신 z축
+    /// 회전(스핀)과 x축 스케일 찌그러짐(카드가 순간 옆으로 얇아졌다
+    /// 돌아오는 것 = 뒤집히는 것처럼 보인다)을 섞어 "휘거나 뒤집어지는"
+    /// 느낌을 낸다. <paramref name="intensity01"/>은 그 동작이 이미 갖고
+    /// 있는 완급 신호(펀치 배율·비행 시간 등)에서 그대로 뽑아 쓴다 — 새
+    /// 파라미터를 호출부마다 추가하지 않아도 기존 프리셋이 자동으로
+    /// 강도를 물려받는다(힘없는 낙하는 살짝만 흔들, 호쾌한 캡처는 확
+    /// 돌며 확 뒤집힌다).</summary>
+    static (float spinDeg, float flipDip) DynamismFor(float intensity01)
+    {
+        float t = Mathf.Clamp01(intensity01);
+        return (Mathf.Lerp(18f, 300f, t), Mathf.Lerp(0.10f, 0.55f, t));
+    }
+
     /// <summary>"공중에서 내려치는" 슬램 모션 — 목적지가 정적 스냅샷(Vector3)인
     /// 경우 전용(예: 매칭된 필드 카드의 이미 렌더링된 자리 — 그 오브젝트는
     /// 곧 파괴될 예정이라 살아있는 Transform을 못 쓴다). 착지 지점 위쪽에서
@@ -2370,8 +2423,16 @@ public partial class GoStop3PGame
     {
         if (rt == null) yield break;
         Vector3 baseScale = rt.localScale;
+        Quaternion baseRotation = rt.localRotation;
         Vector3 start = landing + new Vector3(0f, dropHeight, 0f);
         rt.position = start;
+
+        // 2026-09-04 — punchScale이 이미 "이번 착지가 얼마나 세게 떨어지는지"
+        // 를 담고 있으므로(LandingMood/폭탄/뻑형성 전부 이 값으로 완급을
+        // 표현한다) 그대로 회전·뒤집힘 강도로 재사용한다 — 호출부를 하나도
+        // 안 건드리고 기존 프리셋이 자동으로 스핀 강도를 물려받는다.
+        var (spinDeg, flipDip) = DynamismFor(Mathf.InverseLerp(1.0f, 1.4f, punchScale));
+        float spinDir = Random.value < 0.5f ? 1f : -1f;
 
         float t = 0f;
         while (t < dropDur)
@@ -2380,10 +2441,18 @@ public partial class GoStop3PGame
             float p = Mathf.Pow(Mathf.Clamp01(t / dropDur), 2f); // ease-in — 내려찍는 가속감
             if (rt == null) yield break;
             rt.position = Vector3.Lerp(start, landing, p);
+            // 스핀은 착지에 가까워질수록 풀리고(1-p), 뒤집힘은 낙하 중간에서
+            // 가장 얇아졌다(sin) 착지 순간엔 다시 정상 폭으로 돌아온다 —
+            // "공중에서 한 바퀴 휙 돌며 떨어져 탁 놓인다"는 느낌.
+            rt.localRotation = baseRotation * Quaternion.Euler(0f, 0f, spinDir * spinDeg * (1f - p));
+            float flipP = Mathf.Sin(p * Mathf.PI);
+            rt.localScale = new Vector3(baseScale.x * (1f - flipDip * flipP), baseScale.y, baseScale.z);
             yield return null;
         }
         if (rt == null) yield break;
         rt.position = landing;
+        rt.localRotation = baseRotation;
+        rt.localScale = baseScale;
         SpawnImpactFlash(rt);
 
         t = 0f;
@@ -2425,6 +2494,7 @@ public partial class GoStop3PGame
         if (rt == null || target == null) yield break;
         Vector3 anchorOffset = rt.position - target.position;
         Vector3 baseScale = rt.localScale;
+        Quaternion baseRotation = rt.localRotation;
         rt.position = target.position + anchorOffset + new Vector3(0f, dropHeight, 0f); // 시작점(타겟 위쪽)
 
         if (suspensePulses > 0)
@@ -2443,6 +2513,10 @@ public partial class GoStop3PGame
             rt.localScale = baseScale;
         }
 
+        // 2026-09-04 — punchScale 기준 강도(위 Vector3 오버로드와 동일 원리).
+        var (spinDeg, flipDip) = DynamismFor(Mathf.InverseLerp(1.0f, 1.4f, punchScale));
+        float spinDir = Random.value < 0.5f ? 1f : -1f;
+
         float t = 0f;
         while (t < dropDur)
         {
@@ -2451,10 +2525,15 @@ public partial class GoStop3PGame
             if (rt == null || target == null) yield break;
             Vector3 landing = target.position + anchorOffset; // 매 프레임 살아있는 값을 다시 읽는다
             rt.position = Vector3.Lerp(landing + new Vector3(0f, dropHeight, 0f), landing, p);
+            rt.localRotation = baseRotation * Quaternion.Euler(0f, 0f, spinDir * spinDeg * (1f - p));
+            float flipP = Mathf.Sin(p * Mathf.PI);
+            rt.localScale = new Vector3(baseScale.x * (1f - flipDip * flipP), baseScale.y, baseScale.z);
             yield return null;
         }
         if (rt == null || target == null) yield break;
         rt.position = target.position + anchorOffset;
+        rt.localRotation = baseRotation;
+        rt.localScale = baseScale;
         SpawnImpactFlash(rt);
         // 2026-09-03 — "필드에 패 나올 때 그 달에 맞는 파티클(1월→소나무 등)"
         // 요청. 임팩트 플래시와 같은 순간(착지 직후)에 카드 월별 모티프
