@@ -10130,3 +10130,45 @@ anchoredPosition·같은 크기라 정확히 rt를 덮는다), 짧게(0.05초) �
 **0건**(경고 12건만, 전부 무관한 환경 노이즈). 게임 종료 후 12개 pos
 슬롯 전수 검사로 잔여 "Back" 오버레이 오브젝트 **0개** 확인(정리 로직
 정상).
+
+## 고스톱 — ChatPanel 씬 재사용 + 접힘 애니메이션 3차 감속 (2026-09-04)
+
+"나가기 버튼은 좌상단 채팅패널은 우상단에 위치하게 해줘. 씬에 나가기버튼,
+채팅패널(오브젝트추가해서) 위치 조정해놨어" — 조사해보니 `ExitBtn`은
+이미 씬 재사용 패턴("씬에 있으면 재사용, 없으면 생성")이 적용돼 있어
+사용자가 옮긴 위치(top-left)가 그대로 반영되고 있었다. 하지만
+`BuildChatUI`는 이 패턴이 없어서 **매번 프리팹을 새로 인스턴스화**했다 —
+사용자가 씬에 `ChatPanel` 인스턴스를 추가해(`GameUI/SafeArea/ChatPanel`
+경로, `ContentArea`가 아니라 `SafeArea` 바로 밑에 놓았다) 위치를 만져둬도
+런타임엔 무시되고 있었다.
+
+**고침 — `BuildChatUI`에 `ExitBtn`과 같은 재사용 로직 추가.**
+`canvasRoot.Find("SafeArea/ChatPanel")`로 찾아서 있으면
+`GoStopChatView` 컴포넌트를 그대로 재사용, 없으면 기존처럼
+`HwatuUI.InstantiateUIPrefab`로 생성한다 — `ChatPanel`은
+`Canvas.overrideSorting=true`(sortingOrder 500)를 쓰므로 계층
+어디에 있든 항상 최상단에 그려져, `ContentArea`가 아니라 `SafeArea`
+밑에 있어도 렌더 순서엔 문제가 없다.
+
+**"우상단"이었다가 "우하단으로, 잘못 말했다"고 정정받아** 최종적으로
+`ChatPanel`을 원래 있던 bottom-right 앵커(1,0)/(1,0), anchoredPosition
+(-15,15)로 되돌렸다(에디터 라이브 세션에 직접 `eval`로
+anchorMin/Max/pivot/anchoredPosition을 설정하고
+`EditorSceneManager.SaveScene`로 저장) — 처음 top-right로 옮겨봤을 때
+`GetWorldCorners()`로 RightSeat 컨테이너와 약 500×114px 겹치는 걸
+확인했었는데, bottom-right로 되돌리며 그 문제도 자연히 해소됐다
+(겹침 0 확인).
+
+**접힘 애니메이션 3차 감속(사용자 확인 — "너무 빠르게 애니메이팅돼서
+그냥 패만 끊겨 보인다, 속도를 줄이거나 빼는 게 좋을듯").** 지난 2차
+수정의 `flipDur=0.12f`(선형 보간)를 `flipDur=0.24f` + smoothstep
+곡선(`p*p*(3-2p)`)으로 바꿨다 — 선형 등속은 짧은 시간 안에선 여전히
+"뚝뚝 끊기는" 것처럼 보이는데, smoothstep은 시작·끝이 느려서 실제로
+접히는 움직임 자체가 눈에 들어온다. hold 시간도 0.05→0.08초로 살짝
+늘렸다.
+
+**검증(Play 모드 라이브).** 컴파일 클린 확인 후 4인 게임 완주(필드
+2장 선택 팝업·9월열끗 선택 포함) — 콘솔 에러·예외 0건. `chatView`
+필드가 씬의 `ChatPanel` 오브젝트와 참조 동일성으로 일치(중복 생성
+없음, `chatPanelCount=1`) 확인. `ExitBtn` 클릭 → 나가기 확인 팝업이
+정상적으로 뜨는 것도 재확인.

@@ -71,7 +71,16 @@ public partial class GoStop3PGame
     /// <c>ChatPanel.prefab</c>/<see cref="GoStopChatView"/>가 담당한다.</summary>
     void BuildChatUI(RectTransform canvasRoot)
     {
-        chatView = HwatuUI.InstantiateUIPrefab<GoStopChatView>("ChatPanel", canvasRoot);
+        // 2026-09-04: 씬에 이미 ChatPanel이 있으면(사용자가 직접 위치를
+        // 만져둔 것) 그걸 재사용한다 — ExitBtn과 같은 원칙("씬에 있으면
+        // 재사용, 없으면 생성"). 사용자가 SafeArea 밑(HUD/Toast/ContentArea
+        // 와 같은 층)에 놓아서 canvasRoot(=GameUI) 바로 밑이 아니라 그
+        // 자식 SafeArea에서 찾는다 — overrideSorting Canvas를 쓰므로
+        // (아래 참고) 어느 계층에 있든 항상 최상단에 그려져 위치와 무관하다.
+        var existing = canvasRoot.Find("SafeArea/ChatPanel");
+        chatView = existing != null
+            ? existing.GetComponent<GoStopChatView>()
+            : HwatuUI.InstantiateUIPrefab<GoStopChatView>("ChatPanel", canvasRoot);
         if (chatView == null) return; // 프리팹 로드 실패 — 로그를 쌓을 곳이 없을 뿐, 게임 자체는 계속 진행돼야 한다
 
         // 프리팹을 독립 에셋으로 저장하는 과정에서 Canvas.overrideSorting이

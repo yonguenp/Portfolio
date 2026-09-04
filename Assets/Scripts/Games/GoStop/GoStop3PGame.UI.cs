@@ -2420,16 +2420,23 @@ public partial class GoStop3PGame
         var back = HwatuUI.MakeCardBack(rt.parent, rt.anchoredPosition, rt.sizeDelta.x, rt.sizeDelta.y);
         back.SetAsLastSibling(); // rt(앞면) 바로 위에 그려지도록 보장
 
-        yield return new WaitForSeconds(0.05f); // "뒷면이 나왔다"를 눈에 담을 짧은 틈
+        yield return new WaitForSeconds(0.08f); // "뒷면이 나왔다"를 눈에 담을 짧은 틈
         if (back == null) yield break;
 
-        const float flipDur = 0.12f;
+        // 2026-09-04 3차 수정(사용자 확인 — "너무 빠르게 애니메이팅돼서
+        // 그냥 패만 끊겨 보인다, 속도를 줄여달라") — 0.12초 선형 보간은
+        // 프레임 몇 개 만에 끝나 접히는 과정 자체가 안 보이고 순간적으로
+        // 컷된 것처럼 보였다. 0.24초로 늘리고, 시작·끝이 부드러운
+        // smoothstep 곡선을 써서(선형이면 등속이라 여전히 뚝뚝 끊겨
+        // 보인다) 실제로 접히는 움직임이 눈에 들어오게 했다.
+        const float flipDur = 0.24f;
         Vector3 baseScale = back.localScale;
         float t = 0f;
         while (t < flipDur)
         {
             t += Time.deltaTime;
-            float p = Mathf.Clamp01(t / flipDur);
+            float linear = Mathf.Clamp01(t / flipDur);
+            float p = linear * linear * (3f - 2f * linear); // smoothstep
             if (back == null) yield break;
             // 2026-09-04 2차 수정(사용자 확인) — "좌우로 접히니 뒷면 이미지랑
             // 겹쳐 보인다, 상하로 접히게 해달라" — x축 대신 y축을 줄인다
