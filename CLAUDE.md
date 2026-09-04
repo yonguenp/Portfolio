@@ -10172,3 +10172,43 @@ anchorMin/Max/pivot/anchoredPosition을 설정하고
 필드가 씬의 `ChatPanel` 오브젝트와 참조 동일성으로 일치(중복 생성
 없음, `chatPanelCount=1`) 확인. `ExitBtn` 클릭 → 나가기 확인 팝업이
 정상적으로 뜨는 것도 재확인.
+
+## 고스톱 — 점당 배율 표시(Info 라벨) 실시간 갱신 (2026-09-04)
+
+"우측상단에 현재 점당 얼마짜리 게임인지 표시 추가했어. 나가리 등으로
+점당 배율이 변경되면 UI쪽에 텍스트도 같이 변경해줘." 씬을 살펴보니
+`ContentArea/Info`(배경 Image + "점당"/숫자/"원" 3개 라벨, top-right
+앵커)가 이미 추가돼 있었다 — 숫자 칸만(자동 생성 이름이라 `Label (1)`)
+캐싱해서 실제 값을 채우면 됐다.
+
+**`UpdatePointPriceLabel()`** — 새 헬퍼(`GoStop3PGame.UI.cs`). `pointPriceText`
+(씬의 `Info/Label (1)`, `BuildStaticUI`에서 `root.Find`로 재사용 —
+ExitBtn과 같은 원칙)에 `WON_PER_POINT * stakeMultiplier`를 채운다.
+
+**호출 지점 3곳.** RebuildUI마다(매 턴 자동 갱신) 부르는 것만으로는
+부족했다 — 나가리로 판이 끝나는 `EndGame`의 승부-없음 분기는 게임판
+자체가 멈추고 오버레이만 뜰 뿐 `RebuildUI()`를 안 부르기 때문에,
+`stakeMultiplier *= 2;` 직후에도 명시적으로 호출해야 그 즉시 반영된다.
+같은 이유로 결판이 나서 `stakeMultiplier = 1;`로 복귀하는 지점에도
+호출을 추가했다. `BuildStaticUI`에서 라벨을 처음 찾은 직후에도 한 번
+불러서, 판이 시작되기도 전인 초기 화면부터 기본값(100)이 바로 보이게
+했다.
+
+**검증(Play 모드 라이브).** 컴파일 클린 확인 후 라벨이 씬에서 정상
+발견되는 것(`initialText=100`) 확인. `EndGame(-1, ...)`(나가리)을
+리플렉션으로 직접 호출해 `stakeMultiplier`가 1→2로 오르는 것과
+동시에 라벨이 곧바로 `"200"`으로 바뀌는 것 확인(RebuildUI를 거치지
+않고도 갱신됨 — 이게 이번 수정의 핵심). `stakeMultiplier`를 다시
+1로 되돌리고 `UpdatePointPriceLabel()`을 직접 호출해 `"100"`으로
+복귀하는 것도 확인. 4인 게임을 딜러뽑기부터 GameOver까지 완주 —
+콘솔 에러·예외 0건.
+
+> 처음 테스트에서 `RebuildUI()`를 게임 시작 직후(딜러뽑기 팝업이
+> 아직 응답을 기다리는 시점)에 강제로 호출했다가 `UpdatePileVisual`
+> (내가 안 건드린 기존 코드)에서 NullReferenceException이 났다 —
+> `drawPile`이 아직 딜링 전이라 null인, 정상 게임 흐름에서는 절대
+> 도달하지 않는 시점을 리플렉션으로 억지로 짚은 것이었다(이 프로젝트가
+> 이미 여러 번 겪은 "리플렉션 강제 호출이 실제 게임에선 절대 안 나오는
+> 상태를 만든다"는 함정과 같은 계열). 딜러뽑기를 마저 진행시켜 정상
+> `Turn` 상태에 도달한 뒤 재시도하니 문제없이 통과했다 — 실제 버그가
+> 아니었다.

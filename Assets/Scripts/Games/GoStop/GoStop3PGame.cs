@@ -335,6 +335,10 @@ public partial class GoStop3PGame : MonoBehaviour
     TextMeshProUGUI[] statusText = new TextMeshProUGUI[SEATS_MAX];   // 닉네임(+선 표시는 배지로 이동)
     TextMeshProUGUI[] goScoreText = new TextMeshProUGUI[SEATS_MAX];  // "N고 M점"
     TextMeshProUGUI[] moneyText = new TextMeshProUGUI[SEATS_MAX];    // 코인 아이콘 + 금액
+    // 2026-09-04: "우측상단에 현재 점당 얼마짜리 게임인지 표시 추가했어"
+    // — 사용자가 씬에 직접 만든 Info(ContentArea/Info/Label (1)) 표시.
+    // 나가리로 stakeMultiplier가 바뀔 때마다 RebuildUI에서 갱신한다.
+    TextMeshProUGUI pointPriceText;
     // 2026-08-20: "화살표 대신 상태창 자체를 노란색으로" 요청 — 이 배경
     // Image를 FillSlot에서 좌석 차례일 때 색을 바꾼다.
     Image[] statusBoxImg = new Image[SEATS_MAX];
@@ -3294,6 +3298,10 @@ public partial class GoStop3PGame : MonoBehaviour
         if (winnerSeat < 0)
         {
             stakeMultiplier *= 2;
+            // 2026-09-04: RebuildUI가 다시 안 도는 이 분기(게임판은 이미
+            // 멈추고 오버레이만 뜬다)에서도 점당 배율 표시가 그 즉시
+            // 갱신되도록 직접 부른다.
+            UpdatePointPriceLabel();
             pendingPayout = null; // 나가리는 승자가 없어 분석할 점수 자체가 없다
             AppendChatLine($"나가리 — 다음 판 판돈 {stakeMultiplier}배");
             GoStopAudio.Instance?.Nagari();
@@ -3341,6 +3349,7 @@ public partial class GoStop3PGame : MonoBehaviour
             FlyMoneyFX(loserSeats[i], winnerSeat, amount);
         }
         stakeMultiplier = 1;
+        UpdatePointPriceLabel(); // 나가리 분기와 같은 이유 — 결판이 나서 1배로 복귀한 것도 그 즉시 반영
 
         int finalScore = payout.baseTotal;
         if (winnerSeat == PLAYER_SEAT && finalScore > PlayerPrefs.GetInt(BestKey, 0))

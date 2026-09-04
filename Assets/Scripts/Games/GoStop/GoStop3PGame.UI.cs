@@ -201,6 +201,15 @@ public partial class GoStop3PGame
             exitRT.anchoredPosition = new Vector2(-14f, 14f);
         }
 
+        // 2026-09-04: "우측상단에 점당 얼마짜리 게임인지 표시 추가했어"
+        // — 사용자가 씬에 만든 Info(배경 Image) 밑에 "점당"/숫자/"원" 세
+        // 라벨이 있다. 숫자 칸(자동 생성된 두 번째 Label이라 이름이
+        // "Label (1)")만 캐싱해 두고 실제 값은 RebuildUI에서 채운다 — 씬에
+        // 없으면(다른 씬/구버전) pointPriceText가 null로 남아 아무 것도
+        // 안 하고 조용히 넘어간다(다른 재사용 UI들과 같은 방어 패턴).
+        pointPriceText = root.Find("Info/Label (1)")?.GetComponent<TextMeshProUGUI>();
+        UpdatePointPriceLabel(); // 씬을 처음 여는 시점에도 기본값(WON_PER_POINT×1)을 바로 채워둔다
+
         // 상단 중앙(슬롯2) — 참고 이미지의 "MISSION" 배너 자리를 광팔이/쉬는
         // 유저 정보 슬롯으로 재활용("저기다 넣으면 될것같아" 요청).
         // 2026-08-27(목업 4인 레이아웃 반영, 사용자 확인) — "4인 모드는
@@ -1189,6 +1198,20 @@ public partial class GoStop3PGame
         return HwatuUI.MakeRect(name, root, defaultSize, defaultPos);
     }
 
+    /// <summary>2026-09-04: "우측상단에 현재 점당 얼마짜리 게임인지 표시
+    /// 추가했어. 나가리 등으로 점당 배율이 변경되면 UI 텍스트도 같이
+    /// 변경해줘" — 사용자가 씬에 만든 Info 라벨(<see cref="pointPriceText"/>)
+    /// 을 최신 WON_PER_POINT×stakeMultiplier로 채운다. RebuildUI에서
+    /// 매번 호출하는 것만으로는 부족하다 — 나가리로 끝나는
+    /// <c>EndGame</c>의 승패 갈림 분기는 오버레이만 띄우고 RebuildUI를
+    /// 안 부르므로(게임판 자체는 이미 멈춘 상태라 다시 그릴 이유가
+    /// 없다), stakeMultiplier가 바뀌는 그 지점(EndGame 나가리/정산 두
+    /// 곳)에서도 직접 불러야 화면이 그 즉시 갱신된다.</summary>
+    void UpdatePointPriceLabel()
+    {
+        if (pointPriceText != null) pointPriceText.text = (WON_PER_POINT * stakeMultiplier).ToString("N0");
+    }
+
     void RebuildUI()
     {
         UpdateTopSeatCapBack(); // 매 라운드 sittingOutSeat가 바뀌므로 항상 최신 상태로 재판단
@@ -1312,6 +1335,8 @@ public partial class GoStop3PGame
             FillSlot(0, bottomSeat, myTurn, decidingGoStop);
             ui?.SetScore(money[PLAYER_SEAT]); // HUD 점수는 항상 내 보유 머니(사용자 요청)
         }
+
+        UpdatePointPriceLabel();
 
         // 2026-09-01: "내가 쉴 때는 MySeat의 Hand/Info 안 Cap을 꺼달라"
         // 요청 — 이번 판 손패·획득패 자체가 없으니(광팔이/참가포기 둘 다
