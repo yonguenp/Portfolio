@@ -2375,6 +2375,22 @@ public partial class GoStop3PGame : MonoBehaviour
     }
 
     // ── 카드 한 장 처리 (손패 → 필드 매칭 → 덱 뒤집기 → 필드 매칭) ─────
+    /// <summary>2026-09-06 — "손패에서 필드로 나갈 때 핸드에 있는 패가
+    /// 없어지지 않고 필드에 생겨서 어색하다" 신고로 추가. 필드 쪽 고스트가
+    /// 등장하는 그 순간까지도 손패 렌더링은 옛 프레임 그대로다(RebuildUI가
+    /// 한참 뒤 "④ 캡 배치" 단계에서야 다시 돈다) — 그래서 카드가 손에도
+    /// 그대로 있고 필드에도 새로 생기는 것처럼 보였다. 고스트를 만드는 바로
+    /// 그 지점에서 손패 쪽 실제 GameObject를 즉시 숨긴다(파괴는 나중에
+    /// RebuildUI가 정식으로 정리한다) — "카드가 손을 떠났다"는 느낌이 그
+    /// 즉시 전달된다. 내 손패(PLAYER_SEAT)만 대상이다 — 상대 손패는 뒷면
+    /// 카드 뭉치라 "그 카드 한 장"을 화면에서 특정할 방법 자체가 없다.</summary>
+    void HideHandCardVisual(int seat, HwatuCard c)
+    {
+        if (seat != PLAYER_SEAT || handArea == null) return;
+        var found = handArea.Find(c.spriteName);
+        if (found != null) found.gameObject.SetActive(false);
+    }
+
     IEnumerator PlaySeq(int seat, HwatuCard card, bool declareShake, System.Action onDone)
     {
         var h = hand[seat];
@@ -2598,6 +2614,7 @@ public partial class GoStop3PGame : MonoBehaviour
             // 셋 다 같은 고정 좌표로 완전히 겹쳐 떨어졌다).
             foreach (var hc in r1.captured.Take(3))
             {
+                HideHandCardVisual(seat, hc);
                 var target = matchedSlot != null ? matchedSlot : FieldSlotTransform(hc);
                 var ghost = SpawnGhostCard(hc, target);
                 var landing = ghost.transform.position;
@@ -2614,6 +2631,7 @@ public partial class GoStop3PGame : MonoBehaviour
         }
         else
         {
+            HideHandCardVisual(seat, card);
             var target = matchedSlot != null ? matchedSlot : FieldSlotTransform(card);
             // 2026-09-04(사용자 확인) — 손패는 이미 어떤 패를 내는지 아는
             // 상태라 "결과를 아는" 착지다 — 먹는지(matchedFieldCard!=null)
@@ -3135,6 +3153,22 @@ public partial class GoStop3PGame : MonoBehaviour
                 if (wasFirstHandPlay) { ApplyMoneyBonus(seat, PpeokMoney(), "첫뻑먹기비"); Toast(seat, "첫뻑먹기"); }
                 else Toast(seat, selfPpeok ? "자뻑" : "뻑 먹기");
                 ppeokCauser.Remove(month);
+                did = true;
+            }
+            else
+            {
+                // 2026-09-06 — "뻑난거 이외에 처음 패돌릴때 3장겹쳐있는걸
+                // 먹을때도 피를 뺏어와야되는데 안뺏어오네" 신고로 발견한
+                // 버그. ppeokCauser는 딱 한 곳(PlaySeq의 "뻑 형성" 분기)
+                // 에서만 채워진다 — 그런데 초기 딜링이 우연히 같은 달 3장을
+                // 필드에 몰아줄 수도 있다(뻑 형성 이벤트를 거친 적이 없는
+                // "원래부터 3장 깔린" 상태). 이 경우 causer 항목 자체가
+                // 없어서 위 if가 통째로 스킵돼 피를 하나도 안 뺏어왔다.
+                // "누가 이 무더기를 만들었는지"가 애초에 성립하지 않는
+                // 상황이라 자뻑 배수(2배)를 적용할 근거가 없다 — 일반
+                // 뻑 먹기와 같은 1배로, 각 상대에게서 1장씩 가져온다.
+                StealPiFromEachOther(seat, 1);
+                Toast(seat, "뻑 먹기");
                 did = true;
             }
             // 그 뻑에 보너스피가 같이 묻혀 있었으면(ResolveBonusJoker 참고)
