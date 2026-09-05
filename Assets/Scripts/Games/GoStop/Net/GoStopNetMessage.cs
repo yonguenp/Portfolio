@@ -151,7 +151,14 @@ public class GoStopNetMessage
     /// 돌아왔다"로 인식해 같은 좌석을 그대로 돌려준다. 2026-08-24 추가.</summary>
     public string clientId;
 
-    public static GoStopNetMessage Hello(string name, string clientId) => new GoStopNetMessage { type = Type.Hello, text = name, clientId = clientId };
+    /// <summary>Hello — 게스트가 자기 기기에 저장해 둔 닉네임별 보유 머니
+    /// (<see cref="GoStopNetLobby.LoadNetworkMoney"/>). 호스트는 이 값으로
+    /// 그 좌석의 시작 잔액을 seed한다 — 서버가 없는 P2P 구조라 "이 닉네임의
+    /// 돈"은 항상 그 사람 자신의 기기에만 존재하므로, 접속할 때마다 자기
+    /// 값을 스스로 보고해야 한다(2026-09-05).</summary>
+    public int money;
+
+    public static GoStopNetMessage Hello(string name, string clientId, int money) => new GoStopNetMessage { type = Type.Hello, text = name, clientId = clientId, money = money };
     public static GoStopNetMessage Play(string cardId) => new GoStopNetMessage { type = Type.PlayCard, cardId = cardId };
     public static GoStopNetMessage Choice(string cardId) => new GoStopNetMessage { type = Type.FieldChoice, cardId = cardId };
     public static GoStopNetMessage Shake(bool shake) => new GoStopNetMessage { type = Type.ShakeDecision, boolValue = shake };

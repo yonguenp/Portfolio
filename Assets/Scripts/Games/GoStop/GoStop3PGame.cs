@@ -811,11 +811,17 @@ public partial class GoStop3PGame : MonoBehaviour
     /// 다시 시작하면 다음 StateSync가 자동으로 화면을 새 판으로 바꾼다).</summary>
     void ShowGuestGameOverOverlay(GoStopStateSnapshot snap)
     {
+        // 2026-09-05 — 판이 끝나는 시점의 내 잔액(스냅샷의 money[]가 이미
+        // 반영해 뒀다)을 내 닉네임으로 저장한다 — 이 판단(끝났는지)은
+        // 호스트만 계산하지만 저장은 각자 자기 기기에만 할 수 있으므로
+        // 여기서도 호스트의 EndGame과 대칭으로 한 번 저장한다.
+        GoStopNetLobby.SaveNetworkMoney(GoStopNetLobby.Instance?.MyName, money[PLAYER_SEAT]);
+
         if (snap.gameOverIsNagari)
         {
-            ui?.ShowOverlay(new Color(.6f, .6f, .6f), "나가리", "-",
-                $"아무도 {CaptureLine}점을 못 넘겼습니다 · 다음 판 판돈 {snap.gameOverStakeMultiplier}배 (호스트가 다시 시작합니다)",
-                "타이틀", GoToTitle);
+            string nagariSub = $"아무도 {CaptureLine}점을 못 넘겼습니다 · 다음 판 판돈 {snap.gameOverStakeMultiplier}배";
+            ui?.ShowOverlay(new Color(.6f, .6f, .6f), "나가리", "-", nagariSub, "타이틀", GoToTitle);
+            StartCoroutine(GuestAutoRestartCountdownSeq(nagariSub));
             return;
         }
 
@@ -827,14 +833,18 @@ public partial class GoStop3PGame : MonoBehaviour
             : $"내 머니 {money[PLAYER_SEAT]:N0}원";
         // gameOverRefilledSeats 필드명은 그대로 재사용하지만(스냅샷 구조체 변경
         // 회피), 2026-08-23부터는 "리필된 좌석"이 아니라 "파산해서 세션이
-        // 끝난 좌석" 목록이다 — design.md §49.4 확정.
-        if (snap.gameOverRefilledSeats != null && snap.gameOverRefilledSeats.Length > 0)
+        // 끝난 좌석" 목록이다 — design.md §49.4 확정. 이게 채워져 있으면
+        // 세션이 완전히 끝나는 것이라(호스트도 자동 재시작을 안 한다)
+        // 카운트다운을 안 띄운다.
+        bool sessionEnding = snap.gameOverRefilledSeats != null && snap.gameOverRefilledSeats.Length > 0;
+        if (sessionEnding)
         {
             string names = string.Join(", ", snap.gameOverRefilledSeats.Select(s => SeatName(s)));
             sub += $" · {names} 잔액을 모두 잃어 이 판을 끝으로 세션을 종료합니다";
         }
         ui?.SetScore(money[PLAYER_SEAT]);
         ui?.ShowOverlay(col, title, snap.gameOverFinalScore.ToString(), sub, "타이틀", GoToTitle);
+        if (!sessionEnding) StartCoroutine(GuestAutoRestartCountdownSeq(sub));
     }
 
     /// <summary>필드 초이스/9월열끗/참가선언처럼 "지금 이 좌석 한 명만
@@ -1033,8 +1043,23 @@ public partial class GoStop3PGame : MonoBehaviour
                 allInCount[s] = PlayerPrefs.GetInt(AllInKey(s), 0);
             }
         }
+        else if (isNetworkHost)
+        {
+            // 2026-09-05 — 네트워크도 이제 닉네임별로 돈이 이어진다. 서버가
+            // 없는 P2P라 "이 닉네임의 돈"은 항상 그 사람 자신의 기기에만
+            // 있다 — 내(호스트) 몫은 내 로컬 저장에서, 각 게스트 몫은
+            // 그들이 접속 직후 Hello로 스스로 보고한 값(GuestReportedMoney)
+            // 에서 seed한다. 게스트가 아직 하나도 안 들어왔으면(SEATS
+            // 결정 전 이론상 시점) 0이라 STARTING_MONEY로 폴백한다.
+            var lobby = GoStopNetLobby.Instance;
+            money[PLAYER_SEAT] = GoStopNetLobby.LoadNetworkMoney(lobby?.MyName);
+            for (int s = 1; s < SEATS_MAX; s++)
+                money[s] = lobby != null && lobby.GuestReportedMoney[s] > 0 ? lobby.GuestReportedMoney[s] : STARTING_MONEY;
+        }
         else
         {
+            // 게스트는 여기서 seed할 필요가 없다 — 곧 오는 첫 StateSync가
+            // 호스트가 이미 위 방식으로 정한 실제 값으로 덮어쓴다.
             for (int s = 0; s < SEATS_MAX; s++) money[s] = STARTING_MONEY;
         }
         stakeMultiplier = 1;
@@ -1579,6 +1604,7 @@ public partial class GoStop3PGame : MonoBehaviour
         // 필요가 없었는데, 광팔이로 시작 좌석이 바뀔 수 있게 되면서
         // 아무도 첫 턴을 걸어주지 않아 게임이 그대로 멈추는 버그가 됐다.
         if (currentSeat != PLAYER_SEAT) StartCoroutine(DelayedAiTurn(currentSeat));
+        else if (isNetworkHost || isNetworkGuest) StartCoroutine(TurnPlayTimeoutSeq());
         newGameStarting = false;
     }
 
@@ -3251,7 +3277,11 @@ public partial class GoStop3PGame : MonoBehaviour
         if (currentSeat == PLAYER_SEAT)
         {
             if (hand[PLAYER_SEAT].Count == 0 && bombCredits[PLAYER_SEAT] == 0) StartCoroutine(DelayedPlayerHandEmpty());
-            else RebuildUI();
+            else
+            {
+                RebuildUI();
+                if (isNetworkHost || isNetworkGuest) StartCoroutine(TurnPlayTimeoutSeq());
+            }
         }
         else
         {
@@ -3276,6 +3306,44 @@ public partial class GoStop3PGame : MonoBehaviour
             actionBusy = true;
             StartCoroutine(DeckOnlySeq(PLAYER_SEAT, () => AfterAction(PLAYER_SEAT)));
         }
+    }
+
+    /// <summary>2026-09-05(사용자 확인) — "타이머 같은 것, 예외처리는
+    /// 손패 내는 것에도 다 들어가야 한다": 지금까지의 흔들기/필드선택/
+    /// 9월열끗/참가선언/선뽑기/고스톱은 전부 "특정 결정 팝업"에 타임아웃이
+    /// 걸려 있었는데, 정작 "내 턴이라 아무 카드나 하나 내야 하는" 가장
+    /// 기본적인 대기에는 시간 제한이 없었다 — 여기 하나만 빠져 있던
+    /// 구멍이다. 5초 조용히 대기 후 5초 동안 매초 하단 Toast(사운드·채팅
+    /// 로그 없는 순수 표시용 ShowTimedToast — Toast(seat,label)는 부작용이
+    /// 있어 여기 안 맞는다)로 남은 시간을 보여주다가, 10초 안에 아무 카드도
+    /// 안 내면 GoStopAI.ChooseCard와 완전히 같은 기준으로 자동으로 낸다
+    /// (원격 좌석이 타임아웃됐을 때와 동일한 "가능한 것 중 자동 선택"
+    /// 원칙). 손패가 비어 있으면(폭탄 크레딧만 남은 상태) 대신 "덱만
+    /// 넘기기"를 자동으로 누른다. 오프라인(vs AI)에서는 절대 안 건다.</summary>
+    IEnumerator TurnPlayTimeoutSeq()
+    {
+        const float quiet = 5f, warn = 5f;
+        bool Answered() => actionBusy || state != State.Turn || currentSeat != PLAYER_SEAT;
+        float t = 0f;
+        while (t < quiet)
+        {
+            if (Answered()) yield break;
+            t += Time.deltaTime;
+            yield return null;
+        }
+        int lastShown = -1;
+        float remain = warn;
+        while (remain > 0f)
+        {
+            if (Answered()) yield break;
+            int shown = Mathf.CeilToInt(remain);
+            if (shown != lastShown) { ShowTimedToast($"{shown}초 안에 패를 내지 않으면 자동으로 냅니다"); lastShown = shown; }
+            remain -= Time.deltaTime;
+            yield return null;
+        }
+        if (Answered()) yield break;
+        if (hand[PLAYER_SEAT].Count > 0) OnPlayerPlay(GoStopAI.ChooseCard(hand[PLAYER_SEAT], field));
+        else OnPlayerBombSkip();
     }
 
     IEnumerator DelayedAiTurn(int seat)
@@ -3411,10 +3479,26 @@ public partial class GoStop3PGame : MonoBehaviour
             // 2026-08-26: 나가리 이펙트 — 여기 한 곳에서만 불러도 나가리로
             // 끝나는 모든 경로(점수 미달·필드 4장 등)가 자동으로 커버된다.
             FireNagari();
-            ui?.ShowOverlay(new Color(.6f, .6f, .6f), "나가리", "-",
-                $"아무도 {CaptureLine}점을 못 넘겼습니다 · 다음 판 판돈 {stakeMultiplier}배",
-                "다시 시작", NewGame, "타이틀", GoToTitle);
-            if (isNetworkHost) BroadcastGameOverState(true, -1, 0, -1, null);
+            string nagariSub = $"아무도 {CaptureLine}점을 못 넘겼습니다 · 다음 판 판돈 {stakeMultiplier}배";
+            if (isNetworkHost)
+            {
+                // 2026-09-05(사용자 확인) — 네트워크 대전은 "다시 시작"
+                // 버튼 대신 호스트가 3초 뒤 자동으로 다음 판을 시작한다
+                // (게스트는 원래도 버튼이 없었다 — 이제 호스트도 같은
+                // 방식으로 통일). 게스트 쪽은 ShowGuestGameOverOverlay가
+                // 같은 문구로 카운트다운만(연출용) 보여준다.
+                ui?.ShowOverlay(new Color(.6f, .6f, .6f), "나가리", "-", nagariSub, "타이틀", GoToTitle);
+                StartCoroutine(HostAutoRestartSeq(nagariSub));
+            }
+            else
+            {
+                ui?.ShowOverlay(new Color(.6f, .6f, .6f), "나가리", "-", nagariSub, "다시 시작", NewGame, "타이틀", GoToTitle);
+            }
+            if (isNetworkHost)
+            {
+                BroadcastGameOverState(true, -1, 0, -1, null);
+                GoStopNetLobby.SaveNetworkMoney(GoStopNetLobby.Instance?.MyName, money[PLAYER_SEAT]);
+            }
             return;
         }
 
@@ -3545,8 +3629,11 @@ public partial class GoStop3PGame : MonoBehaviour
             }
 
             sub += $" · {permaGoneNames} 연결이 끊겨 퇴장 — 남은 {SEATS}명으로 계속합니다";
-            ui?.ShowOverlay(col, title, finalScore.ToString(), sub,
-                "다시 시작", NewGame, "타이틀", GoToTitle, "점수 상세", ShowScoreDetail);
+            // networkDowngrade는 permaGoneSeats가 isNetworkHost일 때만
+            // 채워지므로(위 계산부 참고) 이 분기는 항상 네트워크 호스트다
+            // — "다시 시작" 버튼 없이 3초 자동 재시작으로 통일한다.
+            ui?.ShowOverlay(col, title, finalScore.ToString(), sub, "타이틀", GoToTitle, "점수 상세", ShowScoreDetail);
+            StartCoroutine(HostAutoRestartSeq(sub));
         }
         else if (downgrade)
         {
@@ -3562,6 +3649,13 @@ public partial class GoStop3PGame : MonoBehaviour
             sub += $" · {bankruptNames} 잔액을 모두 잃어 이 판을 끝으로 세션을 종료합니다";
             ui?.ShowOverlay(col, title, finalScore.ToString(), sub, "타이틀", GoToTitle); // "다시 시작" 없음
         }
+        else if (isNetworkHost)
+        {
+            // 2026-09-05(사용자 확인) — 정상적으로 승부가 갈린 판도 네트워크
+            // 대전이면 "다시 시작" 버튼 없이 3초 뒤 자동으로 다음 판.
+            ui?.ShowOverlay(col, title, finalScore.ToString(), sub, "타이틀", GoToTitle, "점수 상세", ShowScoreDetail);
+            StartCoroutine(HostAutoRestartSeq(sub));
+        }
         else
         {
             ui?.ShowOverlay(col, title, finalScore.ToString(), sub,
@@ -3569,7 +3663,40 @@ public partial class GoStop3PGame : MonoBehaviour
         }
 
         if (isNetworkHost)
+        {
             BroadcastGameOverState(false, winnerSeat, finalScore, dokbakIdx >= 0 ? loserSeats[dokbakIdx] : -1, bankruptSeats.ToArray());
+            // 세션이 그대로 끝나는 경우(bankruptSeats>0 && !downgrade)는
+            // 위에서 이미 전 좌석 money를 STARTING_MONEY로 리셋해뒀다 —
+            // 그 리셋된 값을 그대로 저장해야 다음 접속 때도 0원에 영구히
+            // 막히지 않는다(이 한 줄로 정상 승부·리셋 양쪽을 다 커버한다).
+            GoStopNetLobby.SaveNetworkMoney(GoStopNetLobby.Instance?.MyName, money[PLAYER_SEAT]);
+        }
     }
 
+    /// <summary>design.md 확장(2026-09-05, 사용자 확인) — 네트워크 대전에서는
+    /// "다시 시작" 버튼을 없애고 호스트가 3초 뒤 자동으로 다음 판을
+    /// 시작한다(게스트는 원래도 버튼이 없었다 — 이제 호스트도 같은
+    /// 방식으로 통일해 일관성을 맞춘다). 실제 재시작은 이 코루틴이 도는
+    /// 호스트만 트리거한다 — 게스트 쪽은 <see cref="ShowGuestGameOverOverlay"/>
+    /// 안의 <see cref="GuestAutoRestartCountdownSeq"/>가 같은 문구로 카운트
+    /// 다운만(순수 연출용, NewGame 호출 없음) 보여준다 — 프레임 단위로
+    /// 정확히 안 맞아도 무해하다(실제 재시작은 다음 StateSync로 온다).</summary>
+    IEnumerator HostAutoRestartSeq(string baseSub)
+    {
+        for (int remain = 3; remain >= 1; remain--)
+        {
+            ui?.SetOverlaySub($"{baseSub}\n{remain}초 후 자동으로 다음 판을 시작합니다");
+            yield return new WaitForSeconds(1f);
+        }
+        NewGame();
+    }
+
+    IEnumerator GuestAutoRestartCountdownSeq(string baseSub)
+    {
+        for (int remain = 3; remain >= 1; remain--)
+        {
+            ui?.SetOverlaySub($"{baseSub}\n{remain}초 후 자동으로 다음 판이 시작됩니다");
+            yield return new WaitForSeconds(1f);
+        }
+    }
 }

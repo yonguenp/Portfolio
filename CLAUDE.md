@@ -10389,3 +10389,151 @@ isNetworkGuest`(또는 그 함수가 원래 호스트 전용/게스트 전용이
   훨씬 작은 변경.
 - 실기기 2대 네트워크 테스트는 여전히 이 환경의 구조적 한계로 불가능 —
   다음에 사용자가 직접 두 기기로 확인 필요.
+
+## 고스톱 — 네트워크 닉네임·머니 영구 저장, 손패 턴 타임아웃, 자동 재시작
+(2026-09-05)
+
+"일단 로컬 네트워크부터 완벽하게" — 상시 서버(DuckDNS/포트포워딩)는 다음으로
+미루고, 이번엔 네트워크 대전 자체의 완성도를 올렸다. 사용자 요청 4가지:
+①맨 처음 네트워크 쓸 때 닉네임을 정하게 하고 앱에 영구 저장, ②그 닉네임에
+보유머니가 계속 이어지게, ③닉네임이 다른 유저에게 보임, ④지난 세션에 만든
+타임아웃을 손패 내는 것까지 전부 커버, ⑤네트워크 대전은 "다시 시작" 버튼 대신
+3초 후 자동 재시작(타이머 포함).
+
+### 닉네임 — 최초 1회만, 이후 영구 저장
+
+`GoStopNetLobbyUI`에 `Screen.NicknameSetup`을 추가했다 — `Open()`이
+`PlayerPrefs.GetString(GoStopNetLobby.NicknameKey)`가 비어 있으면(최초 실행)
+이 화면부터 보여주고, 있으면 곧장 Home으로 건너뛴다. 이 프로젝트에 두 번째로
+만드는 `TMP_InputField`(첫 번째는 `GoStopChatView.prefab`에 에디터로 미리
+구운 것 — 이번엔 화면 자체가 매 `Redraw()`마다 코드로 새로 그려지는 구조라
+프리팹으로 뺄 수 없어서 런타임에 직접 조립했다: Viewport(RectMask2D)+
+Placeholder+Text 세 조각을 `TMP_InputField`가 요구하는 최소 구성 그대로
+만드는 `MakeInputField` 헬퍼). 확인을 누르면 12자로 잘라 저장하고 Home으로
+넘어간다 — 빈 값이면 자동 추천값(기기 이름 기반)으로 대체해 재입력을
+강요하지 않는다.
+
+### 닉네임별 보유머니 — 서버가 없으니 "내 돈은 내 기기에만" 원칙
+
+호스트 권위 P2P 구조라 "이 닉네임의 돈"을 보관할 중앙 서버가 없다 — 그래서
+**각자 자기 기기에만** 자기 닉네임의 잔액을 저장하고, 접속할 때마다 스스로
+보고한다:
+- `GoStopNetLobby.LoadNetworkMoney(nickname)`/`SaveNetworkMoney(nickname, amount)`
+  — `PlayerPrefs` 키 `"GoStopNet_Money_" + nickname`(기본값 10만원,
+  `GoStop3PGame.STARTING_MONEY`와 반드시 같은 값으로 유지해야 하는데 그쪽은
+  private const라 직접 참조는 못 하고 숫자를 그대로 복제해뒀다 — 나중에
+  `STARTING_MONEY`를 바꾸면 이 상수도 같이 바꿔야 한다는 뜻).
+- `GoStopNetMessage.Hello`에 `int money` 필드를 추가했다 — 게스트가
+  접속 직후(`GuestOnConnected`) 자기 닉네임의 저장된 잔액을 실어 보낸다.
+  호스트는 `HostOnMessage`의 Hello 분기에서 이 값을 `GuestReportedMoney[seat]`
+  (신규 배열)에 기록해 둔다.
+- `GoStop3PGame.Awake()`의 네트워크 분기(`isNetworkHost`)가 자기 좌석(0번)은
+  `LoadNetworkMoney(내 닉네임)`으로, 나머지 좌석은 `GuestReportedMoney[s]`
+  (0이면 아직 안 왔다는 뜻이라 `STARTING_MONEY`로 폴백)로 시작 잔액을
+  seed한다. 게스트 쪽은 이 시점에 아무것도 안 한다 — 곧 오는 첫 StateSync가
+  호스트가 이미 정한 실제 값으로 덮어쓴다.
+- 저장 시점은 판이 끝나는 순간(호스트: `EndGame`의 나가리/정상 정산 두
+  탈출구 모두, 게스트: `ShowGuestGameOverOverlay`) — 각자 자기 좌석 몫만
+  자기 닉네임으로 저장한다. 세션이 완전히 끝나는 파산 케이스도 리셋된
+  `STARTING_MONEY` 그대로 저장해서 다음 접속 때 0원에 영구히 막히지 않는다.
+
+**닉네임 노출**은 이미 되고 있었다 — `Hello`의 `text` 필드(닉네임)가
+`PlayerNames[seat]`로 들어가 좌석 로우/`FillSlot`에 그대로 표시되는 기존
+경로를 그대로 탄다. 새로 만들 게 없었다.
+
+### 손패 턴 타임아웃 — 지난 세션에 빠져 있던 마지막 구멍
+
+지난 세션에 참가 선언·필드 선택·9월 열끗·선 뽑기·흔들기·고/스톱까지 6개
+"특정 결정 팝업"에 5초 조용히+5초 경고+10초 강제 기본값 타임아웃을
+걸었는데, 정작 "내 턴이라 아무 카드나 하나 내야 하는" 가장 기본적인
+대기에는 시간 제한이 없었다 — 사용자가 정확히 이 구멍을 지적했다.
+
+`TurnPlayTimeoutSeq()` — `AdvanceTurn()`과 `NewGameSeq()`(게임 첫 턴) 양쪽의
+"내 차례가 됐다" 지점에서 `isNetworkHost || isNetworkGuest`일 때만 시작한다.
+5초 뒤부터 5초간 매초 하단 토스트(`ShowTimedToast` — 사운드·채팅로그 부작용이
+있는 `Toast(seat,label)`이 아니라 순수 표시 전용 프리미티브를 재사용)로
+남은 시간을 보여주다가, 10초 안에 카드를 안 내면 `GoStopAI.ChooseCard(hand,
+field)`로 원격 좌석 타임아웃 때와 완전히 같은 기준으로 자동으로 낸다.
+손패가 비어 있고 폭탄 크레딧만 남은 특수 상태면 대신 `OnPlayerBombSkip()`을
+누른다. `hasAnswered`는 `actionBusy || state != Turn || currentSeat !=
+PLAYER_SEAT`로 판정 — 카드를 실제로 낸 순간(`actionBusy=true`) 즉시
+멈춘다.
+
+### 네트워크 대전 — "다시 시작" 버튼 폐지, 3초 자동 재시작
+
+`EndGame`의 호스트 자신 몫(나가리 조기 리턴 + `networkDowngrade`/정상 승리
+두 분기 — `downgrade`는 `CanDowngrade`가 `!isNetworkHost`를 요구해서 애초에
+네트워크에선 안 뜬다)에서, `isNetworkHost`면 "다시 시작" 버튼 자체를 안
+보여주고 `HostAutoRestartSeq()`를 띄운다 — 3초 동안 매초
+`GoStopUIManager.SetOverlaySub`(신규 — 이미 떠 있는 오버레이의 서브 텍스트만
+바꾼다, `ShowOverlay`를 다시 부르면 버튼 리스너까지 매초 다시 붙어야 해서
+낭비다)로 카운트다운을 보여준 뒤 `NewGame()`을 직접 호출한다. 게스트는
+실제 재시작을 트리거하지 않는다(호스트만 `NewGame()`을 부를 수 있다) —
+`ShowGuestGameOverOverlay`에서 같은 문구로 `GuestAutoRestartCountdownSeq()`가
+순수 연출용 카운트다운만 보여주고, 진짜 재시작은 다음 StateSync로 자연히
+온다. 세션이 완전히 끝나는 경우(`gameOverRefilledSeats.Length>0` — 파산
+세션종료·방폭파)는 애초에 호스트도 재시작을 안 하므로 게스트 카운트다운도
+안 띄운다.
+
+### 검증
+
+**Play 모드 라이브 검증**(스크린샷 대신 리플렉션 — 이 프로젝트 확립된 방식):
+- 닉네임: 최초 실행 시 NicknameSetup 화면이 뜨고 입력창에 기본 추천값이
+  채워지는 것, 확인 시 PlayerPrefs에 저장되고 Home으로 전환되는 것, 재진입
+  시(Close→Open) 바로 Home으로 건너뛰는 것, 화면 레이아웃(3개 요소, 겹침
+  없음) 전부 확인.
+- 손패 턴 타임아웃: 4인 게임에서 5~7초 시점에 토스트에 "N초 안에..." 카운트
+  다운이 뜨는 것, 10초 뒤 손패가 실제로 줄어들고(`GoStopAI.ChooseCard`가
+  고른 카드가 자동으로 나감) `actionBusy=False`(안 멈춤)로 게임이 계속
+  정상 진행되는 것 확인.
+- 자동 재시작: `EndGame(0)`을 호스트로 직접 호출 → 오버레이의 primary
+  버튼이 "다시 시작"이 아니라 "타이틀"인 것(다시 시작 버튼 완전히 제거됨
+  확인), tertiary 버튼 없음(2버튼: 타이틀+점수상세), `overlaySub`가 매초
+  카운트다운으로 갱신되는 것, 3초 뒤 `state`가 `GameOver`에서 `Turn`으로
+  자동 복귀(`NewGame()`이 실제로 호출됨)하고 `dealerSeat`가 승자로 정확히
+  넘어간 것까지 확인.
+- 오프라인(vs AI) 회귀 확인: `isNetworkHost/isNetworkGuest` 둘 다 false인
+  진짜 오프라인 4인 게임에서 `money`가 전부 기존 방식대로 10만원으로
+  seed되는 것(네트워크 전용 분기가 전혀 안 타는 것) 확인.
+
+> **함정 — `TcpClient.BeginConnect`+`AsyncWaitHandle.WaitOne`이 이
+> 환경에서 백그라운드 Thread 안에서는 영원히 안 풀린다.** 애초에 사용자가
+> "무료 포트포워딩+DuckDNS로 상시 서버 구성" 방향을 논의하다가(이후 로컬
+> 네트워크 우선으로 방향 전환됨) `TcpGoStopClientTransport.Connect`에
+> 원격 접속용 10초 타임아웃을 추가하려고 동기 `Connect()`를 비동기
+> `BeginConnect`+`WaitOne(timeout)`+`EndConnect`로 바꿨는데, 실제 루프백
+> 소켓으로 검증하다가 **연결 자체가 절대 성립하지 않는** 것을 발견했다.
+> 완전히 같은 코드를 리플렉션으로 **메인 스레드에서 직접(백그라운드
+> Thread 없이)** 실행하면 즉시(elapsedMs=0) 정상 연결됐다 — 즉 .NET 비동기
+> 소켓 API 자체는 멀쩡한데, 이 프로젝트가 수동으로 만드는
+> `System.Threading.Thread`(스레드풀이 아니다) 안에서는 그 비동기 완료
+> 신호가 영원히 안 온다는 뜻이다. 원인은 못 밝혔지만(이 특정 Editor/
+> 샌드박스 조합의 특성으로 추정), **동기 `Connect()` 자체는 이 프로젝트가
+> 처음부터 백그라운드 스레드에서 문제없이 써 온 방식**이라 이번엔 반대
+> 방향으로 고쳤다 — 동기 `Connect()`는 그대로 유지하고, 별도의 **메인
+> 스레드 워치독 코루틴**이 시간 초과 시 그 소켓을 강제로 `Close()`해서
+> 블로킹 중인 `Connect()`를 예외로 깨우는 방식(`ConnectTimeoutWatchdog`)
+> 으로 구현했다 — 이 방식은 실제 루프백 테스트에서 즉시(첫 시도부터)
+> 정상 연결되는 것으로 재확인했다. **이 환경에서 소켓 관련 코드를 짤 때는
+> 비동기 `Begin*/End*` API를 수동 스레드 안에서 쓰는 걸 피하고, 필요하면
+> 항상 검증된 동기 API + 메인 스레드 워치독 조합을 쓸 것.**
+>
+> **교훈 — 리플렉션으로 `isNetworkHost=true`를 흉내 낼 때마다
+> `WaitForRemoteMessage`(`GoStopNetLobby.Instance.OnGameMessage += ...`)가
+> null 참조 예외를 던지는 게 이번에도 여러 번 재현됐다** — 진짜
+> `GoStopNetLobby.Instance` 없이 이 플래그만 켜면 `AdvanceTurn`이 다른
+> 좌석을 "원격"으로 오인해 존재하지 않는 로비를 건드린다. 이전 세션에
+> 이미 기록된 것과 같은 함정이다 — 새로 만든 기능(`TurnPlayTimeoutSeq`/
+> `HostAutoRestartSeq`) 자체의 스택 트레이스엔 단 한 번도 안 나타났고
+> 전부 이 기존 경로에서만 발생해서, 실제 버그가 아니라 테스트 하네스의
+> 한계로 확정했다.
+
+### 남은 것
+
+- 상시 서버(포트포워딩+DuckDNS) 작업은 사용자 요청으로 이번 세션엔 보류 —
+  `JoinRoom(string ip, int port, string displayName)` 오버로드와 connect
+  타임아웃/워치독은 이미 만들어 뒀으니 나중에 이어서 로비 UI에 "직접
+  접속" 화면만 얹으면 된다.
+- "닉네임 변경" UI는 안 만들었다(요청에 없었음) — 필요하면
+  `ShowNicknameSetup()`을 재사용해 Home에 작은 링크 하나만 추가하면 된다.
+- 실기기 2대 네트워크 테스트는 여전히 이 환경의 구조적 한계로 불가능.
