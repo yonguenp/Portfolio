@@ -10753,3 +10753,92 @@ Play 모드 라이브(스크린샷 대신 리플렉션 + PNG 저장 확인, 이 
 > 코루틴의 "첫 yield 이전 동기 구간"으로 좁혀서 이 경합을 완전히
 > 피했다 — 여러 초에 걸친 라이브 플레이 관찰이 필요한 검증은 이제부터
 > 가능하면 이 두 방식 중 하나로 대체할 것.
+
+## 고스톱 — 비상/실패 이펙트 레이아웃 재구성 + 프리팹/UXML 전환 (2026-09-06)
+
+사용자가 잠들기 전 남긴 마지막 요청 4가지를 처리했다: (1) 비상/실패
+카드를 화면 최상단에 붙이고, (2) 텍스트를 그 이미지 앞(z방향)으로
+겹쳐서 렌더, (3) 텍스트 색 legibility 개선, (4) `GoStopVectorEffect`를
+프리팹+UXML로 전환해 사용자가 UI Builder로 직접 후반작업할 수 있게.
+
+**1)+2) 레이아웃 — `altRow`/`altTitleLabel`을 같은 영역에 완전히
+겹치도록.** 예전엔 `altRow`(카드)가 `top:70~290`, `altTitleLabel`(제목)이
+`top:10~70`으로 **서로 다른 세로 밴드**를 썼다 — 카드 위에 별도 공간을
+띄워 제목을 얹는 구조였다. 이제 둘 다 `top:0, height:220`으로 완전히
+같은 영역을 쓴다 — 카드는 화면 최상단(top:0)에 고정되고, 제목은 그
+카드들과 정확히 같은 자리에 겹쳐서 뜬다. z-order는 별도 조치 없이
+이미 맞았다 — UI Toolkit도 UGUI와 같은 규칙(나중에 추가된 형제가 위에
+그려짐)이라 `altTitleLabel`이 트리 순서상 `altRow`보다 뒤에 있어서
+저절로 카드 앞에 렌더된다(실측: `altRow` sibling index 3, `altTitleLabel`
+sibling index 4). `sliceLine`(실패 전용 대각선 슬래시)도 같은 영역
+기준으로 좌표를 다시 잡았다(`top:70`→`top:0`, 중앙 통과 지점도
+165→95로 재계산).
+
+**3) 텍스트 legibility.** 카드 이미지 위에 직접 겹치게 되면서 배경색이
+카드마다 제각각(밝은 광 카드부터 어두운 카드까지)이라, 흰 글자 단독으로는
+대비가 들쭉날쭉했다. UXML에 `-unity-text-outline-width`(3~3.5)와
+`-unity-text-outline-color`(짙은 남색 계열, `rgba(20,14,4,0.85~0.9)`)를
+구워서 어떤 배경 위에서도 최소한의 대비를 보장했다. 채우기 색은
+"기존 UI와 어우러지되"라는 요청에 맞춰 — 비상은 danger 톤
+(`RGB(1, 0.42, 0.30)`, 이미 있던 붉은 블링크와 같은 계열)으로, 실패는
+이 프로젝트의 유일한 강조색 `HwatuTheme.Gold`(`#D5A43A`, "현재 턴/선택/
+보상"에 이미 쓰이는 색)로 나눠서 두 이펙트가 서로 구분되면서도 기존
+팔레트에 자연스럽게 녹아들게 했다.
+
+**4) 프리팹+UXML 전환.** 예전엔 `Ensure()`가 `new GameObject(...)` +
+`AddComponent<UIDocument>()`로 매번 빈 오브젝트를 만들고,
+`BuildTree()`가 6개 요소(Dim/CardRow/TitleLabel/AltRow/AltTitleLabel/
+SliceLine)를 전부 코드로 `new VisualElement()`/`new Label()`로 지었다 —
+사용자가 손댈 자산 자체가 없었다.
+- `Assets/Resources/Prefabs/GoStop/Effects/GoStopVectorEffect.uxml`(신규) —
+  6개 요소를 이름 붙여 선언한 정적 트리. **UI Builder(Window > UI
+  Toolkit > UI Builder)로 직접 열어 위치·크기·색·폰트를 편집할 수 있다**
+  — 단 이름(`name="..."`)은 유지해야 코드의 `Q<T>("이름")` 조회가 안
+  깨진다. 매 판마다 장수가 달라지는 카드 자체(Image)는 UXML로 옮길 수
+  없는 동적 데이터라 여전히 코드가 런타임에 CardRow/AltRow 안에 채워
+  넣는다 — UXML은 그 컨테이너까지만 정의한다.
+- `Assets/Resources/Prefabs/GoStop/Effects/GoStopVectorEffect.prefab`(신규) —
+  `UIDocument` 컴포넌트가 위 UXML(`visualTreeAsset`)과 기존
+  `GoStopVectorEffectPanel`(`panelSettings`)을 이미 다 물고 있는 GameObject.
+  `Ensure()`는 이제 `Resources.Load<GameObject>(...)` + `Instantiate(...)`
+  로 이 프리팹을 인스턴스화하고, `BuildTree()`는 `new`로 짓는 대신
+  `root.Q<T>("이름")`으로 참조만 잡는다. 예전에 있던 "GameObject를
+  비활성으로 만들어 두고 설정을 다 채운 뒤에야 활성화한다"는 OnEnable
+  순서 방어 코드(panelSettings 미설정 상태로 OnEnable이 먼저 도는 걸
+  막던 것)는 필요 없어졌다 — 프리팹이 이미 완전히 구성된 채로
+  Instantiate되므로 OnEnable이 한 번에 정상 초기화된다.
+
+**함정 — `Q<T>()`는 `VisualElement`의 인스턴스 메서드가 아니라
+`UnityEngine.UIElements.UQueryExtensions`의 확장 메서드다.** `unity-cli
+eval` 스크립트에서 `testRoot.Q<VisualElement>("Dim")` 형태로 바로
+호출하면 "does not contain a definition for 'Q'"로 컴파일이 실패했다
+— 이 프로젝트가 지켜온 "eval에서는 모든 타입을 완전히 정규화해서 쓴다"
+원칙이 확장 메서드 문법(`instance.Method()`)에는 안 통한다는 걸 이번에
+확인했다 — 리시버 타입을 아무리 fully-qualify해도, 확장 메서드를
+선언한 정적 클래스가 `using`으로 스코프에 안 들어와 있으면 컴파일러가
+못 찾는다. 리플렉션으로 `UnityEngine.UIElements.VisualElement`의
+Assembly를 훑어 실제 선언 클래스(`UQueryExtensions`)를 찾은 뒤
+`UQueryExtensions.Q<T>(instance, name, ...)` 정적 호출 문법으로 우회해서
+검증했다 — 실제 `.cs` 파일에는 이미 `using UnityEngine.UIElements;`가
+있어서 이 문제가 없다(eval 검증 스크립트에서만 겪은 문제).
+
+**검증(Play 모드 라이브).** 프리팹에서 로드한 `VisualTreeAsset`을
+`CloneTree`로 직접 펼쳐 6개 이름 전부가 정확한 타입으로 조회되는 것부터
+확인한 뒤, 실제 `Ensure()`로 프리팹을 인스턴스화해: `altRow.top=0`,
+`altTitleLabel.top=0`(둘 다 `height≈220`으로 완전히 겹침), 아웃라인 폭
+3.5, 형제 순서상 `altTitleLabel`이 `altRow`보다 나중(=z-order 앞)인
+것까지 확인. `PlayEmergency`/`PlayBlocked`/`Play`(기존 완성 이펙트) 셋
+다 실제 카드 데이터로 트리거해 — 카드가 정확한 개수로 채워지고, 제목
+색이 각각 `RGBA(1,0.42,0.30,1)`/`RGBA(0.835,0.643,0.227,1)`(Gold와
+정확히 일치)/캡처 시 넘긴 accent로 정확히 나오는 것, 재생이 끝난 뒤
+카드 컨테이너가 다시 0개로 깨끗이 정리되는 것까지 확인했다. 이
+테스트 세션(컴파일+Play 모드) 전체에서 콘솔 에러·예외 0건(경고 23건은
+전부 무관한 기존 노이즈 — 파이프라인 서버 알림, obsolete API 경고,
+em-dash 폰트 폴백).
+
+**아직 손 안 댄 것.** `CardRow`/`TitleLabel`(완성 이펙트용)은 이번
+요청 범위 밖이라 레이아웃·색을 그대로 뒀다 — 필요하면 같은 방식으로
+UXML만 더 손보면 된다. 실제 게임 내 자연 발생(합성 카드가 아니라
+실제 플레이로 비상/실패를 트리거)으로는 이번에도 확인 못 했다 — 이
+효과들은 원래도 매 세션 합성 카드로만 검증돼 왔다(이전 세션들과 동일한
+한계).

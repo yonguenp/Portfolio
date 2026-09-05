@@ -26,6 +26,15 @@ using UnityEngine.UIElements;
 /// 덮어쓰는 것과 똑같이(2인/3인/4인 전부 이 씬 하나를 공유한다),
 /// PanelSettings도 같은 referenceResolution+Expand로 맞춰서 좌표 감각이
 /// UGUI 쪽과 어긋나지 않게 했다.
+///
+/// 2026-09-06 — 정적 트리(Dim/CardRow/TitleLabel/AltRow/AltTitleLabel/
+/// SliceLine)를 코드로 직접 짓던 것을 프리팹+UXML로 옮겼다
+/// (<c>Assets/Resources/Prefabs/GoStop/Effects/GoStopVectorEffect.prefab</c>
+/// + <c>.uxml</c>) — UI Builder(Window > UI Toolkit > UI Builder)로 그
+/// UXML을 직접 열어 위치·크기·색·폰트를 편집할 수 있다. 매 판마다 장수가
+/// 달라지는 카드(Image)만 여전히 <see cref="Ensure"/> 이후 코드가
+/// 런타임에 채워 넣는다 — 이 부분은 UXML로 옮길 수 없다(정적 데이터가
+/// 아니라서).
 /// </summary>
 public class GoStopVectorEffect : MonoBehaviour
 {
@@ -52,25 +61,27 @@ public class GoStopVectorEffect : MonoBehaviour
     public static GoStopVectorEffect Ensure()
     {
         if (Instance != null) return Instance;
-        var go = new GameObject("GoStopVectorEffect");
 
-        // UIDocument.OnEnable은 컴포넌트가 "활성 GameObject에 붙는 그 순간"
-        // 동기로 실행되고, 그 안에서 panelSettings를 바탕으로 rootVisualElement를
-        // 만든다 — 그래서 AddComponent 직후 panelSettings를 아직 안 채운
-        // 상태로 한 번 OnEnable이 돌면 "No Theme Style Sheet" 경고가 뜬다.
-        // GameObject를 비활성으로 만들어 둔 채 UIDocument를 붙이고 panelSettings까지
-        // 다 채운 뒤에야 SetActive(true)로 OnEnable을 발생시키면 경고 없이
-        // 한 번에 올바르게 초기화된다 — 단, rootVisualElement는 OnEnable이
-        // 돌기 전(비활성 상태)엔 null이므로, 트리를 짓는 BuildTree()는
-        // 반드시 SetActive(true) 다음에 불러야 한다(비활성 상태에서 불렀다가
-        // NullReferenceException으로 Ensure() 전체가 깨진 적이 있었다).
-        go.SetActive(false);
+        // 2026-09-06 — 코드로 매번 새로 짓던 트리를 프리팹+UXML로 옮겼다
+        // ("비상,실패 이펙트들은 프리펩으로 로드하는건가? 기존 프리펩을
+        // ui doc이 포함된 상태로 수정해줘 내가 후반작업을 좀 하고싶어"
+        // 요청). `Assets/Resources/Prefabs/GoStop/Effects/
+        // GoStopVectorEffect.prefab`가 UIDocument를 이미 완전히 구성된
+        // 채로(panelSettings+visualTreeAsset+sortingOrder 전부 프리팹
+        // 저장 시점에 구워짐) 들고 있어서, 예전에 필요했던 "GameObject를
+        // 비활성으로 만들어 두고 설정을 다 채운 뒤에야 활성화한다"는
+        // OnEnable 순서 방어 코드가 더 이상 필요 없다 — Instantiate 시점에
+        // 이미 완전한 설정을 갖고 있으므로 OnEnable이 한 번에 정상
+        // 초기화된다. 트리 자체(Dim/CardRow/TitleLabel/AltRow/
+        // AltTitleLabel/SliceLine)는 이제 UXML이 정의하고, 여기선
+        // 이름으로 찾아 참조만 잡는다 — UI Builder로 그 UXML을 열면
+        // 위치·크기·색을 직접 편집할 수 있다.
+        var prefab = Resources.Load<GameObject>("Prefabs/GoStop/Effects/GoStopVectorEffect");
+        var go = Instantiate(prefab);
+        go.name = "GoStopVectorEffect";
         DontDestroyOnLoad(go);
         Instance = go.AddComponent<GoStopVectorEffect>();
-        Instance.doc = go.AddComponent<UIDocument>();
-        Instance.doc.panelSettings = Resources.Load<PanelSettings>("Prefabs/GoStop/Effects/GoStopVectorEffectPanel");
-        Instance.doc.sortingOrder = 1000f;
-        go.SetActive(true);
+        Instance.doc = go.GetComponent<UIDocument>();
         Instance.BuildTree();
         return Instance;
     }
@@ -78,72 +89,12 @@ public class GoStopVectorEffect : MonoBehaviour
     void BuildTree()
     {
         root = doc.rootVisualElement;
-        root.style.position = Position.Absolute;
-        root.style.left = 0; root.style.top = 0; root.style.right = 0; root.style.bottom = 0;
-        root.pickingMode = PickingMode.Ignore;
-
-        dim = new VisualElement();
-        dim.style.position = Position.Absolute;
-        dim.style.left = 0; dim.style.top = 0; dim.style.right = 0; dim.style.bottom = 0;
-        dim.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
-        dim.pickingMode = PickingMode.Ignore;
-        root.Add(dim);
-
-        cardRow = new VisualElement();
-        cardRow.style.position = Position.Absolute;
-        cardRow.style.left = 0; cardRow.style.right = 0;
-        cardRow.style.top = 0; cardRow.style.bottom = 170; // 아래 타이틀 자리를 남긴다
-        cardRow.style.alignItems = Align.Center;
-        cardRow.style.justifyContent = Justify.Center;
-        cardRow.style.flexDirection = FlexDirection.Row;
-        cardRow.pickingMode = PickingMode.Ignore;
-        root.Add(cardRow);
-
-        titleLabel = new Label();
-        titleLabel.style.position = Position.Absolute;
-        titleLabel.style.left = 0; titleLabel.style.right = 0;
-        titleLabel.style.bottom = 70;
-        titleLabel.style.height = 90;
-        titleLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
-        titleLabel.style.fontSize = 52;
-        titleLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
-        titleLabel.style.opacity = 0f;
-        titleLabel.pickingMode = PickingMode.Ignore;
-        root.Add(titleLabel);
-
-        // 비상/실패 전용 — 화면 "최상단" 스트립에만 배치해서 필드(게임판)를
-        // 절대 가리지 않는다. dim(전체 화면 어둡게)은 안 쓴다 — 다른
-        // 플레이어들이 계속 필드를 봐야 하는 상황이라 화면을 가리면 안 된다.
-        altRow = new VisualElement();
-        altRow.style.position = Position.Absolute;
-        altRow.style.left = 0; altRow.style.right = 0;
-        altRow.style.top = 70; // 타이틀 라벨 자리를 위에 남기고 그 아래부터
-        altRow.style.height = 220;
-        altRow.style.alignItems = Align.Center;
-        altRow.style.justifyContent = Justify.Center;
-        altRow.style.flexDirection = FlexDirection.Row;
-        altRow.pickingMode = PickingMode.Ignore;
-        root.Add(altRow);
-
-        altTitleLabel = new Label();
-        altTitleLabel.style.position = Position.Absolute;
-        altTitleLabel.style.left = 0; altTitleLabel.style.right = 0;
-        altTitleLabel.style.top = 10;
-        altTitleLabel.style.height = 60;
-        altTitleLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
-        altTitleLabel.style.fontSize = 44;
-        altTitleLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
-        altTitleLabel.style.opacity = 0f;
-        altTitleLabel.pickingMode = PickingMode.Ignore;
-        root.Add(altTitleLabel);
-
-        sliceLine = new VisualElement();
-        sliceLine.style.position = Position.Absolute;
-        sliceLine.style.left = 0; sliceLine.style.right = 0;
-        sliceLine.style.top = 70; sliceLine.style.height = 220;
-        sliceLine.style.backgroundColor = new Color(1f, 1f, 1f, 0f);
-        sliceLine.pickingMode = PickingMode.Ignore;
-        root.Add(sliceLine);
+        dim = root.Q<VisualElement>("Dim");
+        cardRow = root.Q<VisualElement>("CardRow");
+        titleLabel = root.Q<Label>("TitleLabel");
+        altRow = root.Q<VisualElement>("AltRow");
+        altTitleLabel = root.Q<Label>("AltTitleLabel");
+        sliceLine = root.Q<VisualElement>("SliceLine");
     }
 
     /// <summary>족보를 완성한 순간 부른다. <paramref name="cards"/>는 그 세트를
@@ -269,11 +220,20 @@ public class GoStopVectorEffect : MonoBehaviour
         playingAlt = StartCoroutine(PlayEmergencySeq(title, list));
     }
 
+    // 2026-09-06 — 사용자 확인: "텍스트 색이 잘안보여 기존 UI와 어우러지되
+    // 잘보이게 색 조정해줘". 카드 바로 위에(z방향 앞으로) 겹쳐 그리게
+    // 되면서 카드 배경색이 매번 달라(밝은 광 카드부터 어두운 카드까지)
+    // 흰 글자만으로는 대비가 들쭉날쭉했다 — UXML에 진한 아웃라인
+    // (-unity-text-outline-*)을 구워둬서 어떤 배경 위에서도 최소한의
+    // 대비는 보장하고, 채우기 색은 "붉은 블링크"와 같은 계열의 danger
+    // 톤(비상)/이 프로젝트의 단일 강조색 HwatuTheme.Gold(#D5A43A, 실패)로
+    // 나눠서 두 이펙트가 서로 구분되면서도 기존 팔레트와 어우러지게 했다.
+    static readonly Color EmergencyTitleColor = new Color(1f, 0.42f, 0.30f); // danger red-orange
     IEnumerator PlayEmergencySeq(string title, List<HwatuCard> cards)
     {
         altRow.Clear();
         altTitleLabel.text = title;
-        altTitleLabel.style.color = Color.white;
+        altTitleLabel.style.color = EmergencyTitleColor;
         altTitleLabel.style.opacity = 0f;
 
         const float cardH = 190f;
@@ -368,7 +328,7 @@ public class GoStopVectorEffect : MonoBehaviour
     {
         altRow.Clear();
         altTitleLabel.text = title;
-        altTitleLabel.style.color = Color.white;
+        altTitleLabel.style.color = HwatuTheme.Gold; // 위 EmergencyTitleColor 주석 참고
         altTitleLabel.style.opacity = 0f;
         sliceLine.style.rotate = new StyleRotate(new Rotate(0));
         sliceLine.style.backgroundColor = new Color(1f, 1f, 1f, 0f);
@@ -414,7 +374,7 @@ public class GoStopVectorEffect : MonoBehaviour
         sliceLine.style.rotate = new StyleRotate(new Rotate(38f));
         sliceLine.style.backgroundColor = new Color(1f, 1f, 1f, 0.9f);
         sliceLine.style.height = 6f;
-        sliceLine.style.top = 165f; // altRow 세로 중앙 근처
+        sliceLine.style.top = 95f; // altRow(top:0,height:220) 세로 중앙 근처
         sliceLine.style.left = -400f;
         sliceLine.style.right = new StyleLength(StyleKeyword.Auto);
         sliceLine.style.width = 1900f; // 대각선으로 눕혀도 화면 폭을 다 덮도록 넉넉히
