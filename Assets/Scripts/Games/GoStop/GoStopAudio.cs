@@ -28,7 +28,9 @@ public class GoStopAudio : MonoBehaviour
 
     static AudioClip cardPlayClip, captureClip, ppeokClip, jjokClip, sweepClip, bombClip,
                       shakeClip, goClip, stopClip, nagariClip, bonusClip, turnClip,
-                      winClip, loseClip, moneyClip, gwangPaliClip, chongtongClip;
+                      winClip, loseClip, moneyClip, gwangPaliClip, chongtongClip,
+                      sirenClip, sliceClip, fanfareClip, dangerClip, refreshClip,
+                      smoochClip, snapClip, swishClip;
     static bool clipsBuilt;
 
     // ── 배경음(BGM) ──────────────────────────────────────
@@ -113,6 +115,17 @@ public class GoStopAudio : MonoBehaviour
         // 화려하게. 3옥타브를 아르페지오처럼 훑고 올라가는 인상을 주려고
         // 시작 주파수를 낮게 잡고 끝을 훨씬 높게(2.5옥타브 상승) 벌렸다.
         chongtongClip= Tone("gs_chongtong", 392f, 1568f, 0.55f, Wave.Sine, 0f, 0.008f, 1.1f, 0.28f);
+
+        // 2026-09-05 이펙트 추가 요청 — 비상(사이렌)/실패(슬라이스)/완성
+        // (웅장한 팡파레)/뻑 위기감/뻑먹기 상쾌함/쪽 쪼옥/따닥 스냅/쓸 스윽.
+        sirenClip    = Siren("gs_siren", 620f, 980f, 5.2f, 0.85f, 0.22f);
+        sliceClip    = Tone("gs_slice", 2200f, 260f, 0.20f, Wave.Sine, 0.55f, 0.002f, 3.2f, 0.22f);
+        fanfareClip  = Tone("gs_fanfare", 392f, 1568f, 0.85f, Wave.Sine, 0f, 0.01f, 1.0f, 0.30f);
+        dangerClip   = Tone("gs_danger", 180f, 130f, 0.45f, Wave.Tri, 0.30f, 0.01f, 1.4f, 0.22f);
+        refreshClip  = Tone("gs_refresh", 700f, 1500f, 0.28f, Wave.Sine, 0f, 0.008f, 1.6f, 0.20f);
+        smoochClip   = Tone("gs_smooch", 500f, 250f, 0.14f, Wave.Sine, 0.25f, 0.004f, 2.4f, 0.20f);
+        snapClip     = Tone("gs_snap", 2600f, 400f, 0.07f, Wave.Square, 0.5f, 0.001f, 4.0f, 0.22f);
+        swishClip    = Tone("gs_swish", 900f, 300f, 0.35f, Wave.Sine, 0.7f, 0.05f, 1.8f, 0.16f);
 
         if (bgmClip == null) bgmClip = Resources.Load<AudioClip>("Audio/GoStop/KingdomAncient");
     }
@@ -231,6 +244,16 @@ public class GoStopAudio : MonoBehaviour
     public void GwangPali()  => Play(gwangPaliClip);
     public void Chongtong()  => Play(chongtongClip);
 
+    // 2026-09-05 이펙트 추가 요청분
+    public void Siren()      => Play(sirenClip, 0.55f);   // 비상(위에서 카드 등장) — 삐용삐용
+    public void Slice()      => Play(sliceClip);           // 실패(막힘) — 스윽 잘리는 소리
+    public void Fanfare()    => Play(fanfareClip);          // 완성 — 기존 Win()보다 웅장하게
+    public void Danger()     => Play(dangerClip);           // 뻑 — 위기감
+    public void Refresh()    => Play(refreshClip);          // 뻑 먹기 — 상쾌함
+    public void Smooch()     => Play(smoochClip);           // 쪽 — 쪼옥
+    public void Snap()       => Play(snapClip);             // 따닥 — 경쾌한 스냅
+    public void Swish()      => Play(swishClip);            // 쓸 — 스윽
+
     // ── 파형 합성 (BrickBreakerAudio.Tone과 같은 방식) ──────
     static AudioClip Tone(string name, float f0, float f1, float dur,
                           Wave wave, float noiseMix, float attack, float release, float vol)
@@ -263,6 +286,31 @@ public class GoStopAudio : MonoBehaviour
             data[i] = w * env * vol;
         }
 
+        var clip = AudioClip.Create(name, n, 1, SR, false);
+        clip.SetData(data, 0);
+        clip.hideFlags = HideFlags.HideAndDontSave;
+        return clip;
+    }
+
+    /// <summary>"삐용삐용" 사이렌 — Tone처럼 f0→f1 한 방향 스윕이 아니라,
+    /// 두 주파수 사이를 <paramref name="wailHz"/> 속도로 계속 오가며(사인
+    /// LFO로 진동수 자체를 변조) 경고음 특유의 오르내림을 만든다.</summary>
+    static AudioClip Siren(string name, float fLo, float fHi, float wailHz, float dur, float vol)
+    {
+        int n = Mathf.Max(1, Mathf.RoundToInt(SR * dur));
+        var data = new float[n];
+        double phase = 0.0;
+        for (int i = 0; i < n; i++)
+        {
+            float k = i / (float)n;
+            float lfo = 0.5f + 0.5f * Mathf.Sin(2f * Mathf.PI * wailHz * k * dur);
+            float f = Mathf.Lerp(fLo, fHi, lfo);
+            phase += f / SR;
+            if (phase >= 1.0) phase -= 1.0;
+            float w = Mathf.Sin((float)phase * 2f * Mathf.PI);
+            float env = k < 0.03f ? k / 0.03f : Mathf.Pow(1f - Mathf.InverseLerp(0.03f, 1f, k), 0.6f);
+            data[i] = w * env * vol;
+        }
         var clip = AudioClip.Create(name, n, 1, SR, false);
         clip.SetData(data, 0);
         clip.hideFlags = HideFlags.HideAndDontSave;

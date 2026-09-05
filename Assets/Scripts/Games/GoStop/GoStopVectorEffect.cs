@@ -40,6 +40,15 @@ public class GoStopVectorEffect : MonoBehaviour
     Label titleLabel;
     Coroutine playing;
 
+    // 2026-09-05 — 비상/실패는 완성과 완전히 별개 트리(자기 전용 row+label)를
+    // 쓴다. 화면 상단 스트립에만 그려서 "필드는 가리면 안 됨" 요구를
+    // 지키고, 완성 이펙트와 동시에 떠도(같은 순간 다른 좌석이 완성+다른
+    // 좌석이 비상을 함께 겪는 극히 드문 경우) 서로 트리를 안 건드린다.
+    VisualElement altRow;
+    Label altTitleLabel;
+    VisualElement sliceLine; // 실패 전용 — 대각선 슬래시
+    Coroutine playingAlt;
+
     public static GoStopVectorEffect Ensure()
     {
         if (Instance != null) return Instance;
@@ -101,6 +110,40 @@ public class GoStopVectorEffect : MonoBehaviour
         titleLabel.style.opacity = 0f;
         titleLabel.pickingMode = PickingMode.Ignore;
         root.Add(titleLabel);
+
+        // 비상/실패 전용 — 화면 "최상단" 스트립에만 배치해서 필드(게임판)를
+        // 절대 가리지 않는다. dim(전체 화면 어둡게)은 안 쓴다 — 다른
+        // 플레이어들이 계속 필드를 봐야 하는 상황이라 화면을 가리면 안 된다.
+        altRow = new VisualElement();
+        altRow.style.position = Position.Absolute;
+        altRow.style.left = 0; altRow.style.right = 0;
+        altRow.style.top = 70; // 타이틀 라벨 자리를 위에 남기고 그 아래부터
+        altRow.style.height = 220;
+        altRow.style.alignItems = Align.Center;
+        altRow.style.justifyContent = Justify.Center;
+        altRow.style.flexDirection = FlexDirection.Row;
+        altRow.pickingMode = PickingMode.Ignore;
+        root.Add(altRow);
+
+        altTitleLabel = new Label();
+        altTitleLabel.style.position = Position.Absolute;
+        altTitleLabel.style.left = 0; altTitleLabel.style.right = 0;
+        altTitleLabel.style.top = 10;
+        altTitleLabel.style.height = 60;
+        altTitleLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+        altTitleLabel.style.fontSize = 44;
+        altTitleLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+        altTitleLabel.style.opacity = 0f;
+        altTitleLabel.pickingMode = PickingMode.Ignore;
+        root.Add(altTitleLabel);
+
+        sliceLine = new VisualElement();
+        sliceLine.style.position = Position.Absolute;
+        sliceLine.style.left = 0; sliceLine.style.right = 0;
+        sliceLine.style.top = 70; sliceLine.style.height = 220;
+        sliceLine.style.backgroundColor = new Color(1f, 1f, 1f, 0f);
+        sliceLine.pickingMode = PickingMode.Ignore;
+        root.Add(sliceLine);
     }
 
     /// <summary>족보를 완성한 순간 부른다. <paramref name="cards"/>는 그 세트를
@@ -209,5 +252,211 @@ public class GoStopVectorEffect : MonoBehaviour
         float t = 0f;
         while (t < dur) { t += Time.deltaTime; apply(Mathf.Clamp01(t / dur)); yield return null; }
         apply(1f);
+    }
+
+    // ── 비상(Emergency) — 화면 최상단, 위→아래 슬라이드, 붉은 블링크 ──
+    // 2026-09-05 사용자 확인 요청: "화면 최상단에 족보 패들 위에서 아래로
+    // 스윽 등장하며(필드는 가리면 안 됨) 붉은색으로 블링크, 패들 위쪽으로
+    // 텍스트로 '[족보이름] 비상' 뜨고 페이드아웃, 전체 2초 내외". 예전엔
+    // GoStopEffectPopup(래스터, 작은 텍스트 팝업)을 썼는데, 완성 이펙트와
+    // 같은 벡터 카드 자산을 재사용해 "이 카드들이 위험하다"를 훨씬
+    // 분명하게 보여준다.
+    public void PlayEmergency(string title, IEnumerable<HwatuCard> cards)
+    {
+        var list = cards?.Where(c => c != null).ToList() ?? new List<HwatuCard>();
+        if (list.Count == 0) return;
+        if (playingAlt != null) StopCoroutine(playingAlt);
+        playingAlt = StartCoroutine(PlayEmergencySeq(title, list));
+    }
+
+    IEnumerator PlayEmergencySeq(string title, List<HwatuCard> cards)
+    {
+        altRow.Clear();
+        altTitleLabel.text = title;
+        altTitleLabel.style.color = Color.white;
+        altTitleLabel.style.opacity = 0f;
+
+        const float cardH = 190f;
+        float cardW = cardH * 0.62f;
+        const float gap = 14f;
+
+        var wraps = new List<VisualElement>(cards.Count);
+        var imgs = new List<Image>(cards.Count);
+        foreach (var card in cards)
+        {
+            var wrap = new VisualElement();
+            wrap.style.width = cardW; wrap.style.height = cardH;
+            wrap.style.marginLeft = gap * 0.5f; wrap.style.marginRight = gap * 0.5f;
+            wrap.style.opacity = 0f;
+            wrap.style.translate = new StyleTranslate(new Translate(0, -320, 0));
+
+            var img = new Image();
+            img.vectorImage = Resources.Load<VectorImage>(RES_PREFIX + card.spriteName);
+            img.scaleMode = ScaleMode.ScaleToFit;
+            img.style.width = Length.Percent(100);
+            img.style.height = Length.Percent(100);
+            wrap.Add(img);
+
+            altRow.Add(wrap);
+            wraps.Add(wrap);
+            imgs.Add(img);
+        }
+
+        // 1) 위에서 아래로 스윽 슬라이드
+        float t = 0f;
+        const float slideDur = 0.30f;
+        while (t < slideDur)
+        {
+            t += Time.deltaTime;
+            float p = Mathf.Clamp01(t / slideDur);
+            float ease = 1f - Mathf.Pow(1f - p, 3f); // ease-out cubic
+            float y = Mathf.Lerp(-320f, 0f, ease);
+            foreach (var w in wraps) { w.style.translate = new StyleTranslate(new Translate(0, y, 0)); w.style.opacity = p; }
+            yield return null;
+        }
+        foreach (var w in wraps) { w.style.translate = new StyleTranslate(new Translate(0, 0, 0)); w.style.opacity = 1f; }
+
+        // 2) 타이틀("[족보이름] 비상") 페이드인
+        yield return Fade(a => altTitleLabel.style.opacity = a, 0.15f);
+
+        // 3) 붉은색 블링크 3회
+        var red = new Color(1f, 0.25f, 0.25f);
+        for (int i = 0; i < 3; i++)
+        {
+            foreach (var img in imgs) img.tintColor = red;
+            yield return new WaitForSeconds(0.12f);
+            foreach (var img in imgs) img.tintColor = Color.white;
+            yield return new WaitForSeconds(0.12f);
+        }
+
+        // 4) 짧은 홀드 후 페이드아웃 — 전체 합쳐 2초 내외
+        yield return new WaitForSeconds(0.25f);
+        float ft = 0f;
+        const float outDur = 0.35f;
+        while (ft < outDur)
+        {
+            ft += Time.deltaTime;
+            float a = 1f - Mathf.Clamp01(ft / outDur);
+            foreach (var w in wraps) w.style.opacity = a;
+            altTitleLabel.style.opacity = a;
+            yield return null;
+        }
+
+        altRow.Clear();
+        altTitleLabel.style.opacity = 0f;
+        playingAlt = null;
+    }
+
+    // ── 실패(Blocked) — 카드 등장 후 대각선으로 "잘리는" 연출 ─────────
+    // 2026-09-05: "족보 패들 스윽 등장 후 후르츠닌자처럼 칼로 좌상단에서
+    // 우하단으로 잘리는 느낌으로 잘려서 패들 위로 '[족보이름] 실패'".
+    // UI Toolkit엔 실제 메시 절단(두 조각으로 갈라져 물리적으로 떨어지는
+    // 연출)을 만들 셰이더/지오메트리 도구가 없어서, 정확히 같은 픽셀
+    // 단위 절단은 이번 범위 밖으로 남기고 근사로 구현했다 — 카드들이
+    // 슬램인한 뒤, 좌상단→우하단 대각선 흰 슬래시 라인이 화면을 가로질러
+    // 훑고 지나가는 동시에 카드가 살짝 아래로 처지며(중력에 끊긴 느낌)
+    // 붉게 물들고 페이드아웃된다. 사용자에게 이 단순화를 알릴 것.
+    public void PlayBlocked(string title, IEnumerable<HwatuCard> cards)
+    {
+        var list = cards?.Where(c => c != null).ToList() ?? new List<HwatuCard>();
+        if (list.Count == 0) return;
+        if (playingAlt != null) StopCoroutine(playingAlt);
+        playingAlt = StartCoroutine(PlayBlockedSeq(title, list));
+    }
+
+    IEnumerator PlayBlockedSeq(string title, List<HwatuCard> cards)
+    {
+        altRow.Clear();
+        altTitleLabel.text = title;
+        altTitleLabel.style.color = Color.white;
+        altTitleLabel.style.opacity = 0f;
+        sliceLine.style.rotate = new StyleRotate(new Rotate(0));
+        sliceLine.style.backgroundColor = new Color(1f, 1f, 1f, 0f);
+
+        const float cardH = 190f;
+        float cardW = cardH * 0.62f;
+        const float gap = 14f;
+
+        var wraps = new List<VisualElement>(cards.Count);
+        var imgs = new List<Image>(cards.Count);
+        foreach (var card in cards)
+        {
+            var wrap = new VisualElement();
+            wrap.style.width = cardW; wrap.style.height = cardH;
+            wrap.style.marginLeft = gap * 0.5f; wrap.style.marginRight = gap * 0.5f;
+            wrap.style.opacity = 0f;
+
+            var img = new Image();
+            img.vectorImage = Resources.Load<VectorImage>(RES_PREFIX + card.spriteName);
+            img.scaleMode = ScaleMode.ScaleToFit;
+            img.style.width = Length.Percent(100);
+            img.style.height = Length.Percent(100);
+            wrap.Add(img);
+
+            altRow.Add(wrap);
+            wraps.Add(wrap);
+            imgs.Add(img);
+        }
+
+        // 1) 카드 스태거 슬램인(완성 이펙트와 같은 방식 — 작게 시작→오버슈트→정착)
+        var slams = new List<Coroutine>(wraps.Count);
+        for (int i = 0; i < wraps.Count; i++)
+            slams.Add(StartCoroutine(SlamCard(wraps[i], i * 0.06f)));
+        foreach (var c in slams) yield return c;
+
+        yield return Fade(a => altTitleLabel.style.opacity = a, 0.12f);
+        yield return new WaitForSeconds(0.15f);
+
+        // 2) 좌상단→우하단 대각선 슬래시가 화면을 훑고 지나간다("스윽 잘림")
+        //    — 실제 지오메트리 절단 대신, 45도로 기울인 얇고 긴 흰 띠를
+        //    화면 왼쪽 밖에서 오른쪽 밖까지 빠르게 이동시켜 "칼날이
+        //    지나간다"는 인상을 준다.
+        sliceLine.style.rotate = new StyleRotate(new Rotate(38f));
+        sliceLine.style.backgroundColor = new Color(1f, 1f, 1f, 0.9f);
+        sliceLine.style.height = 6f;
+        sliceLine.style.top = 165f; // altRow 세로 중앙 근처
+        sliceLine.style.left = -400f;
+        sliceLine.style.right = new StyleLength(StyleKeyword.Auto);
+        sliceLine.style.width = 1900f; // 대각선으로 눕혀도 화면 폭을 다 덮도록 넉넉히
+        float st = 0f;
+        const float sliceDur = 0.16f;
+        while (st < sliceDur)
+        {
+            st += Time.deltaTime;
+            float p = Mathf.Clamp01(st / sliceDur);
+            sliceLine.style.left = Mathf.Lerp(-1200f, 1900f, p);
+            yield return null;
+        }
+        sliceLine.style.backgroundColor = new Color(1f, 1f, 1f, 0f);
+
+        // 3) 잘린 순간 카드가 붉게 물들며 아래로 살짝 처진다(중력에 끊긴 느낌)
+        var red = new Color(1f, 0.3f, 0.25f);
+        foreach (var img in imgs) img.tintColor = red;
+        float dt = 0f;
+        const float dropDur = 0.22f;
+        while (dt < dropDur)
+        {
+            dt += Time.deltaTime;
+            float p = Mathf.Clamp01(dt / dropDur);
+            foreach (var w in wraps) w.style.translate = new StyleTranslate(new Translate(0, 40f * p, 0));
+            yield return null;
+        }
+
+        // 4) 짧은 홀드 후 페이드아웃
+        yield return new WaitForSeconds(0.2f);
+        float ft = 0f;
+        const float outDur = 0.35f;
+        while (ft < outDur)
+        {
+            ft += Time.deltaTime;
+            float a = 1f - Mathf.Clamp01(ft / outDur);
+            foreach (var w in wraps) w.style.opacity = a;
+            altTitleLabel.style.opacity = a;
+            yield return null;
+        }
+
+        altRow.Clear();
+        altTitleLabel.style.opacity = 0f;
+        playingAlt = null;
     }
 }

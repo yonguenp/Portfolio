@@ -4,6 +4,7 @@ using System.Linq;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using DG.Tweening;
 
 /// <summary>
 /// 고스톱(2~4인 전부, "맞고"=2인 포함). 좌석 0=플레이어(아래), 1=AI-A(좌측),
@@ -215,6 +216,11 @@ public partial class GoStop3PGame : MonoBehaviour
     // 2를 거치지 않고 곧장 3으로 뛸 수 있어서(비상이 안 뜬 채로 완성)
     // emergencyFired에 얹어 계산하지 않고 완전히 독립적으로 추적한다.
     readonly HashSet<(int seat, int setIdx)> achievedFired = new();
+    // 2026-09-05 — "실패(막힘)" 이펙트 1회 제한. 비상까지 갔던 세트가
+    // 결국 완성 못 하고 막혔을 때만 한 판에 한 번 발동한다(CheckEmergencies
+    // 참고 — 매 순간 막히는 세트마다 쏘면 스팸이라 emergencyFired가 이미
+    // 켜진 것만 대상으로 좁혔다).
+    readonly HashSet<(int seat, int setIdx)> blockedFired = new();
     // 2026-08-26 정정(사용자 확인) — "첫뻑/첫따닥/첫뻑먹기"의 "첫"은 판
     // 전체의 첫 장(선의 첫 수)이 아니라 **각 유저 자신의 손패 첫 장(1번째로
     // 내는 카드)**을 가리킨다 — "마지막 턴"을 각자 손패 마지막 장으로
@@ -1797,6 +1803,111 @@ public partial class GoStop3PGame : MonoBehaviour
         else if (moneyEvent) fx.Play(label, MoneyEventColor);
         else if (label == "따닥") fx.Play(label, new Color(0.72f, 0.45f, 0.95f));
         else fx.Play(label);
+
+        SpawnComboIconFor(label, canvasRoot, local);
+    }
+
+    /// <summary>2026-09-05 이펙트 추가 요청 — 뻑/뻑먹기/쪽/따닥/쓸은 기존
+    /// 텍스트 팝업(위 fx.Play)에 "더해서" 화면 가운데 짧게(1초) 뜨는 절차적
+    /// 아이콘(GoStopComboIcons)을 하나 더 얹는다. 대체가 아니라 추가라는
+    /// 점이 핵심 — 기존 문구/색 연출은 그대로 두고 위에 겹쳐 보여준다.
+    /// "자뻑"/"뻑 먹기"(뻑을 먹는 순간, 상대적으로 상쾌한 사건)와 평범한
+    /// "뻑"(아직 안 풀린 뻑, 위기감)을 서로 다른 아이콘/사운드로 가른다 —
+    /// 순서가 중요하다(더 구체적인 라벨을 먼저 확인).</summary>
+    void SpawnComboIconFor(string label, RectTransform canvasRoot, Vector2 local)
+    {
+        if (label == "자뻑" || label == "뻑 먹기")
+        {
+            SpawnComboIcon(GoStopComboIcons.Tissue, canvasRoot, local, "tissue");
+            GoStopAudio.Instance?.Refresh();
+        }
+        else if (label == "따닥" || label == "첫따닥")
+        {
+            SpawnComboIcon(GoStopComboIcons.Snap, canvasRoot, local, "snap");
+            GoStopAudio.Instance?.Snap();
+        }
+        else if (label.Contains("쪽"))
+        {
+            SpawnComboIcon(GoStopComboIcons.Lips, canvasRoot, local, "lips");
+            GoStopAudio.Instance?.Smooch();
+        }
+        else if (label.Contains("싹쓸이"))
+        {
+            SpawnComboIcon(GoStopComboIcons.Broom, canvasRoot, local, "broom");
+            GoStopAudio.Instance?.Swish();
+        }
+        else if (label.Contains("뻑")) // 첫뻑/연뻑 — 아직 안 풀린 뻑, 위기감
+        {
+            SpawnComboIcon(GoStopComboIcons.Poop, canvasRoot, local, "poop");
+            GoStopAudio.Instance?.Danger();
+        }
+    }
+
+    /// <summary>절차적 아이콘 하나를 화면 중앙(필드 위치)에 짧게(약 1초)
+    /// 띄운다 — DOTween으로 종류별 다른 모션을 준다("어울리게 알맞은
+    /// 애니메이팅" 요청): 따닥=빠르게 튕기는 스냅, 쓸=좌우로 흔들리는
+    /// 빗질, 뻑=위에서 뚝 떨어지는 불길함, 뻑먹기=통통 튀며 떠오르는
+    /// 상쾌함, 쪽=짧게 통통 튀는 뽀뽁 펄스.</summary>
+    void SpawnComboIcon(Sprite sprite, RectTransform canvasRoot, Vector2 local, string kind)
+    {
+        if (sprite == null || canvasRoot == null) return;
+
+        var go = new GameObject("ComboIcon", typeof(RectTransform));
+        go.transform.SetParent(canvasRoot, false);
+        var rt = go.GetComponent<RectTransform>();
+        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+        rt.pivot = new Vector2(0.5f, 0.5f);
+        rt.sizeDelta = new Vector2(150f, 150f);
+        rt.anchoredPosition = local;
+        rt.localScale = Vector3.zero;
+
+        var img = go.AddComponent<Image>();
+        img.sprite = sprite;
+        img.preserveAspect = true;
+        img.raycastTarget = false;
+
+        var group = go.AddComponent<CanvasGroup>();
+        group.alpha = 1f;
+
+        var seq = DOTween.Sequence();
+        switch (kind)
+        {
+            case "snap": // 따닥 — 빠르게 튕기는 스냅
+                seq.Append(rt.DOScale(1.35f, 0.10f).SetEase(Ease.OutBack));
+                seq.Append(rt.DOScale(1f, 0.08f));
+                seq.AppendInterval(0.42f);
+                seq.Append(group.DOFade(0f, 0.30f));
+                break;
+            case "broom": // 쓸 — 좌우로 흔들리는 빗질
+                seq.Append(rt.DOScale(1f, 0.12f).SetEase(Ease.OutBack));
+                seq.Join(rt.DORotate(new Vector3(0f, 0f, 20f), 0.14f));
+                seq.Append(rt.DORotate(new Vector3(0f, 0f, -20f), 0.18f));
+                seq.Append(rt.DORotate(new Vector3(0f, 0f, 16f), 0.16f));
+                seq.Append(rt.DORotate(Vector3.zero, 0.12f));
+                seq.Join(group.DOFade(0f, 0.28f).SetDelay(0.32f));
+                break;
+            case "poop": // 뻑 — 위에서 뚝 떨어지는 불길함
+                rt.anchoredPosition = local + new Vector2(0f, 90f);
+                seq.Append(rt.DOAnchorPos(local, 0.16f).SetEase(Ease.InQuad));
+                seq.Join(rt.DOScale(1f, 0.16f).SetEase(Ease.OutBack));
+                seq.Append(rt.DOPunchScale(new Vector3(0.12f, 0.12f, 0f), 0.30f, 6, 0.8f));
+                seq.AppendInterval(0.15f);
+                seq.Append(group.DOFade(0f, 0.25f));
+                break;
+            case "tissue": // 뻑 먹기 — 통통 튀며 떠오르는 상쾌함
+                seq.Append(rt.DOScale(1.18f, 0.14f).SetEase(Ease.OutBack));
+                seq.Append(rt.DOScale(1f, 0.10f));
+                seq.Join(rt.DOAnchorPosY(local.y + 26f, 0.55f).SetEase(Ease.OutSine));
+                seq.Append(group.DOFade(0f, 0.30f));
+                break;
+            default: // "lips" 쪽 — 짧게 통통 튀는 뽀뽁 펄스
+                seq.Append(rt.DOScale(1.30f, 0.12f).SetEase(Ease.OutBack));
+                seq.Append(rt.DOScale(1f, 0.10f));
+                seq.AppendInterval(0.45f);
+                seq.Append(group.DOFade(0f, 0.30f));
+                break;
+        }
+        seq.OnComplete(() => { if (go != null) Destroy(go); });
     }
 
     /// <summary>파티클 버스트 색 — 텍스트 팝업(EffectJjok=하늘색 등)과 톤을
@@ -1840,15 +1951,22 @@ public partial class GoStop3PGame : MonoBehaviour
 
             for (int i = 0; i < EmergencySets.Length; i++)
             {
-                bool needEmergency = !emergencyFired.Contains((seat, i));
+                bool wasEmergency  = emergencyFired.Contains((seat, i));
+                bool needEmergency = !wasEmergency;
                 bool needAchieve   = !achievedFired.Contains((seat, i));
-                if (!needEmergency && !needAchieve) continue;
+                // 2026-09-05 — "실패(막힘)" 이펙트는 비상까지 갔던 세트가
+                // 완성 못 하고 막힐 때만 발동한다(사용자에게 문서로 알린
+                // 판단 — 매 순간 아무 세트나 막힐 때마다 화면 전체 이펙트를
+                // 쏘면 너무 흔해서 스팸이 된다. "비상! → 결국 실패..."라는
+                // 극적 흐름만 큰 연출로 보여준다).
+                bool needBlocked = wasEmergency && needAchieve && !blockedFired.Contains((seat, i));
+                if (!needEmergency && !needAchieve && !needBlocked) continue;
                 theirs ??= ActiveSeats().Where(s => s != seat).SelectMany(s => captured[s]).ToList();
                 var (state, have) = GoStopRules.CheckSet(mine, theirs, EmergencySets[i].pred);
                 if (needEmergency && state == GoStopRules.SetState.Alive && have == 2)
                 {
                     emergencyFired.Add((seat, i));
-                    FireEmergency(seat, EmergencySets[i].name);
+                    FireEmergency(seat, EmergencySets[i].name, mine.Where(EmergencySets[i].pred).ToList());
                 }
                 // 2026-08-25 — "완성" 이펙트는 비상과 완전히 독립적으로 판정한다.
                 // 뻑/폭탄처럼 한 번에 여러 장이 들어오면 have가 2를 거치지
@@ -1859,6 +1977,11 @@ public partial class GoStop3PGame : MonoBehaviour
                     achievedFired.Add((seat, i));
                     FireAchievement(seat, EmergencySets[i].name, mine.Where(EmergencySets[i].pred).ToList());
                 }
+                else if (needBlocked && state == GoStopRules.SetState.Blocked)
+                {
+                    blockedFired.Add((seat, i));
+                    FireBlocked(seat, EmergencySets[i].name, mine.Where(EmergencySets[i].pred).ToList());
+                }
             }
 
             // 2026-08-23(design.md §26 확정): 3광도 비상 대상에 추가한다.
@@ -1867,21 +1990,28 @@ public partial class GoStop3PGame : MonoBehaviour
             // 가져도 막힘" 판정을 그대로 쓰면 오탐(과잉 차단)이 난다 —
             // 전용 판정(CheckGwangEmergency)을 따로 쓴다.
             {
-                bool needEmergency = !emergencyFired.Contains((seat, GwangEmergencyIdx));
+                bool wasEmergency  = emergencyFired.Contains((seat, GwangEmergencyIdx));
+                bool needEmergency = !wasEmergency;
                 bool needAchieve   = !achievedFired.Contains((seat, GwangEmergencyIdx));
-                if (needEmergency || needAchieve)
+                bool needBlocked   = wasEmergency && needAchieve && !blockedFired.Contains((seat, GwangEmergencyIdx));
+                if (needEmergency || needAchieve || needBlocked)
                 {
                     theirs ??= ActiveSeats().Where(s => s != seat).SelectMany(s => captured[s]).ToList();
                     var (state, have) = CheckGwangEmergency(mine, theirs);
                     if (needEmergency && state == GoStopRules.SetState.Alive && have == 2)
                     {
                         emergencyFired.Add((seat, GwangEmergencyIdx));
-                        FireEmergency(seat, "3광");
+                        FireEmergency(seat, "3광", mine.Where(c => c.kind == HwatuKind.Gwang).ToList());
                     }
                     if (needAchieve && state == GoStopRules.SetState.Achieved)
                     {
                         achievedFired.Add((seat, GwangEmergencyIdx));
                         FireGwangAchievement(seat, mine);
+                    }
+                    else if (needBlocked && state == GoStopRules.SetState.Blocked)
+                    {
+                        blockedFired.Add((seat, GwangEmergencyIdx));
+                        FireBlocked(seat, "3광", mine.Where(c => c.kind == HwatuKind.Gwang).ToList());
                     }
                 }
             }
@@ -1902,50 +2032,49 @@ public partial class GoStop3PGame : MonoBehaviour
         return (GoStopRules.SetState.Alive, have);
     }
 
-    /// <summary>비상 이펙트 발동 — 필드 중앙에 큼직하게, 어느 좌석이 어떤
-    /// 족보에 근접했는지 알려준다. 프리팹은 EffectGodoriEmergency/
-    /// EffectHongdanEmergency/EffectChodanEmergency/EffectCheongdanEmergency/
-    /// EffectGwangEmergency(GoStopEffectPopup 공유 — Assets/Resources/
-    /// Prefabs/GoStop/Effects/).
-    /// <br/>2026-08-26 — 코드가 넘기는 텍스트는 <b>좌석 이름 하나뿐</b>이다
-    /// (예전엔 "OO 고도리 비상!"처럼 세트 이름·상태 문구까지 코드에서 합쳐
-    /// 넘겨서, 프리팹마다 다르게 디자인해도 텍스트 형식이 한 가지로만
-    /// 고정돼 후졌다는 지적을 받았다). 세트 이름·"비상"/"완성" 문구·이미지는
-    /// 각 프리팹 안에 정적으로 구성한다 — 코드는 그 위에 이름만 얹는다.
-    /// <br/>네트워크 동기화는 이번엔 안 걸었다 — 호스트 화면에서만 보인다
-    /// (게스트에게 안 뜬다). Toast처럼 EventMsg로 실어 보내려면 게스트
-    /// 쪽 수신 핸들러가 이 라벨 형식을 알아야 하는데, 아직 검증 안 된
-    /// 네트워크 경로에 새 메시지 형식을 얹는 리스크를 이번엔 피했다 —
-    /// 다음에 실제 두 기기 테스트를 할 때 같이 확인할 것.</summary>
-    void FireEmergency(int seat, string setName)
+    /// <summary>비상 이펙트 발동 — 화면 최상단에 그 세트를 이루는 카드들이
+    /// 위→아래로 슬라이드해 등장하며(필드는 절대 안 가림) 붉게 블링크되고,
+    /// 그 위로 "[좌석] [족보이름] 비상" 텍스트가 뜬다(2026-09-05, 사용자
+    /// 확인 재설계 — 예전엔 GoStopEffectPopup 래스터 소형 팝업이었다).
+    /// 완성 이펙트(GoStopVectorEffect.Play)와 같은 벡터 카드 자산을
+    /// 재사용하되, 화면 전체를 덮는 dim 없이 상단 전용 트리(altRow)만
+    /// 쓴다. 사운드는 기존 Bonus()(반짝임) 대신 새 사이렌(Siren, "삐용삐용")
+    /// 으로 바꿨다 — 위험 신호라는 성격에 더 맞는다.
+    /// <br/>네트워크 동기화는 이번에도 안 걸었다(호스트 화면에서만 보임) —
+    /// 예전 판단(검증 안 된 네트워크 경로에 새 메시지 형식을 얹는 리스크
+    /// 회피)을 그대로 유지했다.</summary>
+    void FireEmergency(int seat, string setName, List<HwatuCard> cards)
     {
-        string prefabName = setName switch
-        {
-            "고도리" => "EffectGodoriEmergency",
-            "홍단" => "EffectHongdanEmergency",
-            "초단" => "EffectChodanEmergency",
-            "청단" => "EffectCheongdanEmergency",
-            "3광" => "EffectGwangEmergency", // 2026-08-23(design.md §26/§27 확정)
-            _ => null,
-        };
-        if (prefabName == null || fieldArea == null) return;
+        if (fieldArea == null) return;
 
         var canvasRoot = fieldArea.parent.parent.parent as RectTransform;
         Vector2 local = canvasRoot.InverseTransformPoint(fieldArea.position);
 
         GoStopIcons.SpawnBurst(canvasRoot, local, EmergencyColor(setName), 20);
-
-        var fx = HwatuUI.InstantiateEffect<GoStopEffectPopup>(prefabName, canvasRoot);
-        if (fx != null)
-        {
-            fx.root.anchoredPosition = local;
-            // "누구"만 라벨로 넘긴다 — 세트 이름·"비상"/"완성" 문구·이미지는
-            // 사용자가 각 프리팹에 직접 구성한다(2026-08-26).
-            fx.Play(SeatName(seat), EmergencyColor(setName));
-        }
+        GoStopVectorEffect.Ensure().PlayEmergency($"{SeatName(seat)} {setName} 비상!", cards);
 
         ShowTimedToast($"{SeatName(seat)}이(가) {setName} 완성 직전!");
-        GoStopAudio.Instance?.Bonus();
+        GoStopAudio.Instance?.Siren();
+    }
+
+    /// <summary>실패(막힘) 이펙트 — 비상까지 갔던 세트가 상대에게 필요한
+    /// 카드를 뺏겨 완성이 영영 불가능해진 순간 한 번 발동한다(2026-09-05,
+    /// 사용자 확인). 카드들이 슬램인한 뒤 대각선 슬래시가 훑고 지나가며
+    /// 붉게 물들어 페이드아웃 — 정확한 "메시 절단"은 UI Toolkit으로
+    /// 구현할 방법이 없어 슬래시+색변화로 근사했다는 점을 사용자에게
+    /// 알릴 것(GoStopVectorEffect.PlayBlockedSeq 문서 참고).</summary>
+    void FireBlocked(int seat, string setName, List<HwatuCard> cards)
+    {
+        if (fieldArea == null) return;
+
+        var canvasRoot = fieldArea.parent.parent.parent as RectTransform;
+        Vector2 local = canvasRoot.InverseTransformPoint(fieldArea.position);
+
+        GoStopIcons.SpawnBurst(canvasRoot, local, new Color(0.75f, 0.2f, 0.2f), 16);
+        GoStopVectorEffect.Ensure().PlayBlocked($"{SeatName(seat)} {setName} 실패", cards);
+
+        ShowTimedToast($"{SeatName(seat)}의 {setName}이(가) 막혔습니다");
+        GoStopAudio.Instance?.Slice();
     }
 
     /// <summary>족보(광 제외) "완성" 이펙트 — 비상(2/3 경고)과 별개로, 실제로
@@ -1973,7 +2102,7 @@ public partial class GoStop3PGame : MonoBehaviour
         GoStopVectorEffect.Ensure().Play($"{SeatName(seat)}이(가) {setName} 완성!", EmergencyColor(setName), cards);
 
         ShowTimedToast($"{SeatName(seat)}이(가) {setName} 완성!");
-        GoStopAudio.Instance?.Win();
+        GoStopAudio.Instance?.Fanfare(); // 2026-09-05 — 기존 Win()보다 웅장한 전용 사운드로 교체(실제 게임 승리와는 다른 소리여야 구분된다)
     }
 
     /// <summary>광 완성 이펙트 — 사용자 확인(2026-08-25)에 따라 <b>완성만</b>
@@ -2013,7 +2142,7 @@ public partial class GoStop3PGame : MonoBehaviour
         GoStopVectorEffect.Ensure().Play($"{SeatName(seat)}이(가) {label} 완성!", color, gwangCards);
 
         ShowTimedToast($"{SeatName(seat)}이(가) {label} 완성!");
-        GoStopAudio.Instance?.Win();
+        GoStopAudio.Instance?.Fanfare();
     }
 
     /// <summary>총통(딜 직후 같은 달 4장으로 즉시 승리) 전용 족보 이펙트 —
