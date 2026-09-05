@@ -16,6 +16,35 @@ using DG.Tweening;
 /// </summary>
 public partial class GoStop3PGame
 {
+    /// <summary>2026-09-05: "나가기 버튼 우측에 도움말 버튼 추가하고
+    /// 인게임 규칙/도움말 화면 만들어줘" 요청으로 작성한 고스톱 규칙
+    /// 요약. 새 규칙을 추가·변경할 때마다 여기도 같이 고칠 것 — 실제
+    /// 판정 로직(GoStopRules.cs)과 별개의 순수 텍스트라 자동으로
+    /// 동기화되지 않는다.</summary>
+    const string GoStopHelpBodyText =
+        "<b>■ 진행</b>\n" +
+        "선(먼저 정해진 사람)부터 순서대로 손패 1장 + 덱 1장씩 냅니다. 필드에 같은 달 패가 있으면 맞춰서 가져갑니다.\n\n" +
+        "<b>■ 점수(3점 이상이면 스톱 가능)</b>\n" +
+        "광 3장 3점(비광 포함 2점) · 4장 4점 · 5장 15점\n" +
+        "고도리(특정 열끗 3장) 5점 · 홍단/청단/초단 각 3점\n" +
+        "열끗 5장부터 1점씩 · 피 10장부터 1점씩\n\n" +
+        "<b>■ 특수 상황</b>\n" +
+        "뻑: 필드 매칭 직후 뒷패도 같은 달 → 아무도 못 먹고 쌓임(나중에 4장째로 가져가면 상대 피를 뺏음)\n" +
+        "따닥: 필드 2장 중 하나를 골라 가져간 뒤 뒷패가 나머지 한 장마저 맞음 → 피 획득\n" +
+        "쪽: 낸 패가 안 맞았는데 뒷패가 그 패와 맞음 → 피 획득\n" +
+        "싹쓸이: 필드를 완전히 비움 → 피 획득 · 폭탄: 손 3장+필드 1장 → 4장 획득+피 2장\n" +
+        "흔들기: 같은 달 3장을 손에 들고 선언 → 정산 배수 2배\n\n" +
+        "<b>■ 고/스톱</b>\n" +
+        "점수에 도달하면 \"고\"(계속)·\"스톱\"(종료) 선택. 고를 부를수록 배수가 커집니다.\n" +
+        "나가리: 아무도 점수를 못 넘기면 다음 판 판돈이 2배가 됩니다.\n\n" +
+        "<b>■ 벌칙(2배)</b>\n" +
+        "광박: 광이 하나도 없는데 상대가 광으로 득점\n" +
+        "피박: 피가 적은데(2인 7장/3~4인 5장 이하) 상대가 피로 득점\n" +
+        "멍박: 열끗이 하나도 없는데 상대가 고도리/열끗으로 득점\n\n" +
+        "<b>■ 4인 전용</b>\n" +
+        "광팔이: 이번 판에 참가 못 한 사람이 광·쌍피를 낼 때마다 정산받음\n" +
+        "총통: 딜 받은 손패에 같은 달 4장이 있으면 즉시 승리";
+
     // ══════════════════════════════════════════════════════
     // UI 구성 — "테이블에 둘러앉기": 나=아래, AI-A=좌측, AI-B=상단, AI-C=우측.
     // 좌우 좌석은 카드를 90도 눕혀서(뒷면이 세로가 아니라 가로로 놓인 모습)
@@ -200,6 +229,36 @@ public partial class GoStop3PGame
             exitRT.pivot = new Vector2(1f, 0f);
             exitRT.anchoredPosition = new Vector2(-14f, 14f);
         }
+
+        // 2026-09-05: "나가기 버튼 우측에 도움말버튼 추가" — ExitBtn과 같은
+        // "씬에 있으면 재사용" 패턴. 새로 만드는 경우엔 ExitBtn의 실제
+        // 위치(사용자가 옮겨뒀을 수 있다)를 그대로 읽어 그 오른쪽에 붙인다
+        // — pivot이 같은 이상 anchoredPosition에 (폭+여백)만 더하면 항상
+        // 정확히 옆에 붙는다(ExitBtn이 나중에 또 옮겨져도 따라간다는 뜻은
+        // 아니다 — 이건 생성 시점 한 번만의 계산이다).
+        var existingHelpBtn = root.Find("HelpBtn");
+        Button helpBtn;
+        if (existingHelpBtn != null)
+        {
+            helpBtn = existingHelpBtn.GetComponent<Button>();
+            helpBtn.onClick.RemoveAllListeners();
+            helpBtn.onClick.AddListener(() => ui?.ShowHelp());
+        }
+        else
+        {
+            var exitRTForHelp = exitBtn.GetComponent<RectTransform>();
+            helpBtn = UISkin.MakeKenneyButton(root, "HelpBtn", new Vector2(120f, 52f), Vector2.zero,
+                UISkin.Accent.Blue, "도움말", () => ui?.ShowHelp());
+            var helpRT = helpBtn.GetComponent<RectTransform>();
+            helpRT.anchorMin = exitRTForHelp.anchorMin;
+            helpRT.anchorMax = exitRTForHelp.anchorMax;
+            helpRT.pivot = exitRTForHelp.pivot;
+            helpRT.anchoredPosition = exitRTForHelp.anchoredPosition + new Vector2(exitRTForHelp.sizeDelta.x + 10f, 0f);
+        }
+        // 도움말 내용(고스톱 규칙 요약) — 한 번만 등록해두면 계속 최신으로
+        // 남는다. GoStopUIManager.SetHelp가 helpBody에 자동 크기 축소를
+        // 걸어주므로(아래 참고) 이 정도 분량도 겹침 없이 들어간다.
+        ui?.SetHelp("고스톱 규칙", GoStopHelpBodyText, "확인");
 
         // 2026-09-04: "우측상단에 점당 얼마짜리 게임인지 표시 추가했어"
         // — 사용자가 씬에 만든 Info(배경 Image) 밑에 "점당"/숫자/"원" 세
@@ -479,7 +538,19 @@ public partial class GoStop3PGame
             if (s == PLAYER_SEAT)
             {
                 pendingDealerPickIndex = -1;
-                yield return new WaitUntil(() => pendingDealerPickIndex >= 0);
+                if (isNetworkHost)
+                {
+                    yield return StartCoroutine(RunLocalInputTimeout(() => pendingDealerPickIndex >= 0,
+                        t => dealerDrawPopup.promptText.text = t, dealerDrawPopup.promptText.text, () =>
+                        {
+                            var avail = Enumerable.Range(0, 8).Where(i => pickedBy[i] == -1).ToList();
+                            pendingDealerPickIndex = avail[Random.Range(0, avail.Count)];
+                        }));
+                }
+                else
+                {
+                    yield return new WaitUntil(() => pendingDealerPickIndex >= 0);
+                }
                 chosen = pendingDealerPickIndex;
             }
             else if (IsRemoteSeat(s))
@@ -716,6 +787,14 @@ public partial class GoStop3PGame
             HwatuUI.MakeCard(c, fieldChoicePopup.cardContainer, new Vector2(x, cardY), CHOICE_CARD_W, CHOICE_CARD_H,
                 () => OnFieldChoiceClicked(c), true);
         }
+        // 2026-09-05: 이 팝업은 원래 텍스트가 하나도 없어서(카드 2장만
+        // 보여주는 구조) 네트워크 타이머 경고를 붙일 곳이 없다 — 카드
+        // 바로 밑에 작은 라벨을 새로 만든다. cardContainer는 매번
+        // ClearChildren되므로 여기서 매번 다시 만들어야 한다(캐시해 두면
+        // 다음 호출 때 이미 파괴된 참조가 된다).
+        fieldChoiceWarnText = HwatuUI.MakeLabel(fieldChoicePopup.cardContainer,
+            new Vector2(0f, cardY - CHOICE_CARD_H - 8f), new Vector2(500f, 32f), 22f, new Color(1f, 0.55f, 0.25f, 1f));
+        fieldChoiceWarnText.gameObject.SetActive(false);
         fieldChoicePopup.Show();
     }
 
@@ -1995,12 +2074,23 @@ public partial class GoStop3PGame
         bool showBombSkip = bombCredits[PLAYER_SEAT] > 0 && state == State.Turn && currentSeat == PLAYER_SEAT;
         var h = hand[PLAYER_SEAT];
         int n = h.Count + (showBombSkip ? 1 : 0);
-        float total = n * (HAND_W + 6f) - 6f;
+        // 2026-09-05(사용자 확인) — 맞고(SEATS==2)는 손패가 10장까지
+        // 나와서 고정 간격(HAND_W+6, 3~4인 고스톱의 7장 기준으로 맞춘
+        // 값)으로는 handArea 폭을 넘친다. 상대 뒷패 렌더링(backArea
+        // 루프)과 같은 원칙 — 넉넉하면 원래 간격 그대로, 부족할 때만
+        // 겹치게 좁힌다. 카드 자체 크기(HAND_W)는 그대로 둬서 가독성이
+        // 안 깨진다.
+        // handArea는 좌우 스트레치 앵커라 sizeDelta.x가 실제 폭이 아니다
+        // (음수로 나올 수도 있다 — 이번에 실측으로 확인) — 실제 렌더 폭은
+        // 항상 rect.width로 읽어야 한다.
+        float pitch = HAND_W + 6f;
+        if (n > 1) pitch = Mathf.Min(pitch, Mathf.Max((handArea.rect.width - HAND_W) / (n - 1), 1f));
+        float total = (n - 1) * pitch + HAND_W;
 
         for (int i = 0; i < h.Count; i++)
         {
             var card = h[i];
-            float x = -total * 0.5f + HAND_W * 0.5f + i * (HAND_W + 6f);
+            float x = -total * 0.5f + HAND_W * 0.5f + i * pitch;
             bool playable = state == State.Turn && currentSeat == PLAYER_SEAT && field.Any(f => f.month == card.month);
             // 2026-08-27(목업 참고, 사용자 확인) — 목업(PlaceHand)은 강조할
             // 카드를 위로 34px 띄워서 표시한다. 기존 골드 링 강조는 그대로
@@ -2069,7 +2159,7 @@ public partial class GoStop3PGame
 
         if (showBombSkip)
         {
-            float x = -total * 0.5f + HAND_W * 0.5f + h.Count * (HAND_W + 6f);
+            float x = -total * 0.5f + HAND_W * 0.5f + h.Count * pitch;
             MakeBombSkipSlot(new Vector2(x, 0f));
         }
     }

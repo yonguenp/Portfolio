@@ -123,7 +123,19 @@ public class GoStopUIManager : MonoBehaviour
     public void SetHelp(string title, string body, string closeLabel = null)
     {
         if (helpTitle) helpTitle.text = title;
-        if (helpBody)  helpBody.text  = body;
+        if (helpBody)
+        {
+            helpBody.text = body;
+            // 2026-09-05: 고스톱 규칙 요약이 다른 게임의 짧은 조작법보다
+            // 훨씬 길어서 고정 폰트 크기로는 박스를 넘친다(overflowMode가
+            // Overflow라 넘치면 CloseBtn과 겹친다) — 자동 크기 축소로
+            // 항상 박스 안에 들어오게 한다. GoStopUIManager는 고스톱
+            // 전용이라 다른 7개 게임(GameUIManager)의 기존 고정 크기
+            // 동작에는 영향이 없다.
+            helpBody.enableAutoSizing = true;
+            helpBody.fontSizeMin = 14f;
+            helpBody.fontSizeMax = helpBody.fontSize;
+        }
         if (helpCloseLabel && !string.IsNullOrEmpty(closeLabel)) helpCloseLabel.text = closeLabel;
         SetHelpButtonVisible(true);
     }
@@ -252,6 +264,17 @@ public class GoStopUIManager : MonoBehaviour
         }
 
         overlayPanel.SetActive(true);
+    }
+
+    /// <summary>이미 떠 있는 오버레이의 서브 텍스트만 갱신한다 — 고/스톱
+    /// 오버레이에 무응답 타임아웃 카운트다운을 얹기 위해 2026-09-05 추가.
+    /// ShowOverlay를 다시 부르면 버튼 리스너까지 통째로 새로 붙어야 해서
+    /// 매 프레임 부르기엔 낭비고, 이 메서드는 텍스트 한 줄만 바꾼다.</summary>
+    public void SetOverlaySub(string subStr)
+    {
+        if (!overlaySub) return;
+        overlaySub.text = subStr ?? "";
+        overlaySub.gameObject.SetActive(!string.IsNullOrEmpty(subStr));
     }
 
     public void HideOverlay() { if (overlayPanel) overlayPanel.SetActive(false); }

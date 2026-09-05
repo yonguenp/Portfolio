@@ -10212,3 +10212,180 @@ ExitBtn과 같은 원칙)에 `WON_PER_POINT * stakeMultiplier`를 채운다.
 > 상태를 만든다"는 함정과 같은 계열). 딜러뽑기를 마저 진행시켜 정상
 > `Turn` 상태에 도달한 뒤 재시도하니 문제없이 통과했다 — 실제 버그가
 > 아니었다.
+
+## 고스톱 — 인게임 도움말 화면, 맞고 손패 오버플로 버그, 네트워크 입력
+타임아웃(10초) (2026-09-05)
+
+"나가기 버튼 우측에 도움말버튼을 추가하고 인게임 규칙/도움말 화면 만들어줘",
+"네트워크 대전이라하면 입력 대기가 무한정일 수 없으니 5초 조용히 기다리다
+5초간 경고, 총 10초 무응답이면 강제로 선택하게" 요청 — 세 가지를 한
+세션에서 처리했다(세 번째는 도중에 "맞고에서 손패 10장이 Hand영역을
+넘어간다"는 신고가 끼어들어 같이 고쳤다).
+
+### 도움말 화면
+
+`GoStopUIManager.cs`(GoStop 전용 UI 매니저, 2026-08-22에 이미
+`SetHelp`/`ShowHelp`/`HideHelp`/`SetHelpButtonVisible` 인프라를 갖춰
+뒀었다 — BrickBreaker3D의 `SetHelp(...)` 사용 패턴과 같은 API)를 그대로
+재사용했다. `BuildStaticUI()`(`GoStop3PGame.UI.cs`)에서 기존 `ExitBtn`
+재사용-또는-생성 패턴을 그대로 복제해 `HelpBtn`을 만들고, 위치는
+`ExitBtn`의 **실제 라이브 RectTransform**(하드코딩 좌표가 아니라)을
+기준으로 오른쪽에 10px 간격으로 배치했다 — 사용자가 씬에서 `ExitBtn`을
+옮겨도 자동으로 따라간다. 규칙 요약 본문(`GoStopHelpBodyText` 상수,
+`GoStopRules.cs`와 수동으로 동기화 유지해야 함)을 새로 작성해
+`ui?.SetHelp("고스톱 규칙", GoStopHelpBodyText, "확인")`으로 연결했다.
+
+**긴 텍스트가 고정 크기 박스를 넘치는 문제** — `helpBody`는
+`overflowMode=Overflow`라 넘치면 그대로 `CloseBtn`과 겹친다. 프리팹에
+ScrollRect를 새로 넣는 대신(더 안전한 저위험 방법을 택함) TMP
+`enableAutoSizing=true` + `fontSizeMin=14`로 자동 축소되게 했다 —
+`GoStopUIManager`만 손댔으므로 다른 7개 게임(`GameUIManager`)의 고정
+크기 동작에는 영향 없다.
+
+> **함정 — `GameObject.Find("GameUI/HelpPanel")`가 "없다"고 나와서 잠깐
+> 진짜 버그로 착각했다.** `GameObject.Find()`(경로 포함 버전도 마찬가지)는
+> **비활성 오브젝트를 검색 대상에서 아예 제외**한다 — `HelpPanel`은
+> `Awake()`의 `HideHelp()`로 기본 비활성이라 이 방식으로는 절대 못
+> 찾는다. `GameObject.Find("GameUI")` + `Transform` 직접 순회(비활성
+> 자식도 포함)로 바꾸니 정상적으로 찾아졌다. **`Find`류 API가 "없다"고
+> 답하면 진짜 없는 건지 비활성이라 안 잡히는 건지부터 구분할 것.**
+
+검증(Play 모드 라이브): 4인 게임 시작 후 `helpButton`이 존재하고
+`helpPanel`이 기본 비활성인 것, `SetHelp` 호출 후 `title`/`body`
+텍스트·`enableAutoSizing`·`fontSizeMin/Max`가 정확한 것, 버튼 클릭으로
+패널이 열리고(`activeSelf=True`) 닫기 버튼으로 다시 닫히는 것(`False`),
+`ExitBtn`/`HelpBtn`의 실측 좌표가 겹치지 않고 10px 간격을 두는 것까지
+확인했다.
+
+### 맞고(2인) 손패가 Hand 영역을 넘치던 버그
+
+`DrawPlayerHand()`가 3~4인 고스톱(손패 7장) 기준으로 고정 간격
+(`HAND_W+6`)만 쓰고 있어서, 맞고(손패 10장)에서는 `handArea` 폭을
+그대로 넘쳤다. 상대 뒷면 카드(`backArea`) 렌더링에 이미 있던 원칙
+("넉넉하면 원래 간격, 부족하면 최소한으로만 좁힌다")을 손패에도
+적용했다 — 카드 자체 크기(`HAND_W`)는 그대로 두고 카드 사이 간격만
+동적으로 좁힌다.
+
+```csharp
+float pitch = HAND_W + 6f;
+if (n > 1) pitch = Mathf.Min(pitch, Mathf.Max((handArea.rect.width - HAND_W) / (n - 1), 1f));
+```
+
+> **함정 — 처음엔 `handArea.rect.width` 대신 `handArea.sizeDelta.x`를
+> 썼다가 완전히 다른 버그를 만들 뻔했다.** `handArea`는 좌우 스트레치
+> 앵커(부모 폭에 맞춰 늘어나는 방식)라 `sizeDelta.x`는 실제 폭이 아니라
+> **음수(-910)** 같은 무의미한 오프셋 값을 돌려준다 — 이 값을 그대로
+> 간격 계산에 썼더니 10장 카드가 전부 1px 간격으로 거의 겹쳐서 찍혔다
+> (라이브로 실측: 카드 중심 X좌표가 -4.5~4.5, 총 span 9px뿐). **좌우
+> 스트레치 앵커를 가진 RectTransform의 실제 렌더 폭은 항상
+> `rect.width`로 읽을 것** — `sizeDelta`는 앵커가 둘 다 고정점(0.5,0.5
+> 등)일 때만 실제 크기와 같다는 걸 이번에 다시 확인했다.
+
+검증(Play 모드 라이브): 맞고(2인, 10장) — 수정 전엔 카드 span이 9px로
+뭉개짐, 수정 후엔 span이 `handArea.rect.width`(1083px)와 정확히
+일치(꽉 채워 들어감, 넘치지 않음). 3~4인 고스톱(7장) — pitch가 그대로
+134(`HAND_W+6`)로 유지돼 회귀 없음을 확인했다.
+
+### 네트워크 입력 타임아웃 — 5초 조용히 + 5초 경고 + 강제 기본값
+
+design.md §50.1의 "가능한 것 중 자동 선택" 원칙을 실제로 구현했다. 기존
+`REMOTE_INPUT_TIMEOUT_SECONDS`(호스트가 **원격** 좌석의 응답을 기다리는
+시간, 25초)를 10초로 낮춰 새 정책과 총 시간을 맞췄다.
+
+**공용 코루틴 — `RunLocalInputTimeout`.** "내 화면에서 내가 결정해야
+하는" 모든 지점(참가 선언·필드 2장 선택·9월 열끗·선 뽑기 카드 고르기·
+흔들기 확인·고/스톱)에 공통으로 쓰는 헬퍼:
+
+```csharp
+IEnumerator RunLocalInputTimeout(System.Func<bool> hasAnswered, System.Action<string> setText,
+    string baseMessage, System.Action onTimeout)
+{
+    const float quiet = 5f, warn = 5f;
+    // quiet 5초 조용히 대기 → warn 5초 동안 매초 "{baseMessage}\n(N초 후 자동 선택)"
+    // → 10초 안에 답 없으면 onTimeout() 강제 실행. 언제든 hasAnswered()가
+    // true가 되면 그 즉시 멈춘다.
+}
+```
+
+`setText`를 `TextMeshProUGUI` 직접 참조가 아니라 `Action<string>`
+델리게이트로 받는다 — 팝업(`ModalTwoButtonPopup.messageText`)뿐 아니라
+고/스톱 오버레이(`GoStopUIManager.SetOverlaySub`, 텍스트 필드가 직접
+노출 안 됨)까지 같은 코루틴 하나로 처리하기 위해서다. **오프라인(vs AI)
+판에서는 절대 걸면 안 된다** — 모든 호출부가 `isNetworkHost ||
+isNetworkGuest`(또는 그 함수가 원래 호스트 전용/게스트 전용이면 그
+쪽만)로 감싸서만 부른다.
+
+적용한 6개 지점과 각각의 강제 기본값(전부 design.md 기존 원격-좌석
+분기의 기본값과 동일하게 맞춤 — 로컬/원격이 같은 상황에서 다른 결과를
+내면 안 되므로):
+
+| 지점 | 함수 | 기본값 |
+|---|---|---|
+| 참가 선언 | `AskParticipation` | 불참(죽기) |
+| 필드 2장 선택 | `ContinueChoice` | `GoStopAI.ChooseFieldMatch(...)`가 고를 것과 동일 |
+| 9월 열끗 쌍피 여부 | `PromptDualPiChoice` | 쌍피 처리 |
+| 선 뽑기 카드 고르기 | `DetermineDealerSeq` | 아직 안 뽑힌 카드 중 무작위(원격 좌석 기본값과 동일 로직 재사용) |
+| 흔들기 확인 | `OnPlayerPlay`(`shakePopup`) | 흔들기 포기 |
+| 고/스톱(호스트 자신) | `ShowGoStopPrompt` | 스톱 처리 |
+| 고/스톱(게스트 자신) | `ApplyNetworkSnapshot`의 게스트 오버레이 분기 | 스톱 처리 |
+
+`GoStopUIManager.cs`에 `SetOverlaySub(string)`를 새로 추가했다 —
+`ShowOverlay`는 버튼 리스너까지 통째로 다시 붙는 무거운 호출이라 매초
+부르기엔 낭비라서, 서브 텍스트 한 줄만 바꾸는 가벼운 메서드를 따로
+뒀다.
+
+**고/스톱 타임아웃이 호스트/게스트 양쪽에 다 필요했던 이유** —
+`ShowGoStopPrompt`(호스트 자신의 결정, `AfterAction`에서만 불림)와
+`ApplyNetworkSnapshot`의 게스트 오버레이 분기(호스트가 보낸 스냅샷의
+`state==GoStopChoice && currentSeat==PLAYER_SEAT`만 보고 게스트가
+스스로 오버레이를 띄우는 별개 경로)가 완전히 분리돼 있다 — 호스트
+쪽만 고치면 게스트는 여전히 무한 대기한다. 두 경로 모두
+`OnPlayerGo`/`OnPlayerStop`을 공유 버튼 콜백으로 쓰지만, "답했는지"를
+판정하는 방법이 달라야 했다: 호스트는 `state != State.GoStopChoice`
+(자기 상태가 실제로 `AdvanceTurn`/`EndGame`으로 바뀌었는지)로 판정 가능,
+게스트는 로컬 `state`가 클릭 즉시 안 바뀌므로(호스트 응답을 기다려야
+바뀐다) 새 플래그 `goStopGuestResponded`(`OnPlayerGo`/`OnPlayerStop`
+양쪽이 무조건 true로 세움)로 별도 판정한다.
+
+**검증(Play 모드 라이브, `isNetworkHost=true`로 리플렉션 시뮬레이션 —
+실기기 2대 네트워크 테스트는 이 환경의 구조적 한계로 여전히 불가능).**
+세 가지 서로 다른 코드 패턴을 각각 대표 지점 하나씩 골라 실제로
+끝까지(10초 경과) 돌려 확인했다:
+- **이벤트/버튼 콜백형(흔들기)** — 손패 3장(같은 달, 필드 매칭 없음)을
+  강제로 세팅하고 카드를 클릭 → 팝업이 뜨고 메시지가 "(N초 후 자동
+  선택)"으로 매초 갱신되는 것 확인 → 10초 뒤 팝업이 스스로 닫히고
+  손패가 3→2장(흔들기 포기하고 그냥 낸 것)으로 정상 진행되는 것 확인.
+- **오버레이형(고/스톱, 호스트 자신)** — `ShowGoStopPrompt(3)` 직접 호출
+  → `overlaySub`가 카운트다운으로 갱신되는 것 확인 → 10초 뒤
+  `state=GameOver`(강제 스톱→`EndGame` 진입)로 정상 종료되는 것 확인.
+- **WaitUntil 코루틴형(참가 선언)** — `AskParticipation(0, ...)` 코루틴을
+  직접 실행 → 팝업 메시지가 카운트다운으로 갱신되는 것 확인 → 10초 뒤
+  `pendingDeclareChoice=False`(불참 기본값)로 정상 처리되는 것 확인.
+
+나머지 3개 지점(필드 선택·9월 열끗·선 뽑기 카드)은 위 세 패턴과 코드
+구조가 동일한 반복이라 코드 리뷰 수준으로 확인했다 — 컴파일 클린은
+전부 확인.
+
+> **테스트 중 발견한 NRE는 실제 버그가 아니라 테스트 하네스의 부작용
+> 이었다.** 흔들기 테스트 직후 `AdvanceTurn`이 다음 좌석으로 넘어가며
+> `NullReferenceException`(`WaitForRemoteMessage`의
+> `GoStopNetLobby.Instance.OnGameMessage += ...`)이 콘솔에 찍혔다 —
+> 원인은 `isNetworkHost=true`를 리플렉션으로 **가짜로** 세팅만 하고
+> 실제 `GoStopNetLobby` 싱글톤(타이틀→로비 UI를 거쳐야 생성됨)은 전혀
+> 없었기 때문이다. `IsRemoteSeat`가 "네트워크 호스트니까 다른 좌석은
+> 원격"이라고 잘못 판단해 존재하지 않는 로비 인스턴스를 건드린 것 —
+> 이 프로젝트가 여러 번 문서화한 "리플렉션으로 실제 게임에서 안 나오는
+> 상태를 만들 수 있다"는 함정의 또 다른 사례다. 실제 네트워크 플레이
+> (로비 UI를 거쳐 `GoStopNetLobby.Instance`가 정상 생성된 경우)에서는
+> 재현되지 않는다 — 코드 수정 없이 원인만 확정하고 넘어갔다.
+
+### 남은 것
+
+- **무료 서버 호스팅**(사용자 질문 — 같은 와이파이가 아닌 원거리
+  대전) — 텍스트 답변만 제공, 구현은 미착수. 권장 방향: 기존
+  호스트-권위 프로토콜은 그대로 두고, Oracle Cloud Always Free 티어에
+  얇은 TCP 릴레이(방 코드로 두 outbound 연결을 짝지어 바이트만 중계,
+  게임 판정은 여전히 호스트가 전담)를 얹는 것 — 전면 서버 재작성보다
+  훨씬 작은 변경.
+- 실기기 2대 네트워크 테스트는 여전히 이 환경의 구조적 한계로 불가능 —
+  다음에 사용자가 직접 두 기기로 확인 필요.

@@ -362,6 +362,11 @@ public partial class GoStop3PGame : MonoBehaviour
 
     CardChoicePopup fieldChoicePopup;
     HwatuCard pendingFieldChoice;
+    // 2026-09-05: FieldChoicePopup은 원래 텍스트가 하나도 없어서(카드
+    // 2장만 보여주는 구조) 네트워크 타이머 경고 전용으로 새로 만든
+    // 라벨 — ShowFieldChoicePopup이 매번 새로 만들어 채운다(팝업의
+    // cardContainer가 매번 ClearChildren되므로 캐싱하면 죽은 참조가 된다).
+    TextMeshProUGUI fieldChoiceWarnText;
 
     ModalTwoButtonPopup dualPiPopup;
     bool? pendingDualPiChoice;
@@ -479,7 +484,14 @@ public partial class GoStop3PGame : MonoBehaviour
     /// 유예와 이 타임아웃을 따로 조율할 필요가 없다. 정확한 초 단위는
     /// 이 프로젝트에 선례가 없어 새로 정한 값이다(너무 짧으면 정상적으로
     /// 고민 중인 사람도 잘리고, 너무 길면 나머지 인원이 오래 기다린다).</summary>
-    const float REMOTE_INPUT_TIMEOUT_SECONDS = 25f;
+    // 2026-09-05(사용자 확인) — "네트워크 대전은 입력 대기를 무한정 둘 수
+    // 없다, 5초 조용히 기다리다 5초간 경고하고 총 10초 무응답이면 강제
+    // 선택해야 한다" — 예전 25초에서 이 정책과 맞춰 10초로 낮췄다. 실제
+    // 경고 UI는 결정을 내려야 하는 그 사람의 화면(자기 팝업)에서
+    // RunLocalInputTimeout이 담당하고, 이 값은 호스트가 "게스트가 아예
+    // 응답을 안 보냈을 때" 대비하는 마지막 안전망이다 — 게스트 쪽
+    // 타이머와 총 시간을 맞춰야 어긋나지 않는다.
+    const float REMOTE_INPUT_TIMEOUT_SECONDS = 10f;
 
     /// <summary>호스트 쪽에서 특정 원격 좌석의 다음 메시지를 기다린다.
     /// <paramref name="accept"/>가 null이면 그 좌석에서 오는 아무 메시지나
@@ -488,6 +500,44 @@ public partial class GoStop3PGame : MonoBehaviour
     /// 자동으로 무시된다. <see cref="REMOTE_INPUT_TIMEOUT_SECONDS"/> 안에
     /// 응답이 없으면 <paramref name="onReceived"/>에 <c>null</c>을 넘긴다 —
     /// 호출부가 반드시 null을 확인해서 자기 몫의 기본값을 적용해야 한다.</summary>
+    /// <summary>2026-09-05(사용자 확인) — 네트워크 대전에서 "지금 내가
+    /// 결정할 차례"인 팝업들이 무한정 기다리지 않게 한다. 처음 5초는
+    /// 조용히 기다리고, 이후 5초 동안은 매초 <paramref name="setText"/>로
+    /// 남은 시간을 이어붙여 경고하다가, 총 10초 안에 응답이 없으면
+    /// <paramref name="onTimeout"/>으로 강제 기본값을 적용한다(design.md
+    /// §50.1과 같은 원칙 — "가능한 것 중 자동 선택"). <see
+    /// cref="REMOTE_INPUT_TIMEOUT_SECONDS"/>와 총 시간이 같아야, 이걸
+    /// 쓰는 좌석이 게스트일 때 호스트의 WaitForRemoteMessage 타임아웃과
+    /// 어긋나지 않는다. <b>오프라인(vs AI) 판에서는 절대 걸면 안 된다</b>
+    /// — 호출부가 항상 isNetworkHost||isNetworkGuest로 감싸서만 부른다.
+    /// <paramref name="setText"/>를 <see cref="TextMeshProUGUI"/> 직접 대신
+    /// 델리게이트로 받는 이유는 하나 — 고/스톱 오버레이(<see
+    /// cref="GoStopUIManager.SetOverlaySub"/>)처럼 텍스트 필드가 직접
+    /// 노출 안 된 경우도 같은 코루틴 하나로 처리하기 위해서다.</summary>
+    IEnumerator RunLocalInputTimeout(System.Func<bool> hasAnswered, System.Action<string> setText, string baseMessage, System.Action onTimeout)
+    {
+        const float quiet = 5f, warn = 5f;
+        float t = 0f;
+        while (t < quiet)
+        {
+            if (hasAnswered()) yield break;
+            t += Time.deltaTime;
+            yield return null;
+        }
+        int lastShown = -1;
+        float remain = warn;
+        while (remain > 0f)
+        {
+            if (hasAnswered()) break;
+            int shown = Mathf.CeilToInt(remain);
+            if (shown != lastShown) { setText?.Invoke($"{baseMessage}\n({shown}초 후 자동 선택)"); lastShown = shown; }
+            remain -= Time.deltaTime;
+            yield return null;
+        }
+        setText?.Invoke(baseMessage);
+        if (!hasAnswered()) onTimeout?.Invoke();
+    }
+
     IEnumerator WaitForRemoteMessage(int seat, System.Func<GoStopNetMessage, bool> accept, System.Action<GoStopNetMessage> onReceived)
     {
         GoStopNetMessage received = null;
@@ -648,10 +698,20 @@ public partial class GoStop3PGame : MonoBehaviour
             if (!goStopOverlayShown)
             {
                 goStopOverlayShown = true;
+                goStopGuestResponded = false;
                 int rawScore = GoStopRules.CalcScore(captured[PLAYER_SEAT], sweeps[PLAYER_SEAT]).Total;
                 int displayScore = rawScore + goCount[PLAYER_SEAT];
                 ui?.ShowOverlay(HwatuTheme.Gold, $"{displayScore}점 달성!", displayScore.ToString(),
                     "고 하시겠습니까, 스톱 하시겠습니까?", "고", OnPlayerGo, "스톱", OnPlayerStop);
+                // design.md §50.1 — 게스트도 호스트와 같은 10초 제한을 스스로
+                // 건다. 호스트의 WaitForRemoteMessage 타임아웃(같은 10초)이
+                // 이미 안전망이긴 하지만, 게스트 화면에도 카운트다운을
+                // 보여줘야 "왜 자동으로 스톱 처리됐지"가 아니라 사용자가
+                // 직접 보고 대비할 수 있다. hasAnswered는 상태 필드가 아니라
+                // OnPlayerGo/OnPlayerStop이 세우는 goStopGuestResponded로
+                // 판단한다 — 게스트 로컬 state는 클릭 즉시 안 바뀌기 때문.
+                StartCoroutine(RunLocalInputTimeout(() => goStopGuestResponded,
+                    t => ui?.SetOverlaySub(t), "고 하시겠습니까, 스톱 하시겠습니까?", OnPlayerStop));
             }
         }
         else
@@ -684,6 +744,7 @@ public partial class GoStop3PGame : MonoBehaviour
     }
 
     bool goStopOverlayShown;
+    bool goStopGuestResponded; // 2026-09-05 — 게스트 자신의 고/스톱 타임아웃 판정용, OnPlayerGo/OnPlayerStop이 true로 세운다
 
     /// <summary>호스트 전용 — 매 RebuildUI 끝에서 부른다(로컬 화면이
     /// 갱신되는 시점과 정확히 같은 타이밍에 게스트들도 갱신되게). LAN
@@ -1200,7 +1261,14 @@ public partial class GoStop3PGame : MonoBehaviour
             pendingDeclareChoice = null;
             declarePopup.messageText.text = $"{SeatName(dealerSeat)}이(가) 선입니다. 이번 판 참가하시겠습니까?";
             declarePopup.Show();
-            yield return new WaitUntil(() => pendingDeclareChoice != null);
+            // 2026-09-05 — 네트워크 대전에서만 10초 제한(오프라인 vs AI는
+            // 서두를 이유가 없어 그대로 무한정 대기). 무응답 기본값은
+            // 원격 좌석과 같은 "불참(죽기)"로 통일했다.
+            if (isNetworkHost || isNetworkGuest)
+                yield return StartCoroutine(RunLocalInputTimeout(() => pendingDeclareChoice != null,
+                    t => declarePopup.messageText.text = t, declarePopup.messageText.text, () => pendingDeclareChoice = false));
+            else
+                yield return new WaitUntil(() => pendingDeclareChoice != null);
             declarePopup.Hide();
             wantsIn = pendingDeclareChoice.Value;
         }
@@ -2025,6 +2093,13 @@ public partial class GoStop3PGame : MonoBehaviour
             pendingShakeCard = card;
             shakePopup.messageText.text = $"{card.month}월 흔들기 선언하시겠습니까?";
             shakePopup.Show();
+            // design.md §50.1 — 무응답 10초면 안전한 기본값(흔들기 포기)으로
+            // 강제 처리. 버튼 클릭 이벤트라 WaitUntil 리팩터가 아니라
+            // 독립 코루틴을 같이 띄운다 — OnShakeChoice가 pendingShakeCard를
+            // null로 비우는 순간 hasAnswered()가 true가 되어 스스로 멈춘다.
+            if (isNetworkHost || isNetworkGuest)
+                StartCoroutine(RunLocalInputTimeout(() => pendingShakeCard == null,
+                    t => shakePopup.messageText.text = t, shakePopup.messageText.text, () => OnShakeChoice(false)));
             return;
         }
         ContinuePlayerPlay(card, false);
@@ -2941,7 +3016,19 @@ public partial class GoStop3PGame : MonoBehaviour
         {
             pendingFieldChoice = null;
             ShowFieldChoicePopup(initial.choiceCandidates);
-            yield return new WaitUntil(() => pendingFieldChoice != null);
+            // 2026-09-05 — 네트워크 대전만 10초 제한. 무응답 기본값은
+            // GoStopAI.ChooseFieldMatch와 같은 기준(더 값진 쪽)으로 골라서
+            // AI가 대신 골랐을 때와 결과가 다르지 않게 한다.
+            if (isNetworkHost || isNetworkGuest)
+            {
+                fieldChoiceWarnText.gameObject.SetActive(true);
+                yield return StartCoroutine(RunLocalInputTimeout(() => pendingFieldChoice != null,
+                    t => fieldChoiceWarnText.text = t, "", () => pendingFieldChoice = GoStopAI.ChooseFieldMatch(initial.choiceCandidates)));
+            }
+            else
+            {
+                yield return new WaitUntil(() => pendingFieldChoice != null);
+            }
             chosen = pendingFieldChoice;
             HideFieldChoicePopup();
         }
@@ -2981,7 +3068,11 @@ public partial class GoStop3PGame : MonoBehaviour
         }
         pendingDualPiChoice = null;
         dualPiPopup.Show();
-        yield return new WaitUntil(() => pendingDualPiChoice != null);
+        if (isNetworkHost || isNetworkGuest)
+            yield return StartCoroutine(RunLocalInputTimeout(() => pendingDualPiChoice != null,
+                t => dualPiPopup.messageText.text = t, dualPiPopup.messageText.text, () => pendingDualPiChoice = true));
+        else
+            yield return new WaitUntil(() => pendingDualPiChoice != null);
         card.useAsPi = pendingDualPiChoice.Value;
         dualPiPopup.Hide();
     }
@@ -3105,11 +3196,22 @@ public partial class GoStop3PGame : MonoBehaviour
         // 똑같이 겪었다). RebuildUI()가 FillSlot의 "▶ 고/스톱 선택 중"
         // 표시를 갱신하고 게스트에게도 브로드캐스트한다.
         RebuildUI();
+
+        // design.md §50.1 — 무응답 10초면 스톱 처리(RemoteGoStopSeq의
+        // 원격 좌석 기본값과 동일). 이 함수는 항상 호스트 자신(PLAYER_SEAT)
+        // 의 결정에서만 불리므로 isNetworkHost만 확인하면 된다 — 오프라인
+        // (vs AI) 판은 절대 걸지 않는다. hasAnswered는 state 자체로 판단한다
+        // — OnPlayerGo/OnPlayerStop 둘 다 AdvanceTurn/EndGame을 거쳐
+        // GoStopChoice에서 벗어난다.
+        if (isNetworkHost)
+            StartCoroutine(RunLocalInputTimeout(() => state != State.GoStopChoice,
+                t => ui?.SetOverlaySub(t), "고 하시겠습니까, 스톱 하시겠습니까?", OnPlayerStop));
     }
 
     void OnPlayerGo()
     {
         ui?.HideOverlay();
+        goStopGuestResponded = true; // 게스트 타임아웃 코루틴용 — 호스트 경로에선 그냥 안 쓰이는 값
         if (isNetworkGuest)
         {
             // 호스트 쪽 RemoteGoStopSeq가 이미 이 좌석의 GoStopDecision을
@@ -3128,6 +3230,7 @@ public partial class GoStop3PGame : MonoBehaviour
     void OnPlayerStop()
     {
         ui?.HideOverlay();
+        goStopGuestResponded = true;
         if (isNetworkGuest)
         {
             GoStopNetLobby.Instance.SendToHost(GoStopNetMessage.GoStop(false));
