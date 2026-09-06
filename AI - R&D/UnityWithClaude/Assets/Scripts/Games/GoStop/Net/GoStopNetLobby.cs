@@ -88,6 +88,37 @@ public class GoStopNetLobby : MonoBehaviour
     }
 
     string myName;
+    /// <summary>UI(GoStopNetLobbyUI)·게임 씬(GoStop3PGame) 양쪽이 "지금
+    /// 이 세션의 내 닉네임"을 읽어야 해서 공개한다 — 호스트든 게스트든
+    /// HostRoom/JoinRoom에서 이미 세팅해 둔 값 그대로다.</summary>
+    public string MyName => myName;
+
+    // ── 닉네임·네트워크 전용 보유머니 영구 저장(2026-09-05) ──────────
+    // 서버가 없는 순수 P2P 구조라 "이 닉네임의 돈"이라는 개념은 항상 그
+    // 사람 자신의 기기에만 존재한다 — 호스트는 자기 자신의 값을 이
+    // PlayerPrefs에서 직접 읽어 자기 좌석을 seed하고, 게스트는 접속할 때
+    // Hello 메시지에 자기 값을 실어 보내 호스트가 자기 좌석을 seed하게
+    // 한다(GoStop3PGame.Awake 참고). 라운드가 끝날 때마다 각자 자기
+    // 좌석의 최신 잔액을 다시 이 키로 저장해서(GoStop3PGame.EndGame/
+    // ApplyNetworkSnapshot) 다음에 접속해도 이어진다.
+    public const string NicknameKey = "GoStopNickname";
+    // GoStop3PGame.STARTING_MONEY와 반드시 같은 값으로 유지할 것 —
+    // 그쪽은 private const라 직접 참조를 못 해서 숫자를 그대로 복제했다.
+    const int DefaultNetworkMoney = 100_000;
+    static string NetMoneyKey(string nickname) => "GoStopNet_Money_" + nickname;
+    public static int LoadNetworkMoney(string nickname) =>
+        string.IsNullOrEmpty(nickname) ? DefaultNetworkMoney : PlayerPrefs.GetInt(NetMoneyKey(nickname), DefaultNetworkMoney);
+    public static void SaveNetworkMoney(string nickname, int amount)
+    {
+        if (string.IsNullOrEmpty(nickname)) return;
+        PlayerPrefs.SetInt(NetMoneyKey(nickname), amount);
+        PlayerPrefs.Save();
+    }
+
+    /// <summary>호스트가 접속한 각 게스트로부터 Hello로 보고받은 보유머니
+    /// (인덱스=좌석 번호, 0=호스트 자신은 안 쓰임). 아직 안 받았으면 0 —
+    /// GoStop3PGame.Awake가 0이면 STARTING_MONEY로 폴백한다.</summary>
+    public readonly int[] GuestReportedMoney = new int[4];
 
     TcpGoStopHostTransport hostTransport;
     GoStopRoomAdvertiser advertiser;
@@ -193,8 +224,19 @@ public class GoStopNetLobby : MonoBehaviour
 
     // ── 호스트 ──────────────────────────────────────────
 
+    /// <summary>웹 빌드에서는 브라우저 샌드박스가 raw TCP/UDP 소켓 자체를
+    /// 막아놔서(System.Net.Sockets가 링크는 되더라도 실제로 열리지 않는다)
+    /// 이 프로젝트의 P2P 구조가 근본적으로 성립하지 않는다 — 버그가 아니라
+    /// 플랫폼 한계다. 실제로 소켓을 열어보려다 알 수 없는 예외로 멈추는 대신,
+    /// 이미 있는 "연결 실패" 화면(GoStopNetLobbyUI의 Screen.Error)을 그대로
+    /// 재사용해 명확한 사유를 즉시 보여준다.</summary>
+    static bool IsPlatformUnsupported =>
+        Application.platform == RuntimePlatform.WebGLPlayer;
+    const string PlatformUnsupportedMessage = "웹 버전은 브라우저 보안 정책상 네트워크 대전을 지원하지 않습니다.\nPC 또는 모바일 앱에서 이용해주세요.";
+
     public void HostRoom(string displayName, int port = DefaultPort)
     {
+        if (IsPlatformUnsupported) { OnDisconnected?.Invoke(PlatformUnsupportedMessage); return; }
         StopAll();
         myName = displayName;
         IsHost = true;
@@ -247,6 +289,7 @@ public class GoStopNetLobby : MonoBehaviour
         if (msg.type == GoStopNetMessage.Type.Hello)
         {
             PlayerNames[seat] = string.IsNullOrEmpty(msg.text) ? $"게스트{seat}" : msg.text;
+            GuestReportedMoney[seat] = msg.money; // 2026-09-05 — GoStop3PGame.Awake가 이 좌석 시작 잔액을 seed할 때 쓴다
             BroadcastLobbyUpdate();
             OnLobbyChanged?.Invoke();
             return;
@@ -316,6 +359,7 @@ public class GoStopNetLobby : MonoBehaviour
 
     public void StartScanningForRooms()
     {
+        if (IsPlatformUnsupported) { OnDisconnected?.Invoke(PlatformUnsupportedMessage); return; }
         StopAll();
         IsGuest = true;
         scanner = gameObject.AddComponent<GoStopRoomScanner>();
@@ -325,23 +369,32 @@ public class GoStopNetLobby : MonoBehaviour
     public IReadOnlyCollection<GoStopRoomScanner.DiscoveredRoom> DiscoveredRooms =>
         scanner != null ? scanner.Rooms : Array.Empty<GoStopRoomScanner.DiscoveredRoom>();
 
-    public void JoinRoom(GoStopRoomScanner.DiscoveredRoom room, string displayName)
+    public void JoinRoom(GoStopRoomScanner.DiscoveredRoom room, string displayName) =>
+        JoinRoom(room.ip, room.tcpPort, displayName);
+
+    /// <summary>2026-09-05 — 같은 와이파이 UDP 브로드캐스트로 못 찾는 방(포트
+    /// 포워딩 + DuckDNS 등으로 외부에 연 방)에 호스트명/IP를 직접 입력해
+    /// 접속한다. <see cref="TcpGoStopClientTransport.Connect"/>는 원래도
+    /// 임의 호스트명을 그대로 받으므로(DNS 해석은 TcpClient가 알아서 한다)
+    /// 이 경로 자체는 새로 만들 게 없었다 — <see cref="JoinRoom(GoStopRoomScanner.DiscoveredRoom,string)"/>
+    /// 이 하던 일에서 room 객체 대신 ip/port를 직접 받게 뽑아낸 것뿐이다.</summary>
+    public void JoinRoom(string ip, int port, string displayName)
     {
         myName = displayName;
         scanner?.StopScanning(); // 접속을 시도하는 동안엔 더 이상 다른 방을 찾을 필요 없다
-        lastHostIp = room.ip;
-        lastHostPort = room.tcpPort;
+        lastHostIp = ip;
+        lastHostPort = port;
 
         clientTransport = gameObject.AddComponent<TcpGoStopClientTransport>();
         clientTransport.OnConnected += GuestOnConnected;
         clientTransport.OnMessage += GuestOnMessage;
         clientTransport.OnDisconnected += GuestOnDisconnected;
-        clientTransport.Connect(room.ip, room.tcpPort);
+        clientTransport.Connect(ip, port);
     }
 
     void GuestOnConnected()
     {
-        clientTransport.Send(GoStopNetMessage.Hello(myName, MyClientId));
+        clientTransport.Send(GoStopNetMessage.Hello(myName, MyClientId, LoadNetworkMoney(myName)));
     }
 
     /// <summary>design.md §50.2 — 게임이 이미 시작된 뒤(PlayerCount>0)의

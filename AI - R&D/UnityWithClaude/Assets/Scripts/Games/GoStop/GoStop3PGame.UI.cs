@@ -16,6 +16,35 @@ using DG.Tweening;
 /// </summary>
 public partial class GoStop3PGame
 {
+    /// <summary>2026-09-05: "나가기 버튼 우측에 도움말 버튼 추가하고
+    /// 인게임 규칙/도움말 화면 만들어줘" 요청으로 작성한 고스톱 규칙
+    /// 요약. 새 규칙을 추가·변경할 때마다 여기도 같이 고칠 것 — 실제
+    /// 판정 로직(GoStopRules.cs)과 별개의 순수 텍스트라 자동으로
+    /// 동기화되지 않는다.</summary>
+    const string GoStopHelpBodyText =
+        "<b>■ 진행</b>\n" +
+        "선(먼저 정해진 사람)부터 순서대로 손패 1장 + 덱 1장씩 냅니다. 필드에 같은 달 패가 있으면 맞춰서 가져갑니다.\n\n" +
+        "<b>■ 점수(3점 이상이면 스톱 가능)</b>\n" +
+        "광 3장 3점(비광 포함 2점) · 4장 4점 · 5장 15점\n" +
+        "고도리(특정 열끗 3장) 5점 · 홍단/청단/초단 각 3점\n" +
+        "열끗 5장부터 1점씩 · 피 10장부터 1점씩\n\n" +
+        "<b>■ 특수 상황</b>\n" +
+        "뻑: 필드 매칭 직후 뒷패도 같은 달 → 아무도 못 먹고 쌓임(나중에 4장째로 가져가면 상대 피를 뺏음)\n" +
+        "따닥: 필드 2장 중 하나를 골라 가져간 뒤 뒷패가 나머지 한 장마저 맞음 → 피 획득\n" +
+        "쪽: 낸 패가 안 맞았는데 뒷패가 그 패와 맞음 → 피 획득\n" +
+        "싹쓸이: 필드를 완전히 비움 → 피 획득 · 폭탄: 손 3장+필드 1장 → 4장 획득+피 2장\n" +
+        "흔들기: 같은 달 3장을 손에 들고 선언 → 정산 배수 2배\n\n" +
+        "<b>■ 고/스톱</b>\n" +
+        "점수에 도달하면 \"고\"(계속)·\"스톱\"(종료) 선택. 고를 부를수록 배수가 커집니다.\n" +
+        "나가리: 아무도 점수를 못 넘기면 다음 판 판돈이 2배가 됩니다.\n\n" +
+        "<b>■ 벌칙(2배)</b>\n" +
+        "광박: 광이 하나도 없는데 상대가 광으로 득점\n" +
+        "피박: 피가 적은데(2인 7장/3~4인 5장 이하) 상대가 피로 득점\n" +
+        "멍박: 열끗이 하나도 없는데 상대가 고도리/열끗으로 득점\n\n" +
+        "<b>■ 4인 전용</b>\n" +
+        "광팔이: 이번 판에 참가 못 한 사람이 광·쌍피를 낼 때마다 정산받음\n" +
+        "총통: 딜 받은 손패에 같은 달 4장이 있으면 즉시 승리";
+
     // ══════════════════════════════════════════════════════
     // UI 구성 — "테이블에 둘러앉기": 나=아래, AI-A=좌측, AI-B=상단, AI-C=우측.
     // 좌우 좌석은 카드를 90도 눕혀서(뒷면이 세로가 아니라 가로로 놓인 모습)
@@ -26,7 +55,7 @@ public partial class GoStop3PGame
     // "Cap 영역이 필드와 헷갈린다"는 신고로 획득패 존(내/상대 공통) 배경을
     // 필드와 다른 색으로 구분한다. alpha를 살짝 남겨(0.92) 배경 펠트
     // 위에 완전히 딱딱한 상자처럼 뜨지 않게 했다.
-    static readonly Color CapZoneColor = new Color(0.180f, 0.247f, 0.161f, 0.92f); // #2E3F29
+    static readonly Color CapZoneColor = HwatuTheme.DarkGreen; // 오리엔탈 팔레트 — 필드와 같은 짙은 초록 계열
 
     // 가로형 상대 좌석 블록(상/좌/우 공통) — 자리마다 필요한 폭·존 간격만
     // 다르다. (센터X, 위쪽 Y, 블록 폭, 캡 존 간격, 캡 줄당 최대 장수)를
@@ -38,6 +67,16 @@ public partial class GoStop3PGame
     // ApplySeatVisibility가 채운다. BuildStaticUI가 최초 1회, 자동
     // 다운그레이드(ApplyDowngrade)가 SEATS를 바꾼 뒤 다시 채운다.
     RectTransform leftSeatT, rightSeatT, topSeatT, mySeatT;
+
+    // 2026-08-27 — 4인 모드 상단(슬롯2) 전용 Back/Cap. backSeatRefs[2]/
+    // capSeatRefs[2]는 "씬에 미리 만들어둔 참조"용이라(항상 null, 아직
+    // 아무도 씬에 안 만들었다) 여기 안 쓴다 — BuildEdgeSeatBlock(2,...)가
+    // 코드로 새로 만든 실제 오브젝트는 backArea[2]/capAreaAI[2]에만
+    // 기록되는데, 그 두 필드는 UpdateTopSeatCapBack이 매 라운드
+    // null↔실제값으로 토글하는 대상이라(꺼진 라운드엔 null이 됨) 거기에
+    // 원본 참조를 계속 의존하면 한 번 꺼진 뒤엔 다시 켤 방법이 없다.
+    // 그래서 "진짜 그 오브젝트가 어디 있는지"는 이 필드에 따로 기억해 둔다.
+    RectTransform back2Container, cap2Container;
 
     /// <summary>좌석 수(SEATS)에 따라 LeftSeat/RightSeat/TopSeat 컨테이너를
     /// 켜고 끄고, TopSeat 안쪽(StatusBox2 위치·Back4/Cap4)을 재구성한다.
@@ -74,12 +113,22 @@ public partial class GoStop3PGame
         // 원래 자리(0)로 되돌리고 Back4/Cap4를 끈다.
         if (topSeatT != root)
         {
-            var statusBox2 = statusBoxRefs[2];
-            if (statusBox2 != null)
+            // 2026-09-01(목업 정합): SEATS==4는 BuildStaticUI의 Top-seat
+            // 가로 배치(StatusBar|Back|Cap 옆으로 나란히, topStatusBarCenterX
+            // 공식으로 계산)가 X를 직접 관리한다 — 여기서 0으로 강제하면
+            // BuildInfoBlock의 "씬 재사용" 경로가 그 강제값을 그대로 읽어가
+            // 매번 되돌아간다(StatusBox2가 계속 중앙(0)으로 스냅되던 버그의
+            // 원인). 2인(맞고, Back4/Cap4를 옆에 붙이는 예전 가로 배치)만
+            // 여전히 -700으로 직접 미는 게 맞다.
+            if (SEATS == 2)
             {
-                var p = statusBox2.anchoredPosition;
-                p.x = SEATS == 2 ? -700f : 0f;
-                statusBox2.anchoredPosition = p;
+                var statusBox2 = statusBoxRefs[2];
+                if (statusBox2 != null)
+                {
+                    var p = statusBox2.anchoredPosition;
+                    p.x = -700f;
+                    statusBox2.anchoredPosition = p;
+                }
             }
             var back4 = back4Ref;
             var cap4 = cap4Ref;
@@ -108,10 +157,51 @@ public partial class GoStop3PGame
         }
     }
 
+    /// <summary>2026-08-27 — 4인 모드 상단(슬롯2) Cap/Back 표시 여부를 매
+    /// 라운드 다시 판단한다(RebuildUI에서 매번 호출). BuildStaticUI가
+    /// Back2/Cap2 공간은 이미 항상 예약해 뒀으므로(<see cref="BuildEdgeSeatBlock"/>
+    /// 호출), 여기서는 그 자리에 지금 앉은 사람이 실제로 카드를 쥐고
+    /// 있는지만 보고 켜고 끈다 — RecomputeSeatSlots의 slotSeat[2] 계산과
+    /// 정확히 같은 조건(<c>sittingOutSeat == PLAYER_SEAT</c>)을 재사용한다:
+    /// 그 조건이 참이면 슬롯2엔 실제로 플레이 중인 3번째 AI가 오고, 거짓이면
+    /// 이번 판 카드를 아예 안 받은 쉬는 사람이 온다.</summary>
+    void UpdateTopSeatCapBack()
+    {
+        if (SEATS != 4) return; // 2인은 ApplySeatVisibility가 고정으로 켜둔다, 3인은 TopSeat 자체가 꺼져 있다
+        bool show = sittingOutSeat == PLAYER_SEAT;
+        if (back2Container != null) back2Container.gameObject.SetActive(show);
+        if (cap2Container != null) cap2Container.gameObject.SetActive(show);
+        backArea[2] = show ? back2Container : null;
+        capAreaAI[2] = show ? cap2Container : null;
+    }
+
     void BuildStaticUI()
     {
         var root = ui.ContentArea;
         ApplySeatVisibility(root);
+
+        // 오리엔탈 목업 참고 — 밋밋한 단색 테이블 배경 위에 아주 옅은 대각선
+        // 격자무늬를 깔아 질감을 준다. ContentArea 자식 중 가장 먼저(=가장
+        // 아래) 그려져야 하므로 SetAsFirstSibling — 뒤에 오는 필드·좌석·
+        // 손패는 전부 그 위에 정상적으로 그려진다. 순수 데코라 raycastTarget
+        // 은 항상 꺼져 있다(HwatuUI.AddImage 관례 그대로).
+        var latticeRT = HwatuUI.MakeRect("BackgroundPattern", root, Vector2.zero, Vector2.zero);
+        latticeRT.anchorMin = Vector2.zero;
+        latticeRT.anchorMax = Vector2.one;
+        latticeRT.offsetMin = Vector2.zero;
+        latticeRT.offsetMax = Vector2.zero;
+        var latticeImg = latticeRT.gameObject.AddComponent<Image>();
+        latticeImg.sprite = HwatuShapes.LatticeTile();
+        latticeImg.type = Image.Type.Tiled;
+        latticeImg.color = Color.white; // 색은 이미 스프라이트에 구워져 있다
+        latticeImg.raycastTarget = false;
+        latticeRT.SetAsFirstSibling();
+
+        // 2026-09-03 — "밋밋한 화면을 방해하지 않는 선에서 채우는" 배경
+        // 바람 파티클. BackgroundPattern 바로 위(=게임 콘텐츠보다는 항상
+        // 아래)에 붙는다 — GoStopWindParticles.Ensure 안에서 sibling
+        // index를 직접 관리한다.
+        GoStopWindParticles.Ensure(root, root.parent.parent as RectTransform);
 
         // HUD를 통째로 껐으므로(Start()의 SetHudVisible(false)) 뒤로가기
         // 버튼도 같이 사라졌다 — 작은 나가기 버튼 하나만 둔다.
@@ -119,45 +209,227 @@ public partial class GoStop3PGame
         // 확인/취소 팝업으로 물어봐야 한다" 요청 — 위치를 bottom-right
         // 앵커로 옮기고, onClick을 GoToTitle 직접 호출에서 확인 팝업을
         // 여는 것으로 바꿨다(실제 나가기는 팝업의 "나가기" 버튼에서).
-        var exitBtn = UISkin.MakeKenneyButton(root, "ExitBtn", new Vector2(120f, 52f), Vector2.zero,
-            UISkin.Accent.Red, "나가기", ShowExitConfirm);
-        var exitRT = exitBtn.GetComponent<RectTransform>();
-        exitRT.anchorMin = exitRT.anchorMax = new Vector2(1f, 0f);
-        exitRT.pivot = new Vector2(1f, 0f);
-        exitRT.anchoredPosition = new Vector2(-14f, 14f);
+        // 2026-09-01: 씬에 이미 ExitBtn이 있으면(사용자가 직접 위치·크기를
+        // 만져둔 것) 그걸 그대로 재사용한다 — 매번 새로 만들면 화면에 2개가
+        // 겹쳐 보이는 버그가 된다(이 파일 다른 컨테이너들과 같은 원칙).
+        var existingExitBtn = root.Find("ExitBtn");
+        Button exitBtn;
+        if (existingExitBtn != null)
+        {
+            exitBtn = existingExitBtn.GetComponent<Button>();
+            exitBtn.onClick.RemoveAllListeners();
+            exitBtn.onClick.AddListener(ShowExitConfirm);
+        }
+        else
+        {
+            exitBtn = UISkin.MakeKenneyButton(root, "ExitBtn", new Vector2(120f, 52f), Vector2.zero,
+                UISkin.Accent.Red, "나가기", ShowExitConfirm);
+            var exitRT = exitBtn.GetComponent<RectTransform>();
+            exitRT.anchorMin = exitRT.anchorMax = new Vector2(1f, 0f);
+            exitRT.pivot = new Vector2(1f, 0f);
+            exitRT.anchoredPosition = new Vector2(-14f, 14f);
+        }
+
+        // 2026-09-05: "나가기 버튼 우측에 도움말버튼 추가" — ExitBtn과 같은
+        // "씬에 있으면 재사용" 패턴. 새로 만드는 경우엔 ExitBtn의 실제
+        // 위치(사용자가 옮겨뒀을 수 있다)를 그대로 읽어 그 오른쪽에 붙인다
+        // — pivot이 같은 이상 anchoredPosition에 (폭+여백)만 더하면 항상
+        // 정확히 옆에 붙는다(ExitBtn이 나중에 또 옮겨져도 따라간다는 뜻은
+        // 아니다 — 이건 생성 시점 한 번만의 계산이다).
+        var existingHelpBtn = root.Find("HelpBtn");
+        Button helpBtn;
+        if (existingHelpBtn != null)
+        {
+            helpBtn = existingHelpBtn.GetComponent<Button>();
+            helpBtn.onClick.RemoveAllListeners();
+            helpBtn.onClick.AddListener(() => ui?.ShowHelp());
+        }
+        else
+        {
+            var exitRTForHelp = exitBtn.GetComponent<RectTransform>();
+            helpBtn = UISkin.MakeKenneyButton(root, "HelpBtn", new Vector2(120f, 52f), Vector2.zero,
+                UISkin.Accent.Blue, "도움말", () => ui?.ShowHelp());
+            var helpRT = helpBtn.GetComponent<RectTransform>();
+            helpRT.anchorMin = exitRTForHelp.anchorMin;
+            helpRT.anchorMax = exitRTForHelp.anchorMax;
+            helpRT.pivot = exitRTForHelp.pivot;
+            helpRT.anchoredPosition = exitRTForHelp.anchoredPosition + new Vector2(exitRTForHelp.sizeDelta.x + 10f, 0f);
+        }
+        // 도움말 내용(고스톱 규칙 요약) — 한 번만 등록해두면 계속 최신으로
+        // 남는다. GoStopUIManager.SetHelp가 helpBody에 자동 크기 축소를
+        // 걸어주므로(아래 참고) 이 정도 분량도 겹침 없이 들어간다.
+        ui?.SetHelp("고스톱 규칙", GoStopHelpBodyText, "확인");
+
+        // 2026-09-04: "우측상단에 점당 얼마짜리 게임인지 표시 추가했어"
+        // — 원래 사용자가 씬에 만든 "Info"(배경 Image) 밑에 "점당"/숫자/
+        // "원" 세 라벨이 있었다. 2026-09-06 재조사 — "점당 가격 표시가
+        // 사라졌다" 신고로 씬을 직접 훑어보니, "Info"라는 이름이 이제
+        // MySeat 밑의 **완전히 다른 오브젝트**(StatusBox0/PlayerCap을
+        // 묶는 레이아웃 컨테이너, 사용자가 이후 세션에 새로 만든 것)로
+        // 재활용돼 있었다 — 점당-가격 라벨을 담던 원래 "Info"는 그 과정에서
+        // 지워지거나 이름이 바뀐 것으로 보인다(이전 세션의 "Info가
+        // MySeat 밑으로 옮겨졌을 뿐"이라는 진단은 틀렸다 — 같은 이름의
+        // 다른 오브젝트였다). 이름 충돌을 다시 만들지 않도록 새 이름
+        // "PointPriceInfo"로 찾고, 없으면 코드로 직접 만든다(다른
+        // 재사용 UI들과 같은 "씬에 있으면 재사용, 없으면 생성" 원칙).
+        var existingPriceInfo = root.Find("PointPriceInfo");
+        if (existingPriceInfo != null)
+        {
+            pointPriceText = existingPriceInfo.Find("Label (1)")?.GetComponent<TextMeshProUGUI>();
+        }
+        else
+        {
+            var infoRT = HwatuUI.MakeRect("PointPriceInfo", root, new Vector2(210f, 48f), Vector2.zero);
+            infoRT.anchorMin = infoRT.anchorMax = new Vector2(1f, 1f);
+            infoRT.pivot = new Vector2(1f, 1f);
+            infoRT.anchoredPosition = new Vector2(-16f, -16f);
+            var bg = infoRT.gameObject.AddComponent<Image>();
+            UISkin.Apply(bg, UISkin.Panel);
+            bg.color = new Color(0.106f, 0.133f, 0.267f, 0.88f); // #1B2244 — 기존 상태박스와 같은 표면색
+            var hlg = infoRT.gameObject.AddComponent<HorizontalLayoutGroup>();
+            hlg.childAlignment = TextAnchor.MiddleCenter;
+            hlg.spacing = 4f;
+            hlg.padding = new RectOffset(10, 10, 6, 6);
+            hlg.childControlWidth = false;
+            hlg.childControlHeight = true;
+            hlg.childForceExpandWidth = false;
+            hlg.childForceExpandHeight = true;
+
+            var lblPrefix = HwatuUI.MakeLabel(infoRT, Vector2.zero, new Vector2(52f, 36f), 20f, HwatuTheme.CreamWhite);
+            lblPrefix.name = "Prefix";
+            lblPrefix.text = "점당";
+
+            var lblAmount = HwatuUI.MakeLabel(infoRT, Vector2.zero, new Vector2(88f, 36f), 22f, HwatuTheme.Gold);
+            lblAmount.name = "Label (1)";
+            lblAmount.fontStyle = FontStyles.Bold;
+
+            var lblSuffix = HwatuUI.MakeLabel(infoRT, Vector2.zero, new Vector2(28f, 36f), 20f, HwatuTheme.CreamWhite);
+            lblSuffix.name = "Suffix";
+            lblSuffix.text = "원";
+
+            pointPriceText = lblAmount;
+        }
+        UpdatePointPriceLabel(); // 씬을 처음 여는 시점에도 기본값(WON_PER_POINT×1)을 바로 채워둔다
 
         // 상단 중앙(슬롯2) — 참고 이미지의 "MISSION" 배너 자리를 광팔이/쉬는
-        // 유저 정보 슬롯으로 재활용("저기다 넣으면 될것같아" 요청). 4인
-        // 모드는 Cap/Back 없이 정보 블록(닉네임/고+점수/금액/아이콘)만
-        // 있다 — "상단의 Cap, Back 영역은 없애야한다" 요청. 내가 쉬는
-        // 드문 판엔 세 번째 활성 AI가 이 자리에 뜨는데, 그때도 마찬가지로
-        // 정보 블록만 보인다(RecomputeSeatSlots 주석 참고). 2인(맞고)
-        // 모드는 위에서 이미 Back4/Cap4를 켜뒀으므로 여기선 정보 블록만
-        // 그대로 채우면 된다.
-        float topBottom = BuildInfoBlock(2, 0f, 520f, -10f, topSeatT);
+        // 유저 정보 슬롯으로 재활용("저기다 넣으면 될것같아" 요청).
+        // 2026-08-27(목업 4인 레이아웃 반영, 사용자 확인) — "4인 모드는
+        // Cap/Back 없이 정보 블록만"이라는 예전 규칙을 뒤집었다: 목업(AI-B)은
+        // 상단에도 실물 뒷패·획득패가 있다. 다만 이 자리는 "누가 앉아
+        // 있는가"에 따라 의미가 달라진다 — 평소(내가 참가 중)엔 이번 판
+        // 쉬는 사람이 여기 뜨는데 그 사람은 이번 판 손패·획득패 자체가
+        // 없으므로(광팔이/참가포기 둘 다 카드를 아예 안 받는다) Cap/Back을
+        // 켜봐야 빈 상자다. 반대로 내가 쉬는 드문 판엔 실제로 카드를 쥔
+        // 활성 AI가 뜨므로 켜야 의미가 있다 — 이 판단(UpdateTopSeatCapBack)
+        // 은 매 라운드 바뀌는 sittingOutSeat를 봐야 해서 RebuildUI에서
+        // 매번 다시 하고, 여기서는 공간만 항상 예약해 둔다(안 그러면
+        // "쉬는 사람이 안 보일 때만 Field가 올라온다"는 식으로 화면이
+        // 매판 들썩인다). 2인(맞고)은 위에서 이미 Back4/Cap4를 켜뒀으므로
+        // 여기선 정보 블록만 그대로 채우면 된다.
+        //
+        // 2026-08-27(목업 실측 재확인) — 목업 GoStopOrientalMockup의
+        // Seat_Top_StatusBar/Back/Cap을 직접 열어보니 좌/우처럼 세로로
+        // 쌓인 게 아니라 **가로로 나란히**(StatusBar 380 | Back 220 |
+        // Cap 400, 전부 top 정렬, 간격 0) 붙어 있었다 — 예전엔 좌/우와
+        // 똑같이 세로 스택으로 만들었는데 그건 틀린 구조였다. 총 폭
+        // 1000을 화면 중앙(X=0)에 맞춘다.
+        const float TOP_STATUSBAR_W = 380f, TOP_BACK_W = 220f, TOP_CAP_W = 400f;
+        const float TOP_TOTAL_W = TOP_STATUSBAR_W + TOP_BACK_W + TOP_CAP_W; // 1000
+        float topBlockLeft = -TOP_TOTAL_W * 0.5f;
+        float topStatusBarCenterX = topBlockLeft + TOP_STATUSBAR_W * 0.5f;
+        const float topY = -10f;
+        float topBottom = BuildInfoBlock(2, topStatusBarCenterX, TOP_STATUSBAR_W, topY, topSeatT);
 
         // 이하 전부 "이전 블록 바로 아래" 커서 누적 방식(이 파일이 반복
         // 채택해 온 패턴) — 좌표 하드코딩으로 인한 겹침 재발을 구조적으로
         // 막는다. 가로뷰는 세로보다 높이 예산이 훨씬 빠듯해서(1080 전체 —
         // HUD를 꺼서 되찾은 116px까지 합쳐도 세로 때의 절반 수준) 상단
         // 슬롯을 얇게 만든 만큼 필드·좌우·하단이 여유를 더 가져간다.
-        float fieldTop = topBottom - 14f;
+        float topSeatBottom = topBottom;
+        if (SEATS == 4)
+        {
+            float backCenterX = topBlockLeft + TOP_STATUSBAR_W + TOP_BACK_W * 0.5f;
+            float capCenterX = topBlockLeft + TOP_STATUSBAR_W + TOP_BACK_W + TOP_CAP_W * 0.5f;
+
+            // backSeatRefs[2]/capSeatRefs[2]는 "씬 사전 배치" 전용이라(항상
+            // null, 아직 아무도 씬에 안 만들었다) 여기 안 쓴다 — 코드로 매번
+            // 새로 만들고, UpdateTopSeatCapBack이 매 라운드 껐다 켰다 할 수
+            // 있도록 진짜 참조를 back2Container/cap2Container에 기억해 둔다.
+            back2Container = HwatuUI.MakeRect("Back2", topSeatT, new Vector2(TOP_BACK_W, BACK_CONTAINER_H), new Vector2(backCenterX, topY));
+            backArea[2] = back2Container;
+
+            cap2Container = HwatuUI.MakeRect("Cap2", topSeatT, new Vector2(TOP_CAP_W, 165f), new Vector2(capCenterX, topY));
+            HwatuUI.AddZoneBackground(cap2Container, CapZoneColor);
+            capAreaAI[2] = cap2Container;
+
+            // 가로 배치라 세 요소가 전부 같은 topY에서 시작한다 — 그 중
+            // 가장 큰 높이(StatusBar/Cap=165)가 이 줄 전체의 실제 바닥이다.
+            topSeatBottom = topY - 165f;
+        }
+        float fieldTop = topSeatBottom - 14f;
 
         // 필드/더미 — 2026-08-18: "더미가 화면 중앙이면 필드 패 보는 게
         // 헷갈린다, 원래대로 좌상단으로" 요청으로 중앙 배치를 되돌렸다.
         // 필드는 다시 2줄 예산(더미가 줄을 안 차지하므로).
-        // 2026-08-19: "Field를 800사이즈로 줄여서 DrawPile과 안 겹치게"
-        // 요청 — FIELD_COL_PITCH도 같이 줄여야 그리드가 실제로 800 안에
-        // 들어간다(DrawField의 FIELD_COL_PITCH와 반드시 같이 맞출 것).
-        const float FIELD_AREA_W = 800f; // FIELD_COLS(6) × FIELD_COL_PITCH(133) — DrawField와 맞출 것
+        // 2026-08-19: "Field를 800사이즈로 줄여서 DrawPile과 안 겹치게" 요청.
+        // 2026-09-01: 실제 카드 배치는 이제 pos1~12 슬롯 기반(DrawField
+        // 참고)이라 이 상수는 씬에 Field 참조가 아직 없는 폴백 생성 시의
+        // 컨테이너 크기로만 쓰인다.
+        const float FIELD_AREA_W = 800f;
         float fieldRowH = FIELD_H + 10f;
         // 2026-08-22: "코드 생성 컨테이너를 씬 기본 오브젝트로" 요청 —
         // 씬에 Field가 이미 있으면(에디터에서 위치·크기를 직접 조정한
         // 것) 그대로 쓴다. 아래 fieldBottom도 사전 계산한 fieldTop이
         // 아니라 실제 fieldArea의 transform에서 역산해야, 사용자가 Field를
         // 옮겨도 그 아래(좌/우/나) 배치가 여전히 안 겹치게 자동으로 따라온다.
-        fieldArea = GetOrCreateContainer(fieldAreaRef, root, "Field", new Vector2(FIELD_AREA_W, fieldRowH * 2f), new Vector2(0f, fieldTop), out _);
-        float fieldBottom = fieldArea.anchoredPosition.y - fieldArea.sizeDelta.y; // pivot=(0.5,1)이라 anchoredPosition.y가 곧 윗변
+        var fieldOuter = GetOrCreateContainer(fieldAreaRef, root, "Field", new Vector2(FIELD_AREA_W, fieldRowH * 2f), new Vector2(0f, fieldTop), out _);
+        // 2026-09-01(사용자 씬 편집 반영) — "Field"가 이제 전체화면 스트레치
+        // 래퍼로 바뀌었고, 그 밑에 실제 카드를 그리는 "FieldCards"(빈 서브
+        // 컨테이너)와 "DrawPile"이 형제로 들어가 있다. fieldArea(카드 렌더링·
+        // ClearChildren 대상)를 계속 "Field" 자체로 두면 매턴 ClearChildren이
+        // DrawPile까지 같이 지워버린다 — FieldCards가 있으면 그쪽을 실제
+        // 렌더 대상으로 쓰고, 없는(아직 이 구조로 안 바뀐) 씬은 예전처럼
+        // 바깥 오브젝트를 그대로 쓴다(하위호환).
+        var fieldCardsChild = fieldOuter.Find("FieldCards") as RectTransform;
+        fieldArea = fieldCardsChild != null ? fieldCardsChild : fieldOuter;
+        // 2026-09-02: FieldCards의 GridLayoutGroup은 여기서 일부러 스트립하지
+        // 않는다(다른 재사용 컨테이너와 달리 예외) — 사용자가 pos1~12를 손으로
+        // 하나씩 배치하는 대신 GridLayoutGroup이 자동으로 배열하도록 그대로
+        // 살려두고 싶어 한다. 카드는 이제 fieldArea의 직계 자식이 아니라
+        // 각 pos_i의 자식이라(DrawField 참고) GridLayoutGroup은 pos1~12
+        // 자체의 배치에만 영향을 주고 카드 개별 위치엔 관여하지 않는다 —
+        // SlamDown/FlyAndPunch가 pos_i의 실시간 transform.position을 매
+        // 프레임 추적하므로, GridLayoutGroup이 pos_i를 어디로 옮기든 카드는
+        // 항상 정확히 그 자리로 착지한다.
+        CacheFieldPosSlots(); // pos1~pos12 마커 캐싱 — fieldArea가 정해진 직후여야 한다
+
+        // 더미도 같은 이유로 — 사용자가 Field 밑에 "DrawPile"을 직접 만들어
+        // 뒀으면(스트레치 하위 구조) 그걸 그대로 쓴다. 없으면 예전처럼
+        // root(ContentArea) 밑에 만들거나 재사용한다.
+        var drawPileChild = fieldOuter.Find("DrawPile") as RectTransform;
+
+        // 오리엔탈 목업 참고 — Field가 지금까지 배경 자체가 없어서(투명 컨테이너,
+        // 테이블 배경색만 그대로 비쳐 보임) "여기가 필드"라는 프레임감이 없었다.
+        // 짙은 테두리+어두운 채움(panel_dark 상당)을 얹어 틀 있는 패널로 만든다.
+        // Cap 존(HwatuUI.AddZoneBackground, 테두리 없는 플랫 색)과는 "테두리
+        // 유무"로 구분되므로 색이 비슷해도(둘 다 짙은 초록 계열) 다시 헷갈리지
+        // 않는다. 프레임은 항상 바깥(fieldOuter)에 붙인다 — fieldArea가
+        // FieldCards로 바뀌어도 시각적 틀은 여전히 Field 전체 둘레여야 한다.
+        // 재사용되는 씬 오브젝트에 이미 Image가 있으면(사용자가 직접
+        // 붙여둔 경우) 중복으로 또 안 붙인다.
+        if (fieldOuter.GetComponent<Image>() == null)
+            HwatuUI.AddFramedZoneBackground(fieldOuter, HwatuTheme.DarkGreen, HwatuTheme.DeepGreen);
+
+        // fieldBottom(아래 좌/우/나 섹션이 안 겹치게 커서를 이어받는 기준) —
+        // 예전엔 "pivot=(0.5,1) 비스트레치"를 전제로 anchoredPosition.y -
+        // sizeDelta.y로 역산했는데, Field/FieldCards가 전체화면 스트레치로
+        // 바뀌면서 그 전제가 깨졌다(스트레치 하에선 sizeDelta가 실제 크기가
+        // 아니라 인셋이다). 앵커 모드와 무관하게 항상 맞는 GetWorldCorners
+        // 실측(이 파일이 이미 여러 번 써 온 방식)으로 fieldOuter의 실제
+        // 화면 하단을 구해 root(ContentArea) 로컬 좌표로 환산한다.
+        var fieldCorners = new Vector3[4];
+        fieldOuter.GetWorldCorners(fieldCorners); // 0=좌하단
+        float fieldBottom = root.InverseTransformPoint(fieldCorners[0]).y;
         float centerBottom = fieldBottom - 10f;
 
         // 좌/우(AI-A/C) — 가로뷰라 회전 없이 화면 가장자리 세로 기둥에
@@ -171,7 +443,7 @@ public partial class GoStop3PGame
         // 배치"(사용자 확인) — 정보창은 원래 폭(400)/위치(750)로 되돌린다.
         // Back·Cap은 이제 blockWidth와 무관하게 회전 컨테이너 자체 크기를
         // 쓴다(BuildEdgeSeatBlock 안 상수 참고).
-        const float SIDE_W = 400f;
+        const float SIDE_W = 380f; // StatusBar 폭(목업 실측) — Cap/Back은 별도 상수(400/300)라 안 흔들림
         const float SIDE_X = 750f;
 
         // 더미 — 2026-08-19: "-460,-200으로 수정" 확인 값. 필드도 800으로
@@ -181,7 +453,9 @@ public partial class GoStop3PGame
         // 매턴 자식을 무차별로 지운다).
         float pileX = -460f;
         float pileY = -200f;
-        drawPileArea = GetOrCreateContainer(drawPileAreaRef, root, "DrawPile", new Vector2(PILE_W, PILE_H), new Vector2(pileX, pileY), out _);
+        drawPileArea = drawPileChild != null
+            ? drawPileChild
+            : GetOrCreateContainer(drawPileAreaRef, root, "DrawPile", new Vector2(PILE_W, PILE_H), new Vector2(pileX, pileY), out _);
         // zoneGap은 이제 DrawAiCaptured가 안 읽는다(3존 나란히 배치를
         // 접었으므로) — 예전 호출 형태만 유지하고 값 자체는 의미 없다.
         float sideBottomL = BuildEdgeSeatBlock(1, -SIDE_X, SIDE_W, fieldTop + 16f, leftSeatT, zoneGap: 0f, maxPerRow: 5, capAreaH: 0f);
@@ -201,8 +475,11 @@ public partial class GoStop3PGame
         // 겹치는 회귀로 이어졌었다 — 매직 넘버 자체를 없애는 게 근본
         // 해결책이라고 판단해 걷어냈다.
         float contentBottom = Mathf.Min(centerBottom, Mathf.Min(sideBottomL, sideBottomR));
-        float capY = BuildInfoBlock(0, 0f, 700f, contentBottom - 10f, mySeatT);
-        playerCapArea = GetOrCreateContainer(playerCapAreaRef, mySeatT, "PlayerCap", new Vector2(1000f, CAP_ROW_PITCH * 2f), new Vector2(0f, capY - 6f), out bool playerCapExisted);
+        // 2026-08-27(목업 실측 재확인) — Seat_Bottom_Me_StatusBar/Cap 둘 다
+        // 450×165, 간격 0으로 붙어 있었다. 예전 700×(가변 CAP_ROW_PITCH*2)는
+        // 목업과 무관한 값이었다.
+        float capY = BuildInfoBlock(0, 0f, 450f, contentBottom - 10f, mySeatT);
+        playerCapArea = GetOrCreateContainer(playerCapAreaRef, mySeatT, "PlayerCap", new Vector2(450f, 165f), new Vector2(0f, capY), out bool playerCapExisted);
         if (!playerCapExisted) HwatuUI.AddZoneBackground(playerCapArea, CapZoneColor); // 재사용 시엔 배경을 또 얹지 않는다(중복 Image 방지)
         // 2026-08-20: "Hand 영역 posY -878로 조절" 확인 값 — 커서 계산값
         // 대신 직접 지정한다(이 파일이 반복 채택해 온, 사용자가 실측/확인한
@@ -225,6 +502,11 @@ public partial class GoStop3PGame
         BuildDealerDrawUI(canvasRoot);
         BuildGwangSaleUI(canvasRoot);
         BuildScoreDetailUI(canvasRoot);
+        // 채팅/이벤트 로그 — 이것만은 sibling 순서로 맨 위를 보장하지 않는다
+        // (팝업들이 열릴 때마다 SetAsLastSibling을 스스로 불러 밀어낼 수
+        // 있어서). BuildChatUI 안에서 override sorting 전용 Canvas를 얹어
+        // 구조적으로 항상 최상단이 되게 한다 — 자세한 이유는 그 함수 문서 참고.
+        BuildChatUI(canvasRoot);
     }
 
     /// <summary>선 뽑기 팝업 — 프리팹은 빈 pool 컨테이너만 갖고 있고, 실제
@@ -298,7 +580,19 @@ public partial class GoStop3PGame
             if (s == PLAYER_SEAT)
             {
                 pendingDealerPickIndex = -1;
-                yield return new WaitUntil(() => pendingDealerPickIndex >= 0);
+                if (isNetworkHost)
+                {
+                    yield return StartCoroutine(RunLocalInputTimeout(() => pendingDealerPickIndex >= 0,
+                        t => dealerDrawPopup.promptText.text = t, dealerDrawPopup.promptText.text, () =>
+                        {
+                            var avail = Enumerable.Range(0, 8).Where(i => pickedBy[i] == -1).ToList();
+                            pendingDealerPickIndex = avail[Random.Range(0, avail.Count)];
+                        }));
+                }
+                else
+                {
+                    yield return new WaitUntil(() => pendingDealerPickIndex >= 0);
+                }
                 chosen = pendingDealerPickIndex;
             }
             else if (IsRemoteSeat(s))
@@ -358,6 +652,7 @@ public partial class GoStop3PGame
                 best = i;
 
         dealerSeat = pickedBy[best];
+        AppendChatLine($"{SeatNameFor(dealerSeat, -1)}이(가) 선이 되었습니다");
         dealerDrawPopup.resultText.text = $"{SeatName(dealerSeat)}이(가) 선입니다!";
         GoStopAudio.Instance?.Bonus(); // 결과가 정해지는 순간의 반짝이는 차임
         yield return new WaitForSeconds(1.1f);
@@ -508,18 +803,14 @@ public partial class GoStop3PGame
         fieldChoicePopup = HwatuUI.InstantiatePopup<CardChoicePopup>("FieldChoicePopup", canvasRoot);
     }
 
-    // 2026-08-19: FieldChoicePopup 카드/하이라이트 재조정(사용자 확인) — 이
-    // 팝업은 2인/4인이 같은 프리팹을 공유하는데, 예전엔 각 게임 자신의
-    // FIELD_W/H(4인=140×160, 2인=92×114)를 그대로 재사용해서 하이라이트
-    // 기본 공식(카드+16)이 게임마다 다른 크기로 어긋났었다. 이 팝업 전용
-    // 고정 카드 크기(94×154)를 따로 둬서 두 게임이 동일한 결과를 내게
-    // 했고, 하이라이트 110×170은 그 카드+16과 정확히 맞아떨어진다.
-    // MakeCard의 하이라이트는 카드와 같은 top-center pivot을 쓰므로
-    // 커진 만큼이 전부 아래로만 붙는다(폭은 pivot.x=0.5라 자동 대칭) —
-    // offset.y=+8로 위아래 8px씩 균등하게 갈라 카드를 감싸도록 맞춘다.
-    const float CHOICE_CARD_W = 94f, CHOICE_CARD_H = 154f;
-    static readonly Vector2 ChoiceHighlightSize = new Vector2(110f, 170f);
-    static readonly Vector2 ChoiceHighlightOffset = new Vector2(0f, 8f);
+    // 2026-08-19: FieldChoicePopup 카드 크기(사용자 확인) — 이 팝업은
+    // 2인/4인이 같은 프리팹을 공유하는데, 예전엔 각 게임 자신의
+    // FIELD_W/H(4인=140×160, 2인=92×114)를 그대로 재사용해서 게임마다
+    // 다른 크기로 어긋났었다. 이 팝업 전용 고정 카드 크기를 따로 둬서
+    // 두 게임이 동일한 결과를 내게 했다. 2026-09-01: 하이라이트는 이제
+    // CardFront 프리팹 내부의 Highlight 자식(스트레치 앵커)이 카드
+    // 크기에 자동으로 맞춰지므로, 이 크기와 무관하게 항상 정확히 맞는다.
+    const float CHOICE_CARD_W = 150f, CHOICE_CARD_H = 245f;
 
     void ShowFieldChoicePopup(List<HwatuCard> candidates)
     {
@@ -536,9 +827,16 @@ public partial class GoStop3PGame
             var c = candidates[i];
             float x = startX + i * spacing;
             HwatuUI.MakeCard(c, fieldChoicePopup.cardContainer, new Vector2(x, cardY), CHOICE_CARD_W, CHOICE_CARD_H,
-                () => OnFieldChoiceClicked(c), true,
-                highlightSize: ChoiceHighlightSize, highlightOffset: ChoiceHighlightOffset);
+                () => OnFieldChoiceClicked(c), true);
         }
+        // 2026-09-05: 이 팝업은 원래 텍스트가 하나도 없어서(카드 2장만
+        // 보여주는 구조) 네트워크 타이머 경고를 붙일 곳이 없다 — 카드
+        // 바로 밑에 작은 라벨을 새로 만든다. cardContainer는 매번
+        // ClearChildren되므로 여기서 매번 다시 만들어야 한다(캐시해 두면
+        // 다음 호출 때 이미 파괴된 참조가 된다).
+        fieldChoiceWarnText = HwatuUI.MakeLabel(fieldChoicePopup.cardContainer,
+            new Vector2(0f, cardY - CHOICE_CARD_H - 8f), new Vector2(500f, 32f), 22f, new Color(1f, 0.55f, 0.25f, 1f));
+        fieldChoiceWarnText.gameObject.SetActive(false);
         fieldChoicePopup.Show();
     }
 
@@ -607,7 +905,7 @@ public partial class GoStop3PGame
             {
                 var lbl = HwatuUI.MakeLabel(content, new Vector2(0f, -y), new Vector2(860f, 32f), 22f, textCol);
                 lbl.text = $"{line.label}  {line.points}점";
-                lbl.fontStyle = FontStyles.Bold;
+                lbl.font = HwatuTheme.FontBold;
                 lbl.alignment = TextAlignmentOptions.TopLeft;
                 y += 34f;
 
@@ -649,7 +947,7 @@ public partial class GoStop3PGame
             var pile = captured[seat];
             var nameLbl = HwatuUI.MakeLabel(content, new Vector2(0f, -y), new Vector2(860f, 30f), 20f, textCol);
             nameLbl.text = $"{SeatName(seat)} ({pile.Count}장)";
-            nameLbl.fontStyle = FontStyles.Bold;
+            nameLbl.font = HwatuTheme.FontBold;
             nameLbl.alignment = TextAlignmentOptions.TopLeft;
             y += 32f;
 
@@ -847,11 +1145,14 @@ public partial class GoStop3PGame
 
     // 배지 위험/카운트 색 — GoStopStatusBoxView 프리팹에 고정 슬롯으로
     // 구워둔 배지(선/광박/멍박/피박/흔들기/뻑)의 상태만 여기서 갱신한다.
-    static readonly Color GwangBakColor = new Color(0.69f, 0.37f, 0.86f);
-    static readonly Color MeongBakColor = new Color(0.55f, 0.42f, 0.30f);
-    static readonly Color PiBakColor = new Color(0.88f, 0.32f, 0.32f);
-    static readonly Color ShakeDotColor = new Color(0.93f, 0.78f, 0.20f);
-    static readonly Color PpeokDotColor = new Color(0.85f, 0.25f, 0.22f);
+    // 오리엔탈 팔레트 — "색은 하나의 의미만"(위험=레드, 턴/보상=골드) 원칙에 맞춰
+    // 광박/멍박/피박 3종을 전부 같은 레드로, 흔들기/뻑 카운트는 같은 골드로 통일했다
+    // (예전엔 보라/갈색/레드로 각자 달라서 "위험"이라는 의미가 색으로 안 읽혔다).
+    static readonly Color GwangBakColor = HwatuTheme.HwatuRed;
+    static readonly Color MeongBakColor = HwatuTheme.HwatuRed;
+    static readonly Color PiBakColor = HwatuTheme.HwatuRed;
+    static readonly Color ShakeDotColor = HwatuTheme.Gold;
+    static readonly Color PpeokDotColor = HwatuTheme.Gold;
 
     /// <summary>선/광박/멍박/피박/흔들기/뻑 배지 — 2026-08-24부터
     /// <c>GoStopStatusBoxView</c> 프리팹이 6개 슬롯을 고정으로 갖고 있어서
@@ -872,6 +1173,13 @@ public partial class GoStop3PGame
         view.SetRisk(2, piBak, PiBakColor, Color.white);
         view.SetCountBadge(true, Mathf.Min(shookMonths[seat].Count, 2), ShakeDotColor);
         view.SetCountBadge(false, Mathf.Min(ppeokTotalCount[seat], 2), PpeokDotColor);
+
+        // 목업 ScoreRow의 "광 X · 멍 Y · 피 Z" — 피는 장수가 아니라
+        // EffectivePiValue 합(쌍피=2)이라야 실제 점수 집계와 일치한다.
+        int gwangCount = mine.Count(c => c.EffectiveKind == HwatuKind.Gwang);
+        int meongCount = mine.Count(c => c.EffectiveKind == HwatuKind.Yeolkkeut);
+        int piCount = mine.Where(c => c.EffectiveKind == HwatuKind.Pi).Sum(c => c.EffectivePiValue);
+        view.SetCounts(gwangCount, meongCount, piCount);
     }
 
     /// <summary>상대 좌석 한 블록(상태줄→뒷패 줄→획득패 존) — 상단(seat2)·
@@ -896,80 +1204,81 @@ public partial class GoStop3PGame
         // 회전 없이 blockWidth(400) 그대로다 — "정보창은 원래대로"
         // 사용자 확인.
         float cursor = BuildInfoBlock(seat, centerX, blockWidth, topY, root);
-        cursor -= 10f;
 
-        // 2026-08-20: Back·Cap을 컨테이너째 회전시켜서 배치한다(사용자
-        // 확인 — 예전 세로판 시절 있었다가 가로뷰로 오면서 삭제됐던
-        // MakeRotatedContainer 기법을 다시 만들었다). 좌측(seat==1)
-        // -90도·우측(seat==3) +90도 — 카드의 "위쪽"이 필드(화면 중앙)
-        // 방향을 향하게 하는 방향이다. 안의 카드는 평소처럼(회전 안
-        // 걸린 것처럼) 그리면 부모 회전 때문에 자동으로 돌아간 모습으로
-        // 보인다 — 손패 뒷면 그리기 루프·DrawAiCaptured/DrawCapZone
-        // 전부 손 안 대도 된다.
+        // 2026-08-26(목업 정합) — "±90도로 눕혀서 배치"를 걷어내고 목업·이
+        // 함수 원래 요약 주석("가로뷰는 폭이 넉넉해서 좌/우도 눕힐 필요가
+        // 없다")이 뜻하던 비회전 가로 배치로 되돌렸다. 카드를 안 눕혀야
+        // 목업처럼 바로 읽힌다는 게 이번 요청의 핵심이다 — 손패 뒷면·
+        // DrawAiCaptured/DrawCapZone 안의 카드 하나하나는 원래도 "로컬
+        // 좌표 그대로" 그려지므로(회전은 부모 컨테이너에만 걸려 있었다)
+        // 여기서 회전을 빼는 것 자체는 그 아래 렌더링 코드를 전혀
+        // 안 건드려도 된다.
         //
-        // 크기는 실측 예산에서 역산했다 — fieldTop+16(-110)부터 손패
-        // 고정 위치(-878)까지 752px 중, 정보창(102)+간격(16)을 빼면
-        // Back+Cap 합쳐 쓸 수 있는 세로 커서 예산은 약 338px뿐이다.
-        // 회전 후엔 declaredW가 세로(커서 소모) 길이가 되므로, 그 예산을
-        // Back(170)·Cap(162, 피 5장 기준 폭 156px+6px 여유)으로 나눴다.
-        // Back이 손패 최대 7장(262px 필요)보다 좁아서 초반 턴엔 카드가
-        // 살짝 겹쳐 보일 수 있다 — 손패가 줄면서 자연히 해소된다.
-        float zRot = seat == 1 ? -90f : 90f;
-        const float BACK_DECLARED_W = 170f;
-        const float CAP_DECLARED_W = 162f;
-        const float CAP_DECLARED_H = 200f; // 회전 후 가로 폭 — 존 2블록이 각 1~2줄 쓸 여유
+        // 2026-08-27(목업 실측 재확인) — 크기·간격을 GoStopOrientalMockup
+        // 씬(Seat_Left_StatusBar/Back/Cap)을 직접 열어 잰 값으로 정정했다.
+        // StatusBar(165)→Back(70)→Cap(165)이 간격 0으로 딱 붙어 있었다 —
+        // 예전 코드가 쓰던 6px 갭은 근거 없는 임의값이었다.
+        const float BACK_DECLARED_W = 300f;
+        const float CAP_DECLARED_W = 400f;
+        const float CAP_DECLARED_H = 165f;
 
         // 2026-08-20: "직접 수정할 수 있게 미리 만들어달라" 요청 — 씬에
         // Back{seat}/Cap{seat}가 이미 있으면(에디터에서 사용자가 손으로
-        // 위치·크기·회전을 다듬어 둔 것) 그대로 재사용한다. 코드가 매
+        // 위치·크기를 다듬어 둔 것) 그대로 재사용한다. 코드가 매
         // RebuildUI/씬 로드마다 값을 덮어쓰지 않는다는 뜻이라, 사용자가
         // 인스펙터에서 바꾼 값이 그대로 유지된다. 없으면(예: 다른 슬롯,
         // 혹은 사용자가 아직 안 만진 상태) 기존처럼 코드가 계산해서
-        // 새로 만든다. 재사용할 땐 실제 sizeDelta.x(회전 후 시각적 세로
-        // 길이)를 커서 계산에 반영해서, 사용자가 크기를 키우거나 줄여도
-        // 그 아래(플레이어 자신의 정보창 등) 배치가 자동으로 따라온다.
-        // 2026-08-24: Find 대신 backSeatRefs[seat]/capSeatRefs[seat](인스펙터
-        // 연결)로 찾는다 — seat은 1 또는 3만 들어온다(이 함수 호출부 참고).
+        // 새로 만든다. 씬에 예전 회전(±90도) 버전이 아직 남아있으면
+        // MigrateEdgeContainerIfRotated가 이번 한 번만 비회전 기본값으로
+        // 되돌린다(그 뒤로는 다시 자유롭게 손으로 조정 가능).
         var existingBack = backSeatRefs[seat];
-        float backDeclaredW;
         if (existingBack != null)
         {
-            backArea[seat] = existingBack;
-            backDeclaredW = existingBack.sizeDelta.x;
             StripStrayLayoutGroup(existingBack);
+            MigrateEdgeContainerIfRotated(existingBack, BACK_DECLARED_W, BACK_CONTAINER_H, centerX, cursor);
+            backArea[seat] = existingBack;
         }
         else
         {
-            backArea[seat] = MakeRotatedContainerByVisualTop($"Back{seat}", root, BACK_DECLARED_W, BACK_H, centerX, cursor, zRot);
-            backDeclaredW = BACK_DECLARED_W;
+            backArea[seat] = HwatuUI.MakeRect($"Back{seat}", root, new Vector2(BACK_DECLARED_W, BACK_CONTAINER_H), new Vector2(centerX, cursor));
         }
-        cursor -= backDeclaredW + 6f;
+        cursor -= backArea[seat].sizeDelta.y;
 
         var existingCap = capSeatRefs[seat];
         if (existingCap != null)
         {
-            capAreaAI[seat] = existingCap;
             StripStrayLayoutGroup(existingCap);
+            MigrateEdgeContainerIfRotated(existingCap, CAP_DECLARED_W, CAP_DECLARED_H, centerX, cursor);
+            capAreaAI[seat] = existingCap;
         }
         else
         {
-            capAreaAI[seat] = MakeRotatedContainerByVisualTop($"Cap{seat}", root, CAP_DECLARED_W, CAP_DECLARED_H, centerX, cursor, zRot);
+            capAreaAI[seat] = HwatuUI.MakeRect($"Cap{seat}", root, new Vector2(CAP_DECLARED_W, CAP_DECLARED_H), new Vector2(centerX, cursor));
             HwatuUI.AddZoneBackground(capAreaAI[seat], CapZoneColor);
         }
 
         // 2026-08-22: 리턴값을 "커서 누적치"가 아니라 capAreaAI[seat]의
         // 실제 transform에서 직접 역산한다 — 씬 재사용 오브젝트는 사용자가
-        // 인스펙터에서 자유롭게 옮길 수 있어서, cursor 변수(위쪽에서부터
-        // 크기만 빼내려간 값)가 실제 화면 위치와 어긋날 수 있다("Back/Cap을
-        // 씬에서 옮기면 이 아래 구간이 처진다"던 예전 문제, MANUAL_LAYOUT_
-        // CORRECTION이라는 매직 넘버로 임시 땜질했었다 — 씬의 Back1/Cap1/
-        // Back3/Cap3 오브젝트가 사라진 뒤 그 보정값만 남아 "나" 섹션이
-        // 필드/더미와 겹치는 회귀로 이어졌다). pivot=(0.5,0.5)·회전
-        // ±90도라 실제 화면 아래쪽 끝은 `anchoredPosition.y - sizeDelta.x*0.5`
-        // (회전 후 sizeDelta.x가 화면상 세로 길이가 된다는, 이 파일이 이미
-        // 여러 번 문서화한 규칙)다 — 코드로 새로 만든 경우도, 사용자가
-        // 씬에서 옮긴 경우도 둘 다 이 공식 하나로 정확한 실제 바닥을 얻는다.
-        return capAreaAI[seat].anchoredPosition.y - capAreaAI[seat].sizeDelta.x * 0.5f;
+        // 인스펙터에서 자유롭게 옮길 수 있어서, cursor 변수가 실제 화면
+        // 위치와 어긋날 수 있다. 비회전(top-pivot 0.5,1)이라 실제 바닥은
+        // 단순히 anchoredPosition.y - sizeDelta.y다.
+        return capAreaAI[seat].anchoredPosition.y - capAreaAI[seat].sizeDelta.y;
+    }
+
+    /// <summary>2026-08-26 — 좌/우 Back·Cap을 회전(±90도) 방식에서 비회전
+    /// 가로 배치로 되돌리면서, 씬에 이미 있던 예전 회전 버전(사용자가 손으로
+    /// 다듬어 둔 Back1/Cap1/Back3/Cap3)을 자동으로 새 기본값으로 옮기는
+    /// 1회성 마이그레이션. z회전이 이미 0이면(마이그레이션 완료했거나 애초에
+    /// 비회전으로 만들어진 새 오브젝트) 아무것도 안 건드리고 그대로 재사용한다
+    /// — 이후엔 사용자가 씬에서 다시 자유롭게 위치·크기를 조정할 수 있다.</summary>
+    static void MigrateEdgeContainerIfRotated(RectTransform rt, float defaultW, float defaultH, float centerX, float visualTop)
+    {
+        if (Mathf.Approximately(rt.localEulerAngles.z, 0f)) return;
+        rt.localEulerAngles = Vector3.zero;
+        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 1f);
+        rt.pivot = new Vector2(0.5f, 1f);
+        rt.sizeDelta = new Vector2(defaultW, defaultH);
+        rt.anchoredPosition = new Vector2(centerX, visualTop);
     }
 
     /// <summary>씬에서 인스펙터로 만지다 보면 LayoutGroup(Horizontal/Vertical/
@@ -1010,54 +1319,51 @@ public partial class GoStop3PGame
         return HwatuUI.MakeRect(name, root, defaultSize, defaultPos);
     }
 
-    /// <summary>컨테이너 하나를 통째로 회전시켜서 배치한다 — 안의 내용물은
-    /// 평소처럼(회전 안 걸린 것처럼) 그리면 부모 회전 때문에 자동으로
-    /// 화면에서 돌아간 모습으로 보인다. pivot을 중심(0.5,0.5)으로 둬서
-    /// 회전이 그 중심을 축으로 일어나게 하고, "화면에 보이는 위쪽
-    /// y좌표"(<paramref name="visualTop"/>)를 그대로 받아 내부적으로
-    /// 역산한다 — <b>선언한 폭(<paramref name="declaredW"/>)이 90도
-    /// 회전 후엔 화면 세로 길이가 된다</b>는 함정(이 프로젝트가 세로판
-    /// 시절 이미 겪었던 것)을 여기서 한 번만 처리해 두면 호출부는
-    /// 신경 쓸 필요가 없다.</summary>
-    RectTransform MakeRotatedContainerByVisualTop(string name, Transform parent, float declaredW, float declaredH,
-                                                   float centerX, float visualTop, float zRotation)
+    /// <summary>2026-09-04: "우측상단에 현재 점당 얼마짜리 게임인지 표시
+    /// 추가했어. 나가리 등으로 점당 배율이 변경되면 UI 텍스트도 같이
+    /// 변경해줘" — 사용자가 씬에 만든 Info 라벨(<see cref="pointPriceText"/>)
+    /// 을 최신 WON_PER_POINT×stakeMultiplier로 채운다. RebuildUI에서
+    /// 매번 호출하는 것만으로는 부족하다 — 나가리로 끝나는
+    /// <c>EndGame</c>의 승패 갈림 분기는 오버레이만 띄우고 RebuildUI를
+    /// 안 부르므로(게임판 자체는 이미 멈춘 상태라 다시 그릴 이유가
+    /// 없다), stakeMultiplier가 바뀌는 그 지점(EndGame 나가리/정산 두
+    /// 곳)에서도 직접 불러야 화면이 그 즉시 갱신된다.</summary>
+    void UpdatePointPriceLabel()
     {
-        var go = new GameObject(name, typeof(RectTransform));
-        go.transform.SetParent(parent, false);
-        var rt = go.GetComponent<RectTransform>();
-        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 1f);
-        rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.sizeDelta = new Vector2(declaredW, declaredH);
-        rt.anchoredPosition = new Vector2(centerX, visualTop - declaredW * 0.5f);
-        rt.localEulerAngles = new Vector3(0f, 0f, zRotation);
-        return rt;
+        if (pointPriceText != null) pointPriceText.text = (WON_PER_POINT * stakeMultiplier).ToString("N0");
     }
 
     void RebuildUI()
     {
-        HwatuUI.ClearChildren(fieldArea);
+        UpdateTopSeatCapBack(); // 매 라운드 sittingOutSeat가 바뀌므로 항상 최신 상태로 재판단
+        // pos1~pos12 마커는 이제 영구 고정 자식이다 — fieldArea 자체를
+        // ClearChildren하면 마커까지 같이 파괴되므로, 마커 밑에 실제로 붙은
+        // 카드(pos의 자식)만 각자 지운다. ClearFieldPosSlots 참고.
+        ClearFieldPosSlots();
         // 더미(drawPileArea)는 여기서 안 지운다 — UpdatePileVisual이 기존
         // 레이어와 비교해서 필요한 만큼만 늘리거나(즉시) 줄인다(애니메이션
         // 후 제거). 매턴 통째로 지우고 다시 그리면 "5장 이하로 떨어질 때
         // 한 장씩 실제로 제거되는 연출"이 불가능해진다.
         HwatuUI.ClearChildren(handArea);
-        HwatuUI.ClearChildren(playerCapArea);
+        // 2026-08-27(목업 LayoutGroup 반영) — playerCapArea/capAreaAI[slot]는
+        // 이제 광/끗/띠/피 리프 존을 가진 고정 하위구조(HLG+VLG+GridLayoutGroup,
+        // EnsureCapLayoutHierarchy 참고)를 담고 있다. 컨테이너 전체를 여기서
+        // ClearChildren하면 그 구조 자체(광/끗띠/피 GameObject)까지 매턴
+        // 통째로 부쉈다 다시 만드는 낭비가 되므로, 리프 존 4개만 개별적으로
+        // 지우는 걸 DrawPlayerCaptured/DrawAiCaptured 안으로 옮겼다.
         for (int slot = 1; slot <= 3; slot++)
-        {
             if (backArea[slot]) HwatuUI.ClearChildren(backArea[slot]);
-            if (capAreaAI[slot]) HwatuUI.ClearChildren(capAreaAI[slot]);
-        }
 
         UpdatePileVisual();
         DrawField();
 
-        // 상대 뒷패·획득패 — 3/4인 모드는 슬롯 1/3(좌/우)만 그린다(슬롯
-        // 2=상단은 "Cap·Back 영역 제거" 요청으로 backArea[2]/capAreaAI[2]가
-        // null인 채로 남는다). 2026-08-23: 맞고(2인)는 반대로 상단(슬롯2)
-        // 하나만 그린다 — BuildStaticUI가 SEATS==2일 때만 backArea[2]/
-        // capAreaAI[2]를 채워두므로, 아래 null 체크가 자동으로 올바른
-        // 슬롯만 골라낸다(2인이면 1·3은 seat<0이라 건너뛰고 2만 그려짐,
-        // 3/4인이면 2는 backArea==null이라 건너뛰고 1·3만 그려짐).
+        // 상대 뒷패·획득패 — 3인은 슬롯 1/3(좌/우)만 그린다(TopSeat 자체가
+        // 꺼져 있다). 2인(맞고)은 반대로 상단(슬롯2) 하나만 그린다
+        // (BuildStaticUI가 SEATS==2일 때만 backArea[2]/capAreaAI[2]를
+        // Back4/Cap4로 채워둔다). 4인은 좌/우는 항상 그리고, 상단(슬롯2)은
+        // UpdateTopSeatCapBack이 매 라운드 판단한 결과(backArea[2]가
+        // null이면 이번 판 쉬는 사람이 앉아 있다는 뜻 — 카드가 없으니
+        // 건너뛴다)를 그대로 따른다.
         for (int slot = 1; slot <= 3; slot++)
         {
             int seat = slotSeat[slot];
@@ -1074,7 +1380,7 @@ public partial class GoStop3PGame
             for (int i = 0; i < n; i++)
             {
                 float x = -total * 0.5f + BACK_W * 0.5f + i * pitch;
-                HwatuUI.MakeCardBack(backArea[slot], new Vector2(x, 0f), BACK_W, BACK_H);
+                HwatuUI.MakeCardBack(backArea[slot], new Vector2(x, 0f), BACK_W, BACK_H, true);
             }
             DrawAiCaptured(slot, seat);
         }
@@ -1114,8 +1420,10 @@ public partial class GoStop3PGame
             {
                 if (goLbl != null) goLbl.text = $"쉬는 중 {sitOutReason}";
                 statusBoxView[slot]?.HideAllBadges(); // 쉬는 좌석은 이번 판 캡처가 없어 배지가 의미 없다 — 지난 상태가 안 남게 리셋
+                statusBoxView[slot]?.SetDim(true);
                 return;
             }
+            statusBoxView[slot]?.SetDim(false); // 슬롯이 영구적이라 쉬다가 다시 참가한 판엔 명시적으로 꺼줘야 한다
 
             int seatScore = GoStopRules.CalcScore(captured[seat], sweeps[seat]).Total;
             if (goLbl != null)
@@ -1131,6 +1439,7 @@ public partial class GoStop3PGame
             {
                 if (statusText[slot]) statusText[slot].text = "";
                 statusBoxView[slot]?.HideAllBadges();
+                statusBoxView[slot]?.SetDim(false); // 이 슬롯이 지난 판엔 쉬는 좌석이었을 수 있다 — dim이 안 남게 리셋
                 continue;
             }
             bool myTurn = state == State.Turn && currentSeat == seat;
@@ -1148,11 +1457,27 @@ public partial class GoStop3PGame
             ui?.SetScore(money[PLAYER_SEAT]); // HUD 점수는 항상 내 보유 머니(사용자 요청)
         }
 
+        UpdatePointPriceLabel();
+
+        // 2026-09-01: "내가 쉴 때는 MySeat의 Hand/Info 안 Cap을 꺼달라"
+        // 요청 — 이번 판 손패·획득패 자체가 없으니(광팔이/참가포기 둘 다
+        // 카드를 아예 안 받는다) 빈 상자를 보여줄 이유가 없다. 상단
+        // Cap/Back을 여닫는 UpdateTopSeatCapBack과 정확히 같은 조건
+        // (sittingOutSeat == PLAYER_SEAT)을 재사용한다 — 내가 쉬는 판엔
+        // 상단에 실제로 플레이 중인 3번째 AI가 뜨는 것과 대칭되는 처리.
+        // 콘텐츠 자체는 그대로 그려 둔다(hand[PLAYER_SEAT]가 비어 있어
+        // 어차피 아무것도 안 그려지는 무해한 호출이라, 숨김 여부와
+        // 무관하게 매턴 갱신해 두면 다시 보일 때도 별도 처리가 필요 없다).
+        bool iAmSittingOut = sittingOutSeat == PLAYER_SEAT;
+        handArea.gameObject.SetActive(!iAmSittingOut);
+        playerCapArea.gameObject.SetActive(!iAmSittingOut);
+
         DrawPlayerCaptured();
         DrawPlayerHand();
 
         flyFrom.Clear();
         flyViaField.Clear();
+        flyFromSize.Clear();
 
         CheckEmergencies();
 
@@ -1181,7 +1506,7 @@ public partial class GoStop3PGame
     /// 목록(더미만 빼고)을 그대로 지운다.</summary>
     void ClearBoardForDealing()
     {
-        HwatuUI.ClearChildren(fieldArea);
+        ClearFieldPosSlots(); // RebuildUI와 같은 이유 — pos 마커는 그대로 두고 그 자식 카드만 지운다
         HwatuUI.ClearChildren(handArea);
         HwatuUI.ClearChildren(playerCapArea);
         for (int slot = 1; slot <= 3; slot++)
@@ -1223,82 +1548,564 @@ public partial class GoStop3PGame
         }
     }
 
-    // 필드 그리드 — 12달을 6열×2행 고정 슬롯에 매핑한다. 열 간격
-    // FIELD_COL_PITCH(150)는 카드 폭(140)보다 넉넉해 인접한 두 달이
-    // 동시에 필드에 있어도 안 겹친다(BuildStaticUI의 FIELD_AREA_W=900이
-    // 이 6열을 정확히 담도록 맞춰져 있다 — 상수를 따로 바꾸면 같이 맞출 것).
-    const float FIELD_COL_PITCH = 133f; // BuildStaticUI의 FIELD_AREA_W(800)/6 — 같이 맞출 것
-    const int FIELD_COLS = 6;
+    /// <summary>2026-09-02: "pos1~12를 꼭 지워야 하나? 카드를 각 pos에
+    /// attach시키고 싶다" 요청으로 캐싱 대상을 값(Vector2)에서 참조
+    /// (RectTransform)로 바꿨다 — pos1~pos12는 이제 fieldArea의 영구
+    /// 고정 자식이라 RebuildUI가 더 이상 지우지 않으므로(ClearFieldPosSlots
+    /// 참고, 자식인 카드만 지운다) 참조를 캐싱해도 안전하다. BuildStaticUI가
+    /// fieldArea를 정한 직후 한 번만 부른다. 없는 번호는 null로 남는다(방어적
+    /// 폴백 — DrawField/FieldSlotWorldPos가 null이면 fieldArea 자신으로
+    /// 대체한다).</summary>
+    void CacheFieldPosSlots()
+    {
+        for (int i = 1; i <= 12; i++)
+            fieldPosSlots[i] = fieldArea.Find("pos" + i) as RectTransform;
+    }
 
-    // 필드의 같은 달 카드 부채꼴 간격 — DrawField(실제 필드 카드)에서만
-    // 쓴다. 슬램다운 고스트 착지 오프셋은 별도로 GhostMatchOffset이
-    // 담당한다(2026-08-25, 아래 참고 — 처음엔 이 상수를 공유했었는데
-    // 사용자 피드백으로 고정값(15,-15) 방식으로 바뀌었다).
-    const float FIELD_STACK_OFFSET = 22f;
+    /// <summary>이 카드가 이미 슬롯을 배정받았으면 그대로, 같은 달 카드가
+    /// 이미 필드에 있으면 그 슬롯에 같이 쌓인다(뻑처럼 한 달에 여러 장이
+    /// 몰릴 때 "겹쳐 쌓인다"는 전통적인 모양 — 2026-09-02 정정, 처음엔
+    /// 카드마다 무조건 새 빈 슬롯을 줬는데 그러면 뻑 무더기가 12칸에
+    /// 뿔뿔이 흩어져 버렸다). 그 외엔 pos1~12 중 아직 아무도 안 쓰는 가장
+    /// 낮은 번호를 새로 배정한다("빈칸에 카드를 배치, pos1이 비어있으면
+    /// pos1에" 요청 그대로). 조커는 월이 없어 이 그룹핑 대상에서 제외 —
+    /// 항상 자기만의 새 슬롯을 받는다. 카드 참조 자체가 키라 같은 카드에
+    /// 대해 몇 번을 불러도 항상 같은 슬롯을 돌려준다(멱등) — 애니메이션
+    /// 착지 지점 계산과 실제 렌더링이 이 함수 하나를 공유하므로 둘이
+    /// 어긋날 수 없다.</summary>
+    int AssignFieldSlot(HwatuCard card)
+    {
+        if (fieldSlotAssign.TryGetValue(card, out var existing)) return existing;
 
-    /// <summary>손패/뒷패가 필드에 슬램다운으로 착지할 때 쓰는 오프셋 —
-    /// "필드에 매칭되는 패에 완벽하게 겹쳐서 어색하다" 신고로 추가했다.
-    /// 2026-08-25 2차 정정(사용자 확인 값) — 1차 시도는 DrawField의
-    /// 부채꼴 공식(<see cref="FIELD_STACK_OFFSET"/> 기준 ±11px)을
-    /// 재사용했는데 "아직 안 되는 것 같다, 너무 적나?"는 피드백을 받아
-    /// 폐기하고, 매칭되는 카드의 실제 포지션에서 <b>(x+15, y-15) 고정
-    /// 오프셋</b>으로 바꿨다.
-    /// <br/>
-    /// 2026-08-25 3차 — "뻑이 날 3번째 패는 오프셋 30,-30이 적용되는거
-    /// 맞지?" 확인 요청으로, 카드가 몇 장째 그 슬롯에 쌓이는지에 비례해
-    /// 오프셋이 <b>누적</b>되도록 일반화했다(1장째=0, 2장째=15,-15,
-    /// 3장째=30,-30…). 호출부가 "지금 이 카드 앞에 그 슬롯에 이미 몇
-    /// 장이 있는지"(<paramref name="stackCount"/>)를 넘긴다 — 이 함수
-    /// 자체는 <c>field</c>를 더 이상 직접 조회하지 않는다. <c>field</c>를
-    /// 여기서 조회하던 이전 버전은 "손패는 여전히 오프셋 없이 나온다"는
-    /// 버그가 있었다: <see cref="GoStopRules.Resolve"/>가 매칭된 필드
-    /// 카드를 캡처 커밋 *전에* 곧바로 <c>field</c>에서 Remove해버려서,
-    /// r1을 계산한 뒤 field를 다시 보면 이미 매칭 카드가 사라져 있었다
-    /// — 그래서 호출부가 Resolve 호출 *전*에 미리 스냅샷 뜬 개수를
-    /// 넘겨야 한다.</summary>
-    Vector2 GhostMatchOffset(int stackCount) =>
-        stackCount > 0 ? new Vector2(15f, -15f) * stackCount : Vector2.zero;
+        if (!card.isJoker)
+        {
+            foreach (var kv in fieldSlotAssign)
+            {
+                if (!kv.Key.isJoker && kv.Key.month == card.month)
+                {
+                    fieldSlotAssign[card] = kv.Value;
+                    return kv.Value;
+                }
+            }
+        }
 
-    /// <summary>필드 — 2026-08-18: "패가 나오고 들어가는 과정에서 계속
-    /// 포지션이 바뀐다, 한 번 깔리면 고정돼야 한다"는 신고로 알고리즘을
-    /// 완전히 바꿨다. 예전엔 매 RebuildUI마다 "지금 필드에 있는 달들"만
-    /// 모아서 다시 꽉 채워 정렬했기 때문에, 다른 달 카드가 추가/제거될
-    /// 때마다 기존 카드까지 자리를 옮겨야 했다(패킹 알고리즘이 통째로
-    /// 다시 도니까). 지금은 **달 번호 자체가 고정된 그리드 좌표**다 —
-    /// 1월은 항상 (열0,행0), 7월은 항상 (열0,행1)… 이런 식으로, 그 달이
-    /// 필드에 있든 없든 좌표가 절대 안 바뀐다. 다른 달이 들어오고 나가는
-    /// 것과 무관하게 내 달의 카드는 항상 같은 자리에 그대로 있다.
-    /// 같은 달 여러 장(따닥 등)은 그 고정 슬롯 안에서 기존처럼
-    /// STACK_OFFSET만큼 겹쳐 쌓는다 — 그룹핑 자체는 그대로다.</summary>
+        for (int i = 1; i <= 12; i++)
+        {
+            if (!fieldSlotAssign.ContainsValue(i))
+            {
+                fieldSlotAssign[card] = i;
+                return i;
+            }
+        }
+        return 1; // 이론상 도달 안 함(맞고 기준 최대 11장) — 방어적 폴백
+    }
+
+    /// <summary>field 리스트와 슬롯 배정 상태를 맞춘다 — field에서 빠진
+    /// 카드(캡처됨)는 슬롯을 반납하고, field에 있는데 아직 배정이 없는
+    /// 카드(새로 깔린 패)는 새로 배정한다. DrawField 맨 앞에서 매번 불러
+    /// "지금 필드에 실제로 있는 카드들"과 배정 상태가 항상 일치하게
+    /// 만든다 — GoStopRules가 필드를 직접 Remove/Add하는 여러 경로를
+    /// 일일이 쫓아다니지 않아도, 여기 한 곳에서 자연히 정리된다.
+    ///
+    /// 2026-09-02 버그 수정 — "field에 없으면 곧바로 반납"이 너무 성급했다.
+    /// 뒷패(덱카드)는 슬램다운 애니메이션 때(SpawnGhostCard/AssignFieldSlot로
+    /// 슬롯을 이미 배정받음) → GoStopRules.Resolve(drawn, field) 호출(매칭
+    /// 없으면 이때 비로소 field.Add) 사이에 손패 결과를 반영하는 RebuildUI가
+    /// 한 번 더 낀다(PlaySeq의 "④ 손패 결과 배치" 단계) — 그 중간 시점엔
+    /// drawn이 아직 field에 없어서(진짜로 캡처된 게 아니라 그냥 아직 안
+    /// 넣은 것뿐인데도) 여기서 슬롯을 반납해버렸다. 반납된 슬롯은 그 사이
+    /// 캡처로 비워진 다른 슬롯(예: 매칭된 손패가 있던 자리)에 밀려나고,
+    /// drawn이 실제로 field.Add된 뒤 다시 배정받을 땐 그 새로 빈 슬롯을
+    /// 받아버려서 — 고스트는 pos2에 착지했는데 실제 카드는 pos1에 그려지는
+    /// 불일치("패가 다른 자리로 순간이동한다")가 났다. **진짜로 캡처된
+    /// 카드만 반납**하도록 기준을 "field에 없다"에서 "누군가의 captured에
+    /// 들어갔다"로 좁혔다 — 이 게임 규칙상 필드를 떠나는 카드는 항상 어느
+    /// 좌석의 captured로 들어가므로(조커도 ResolveBonusJoker가 항상 캡처
+    /// 처리한다), "아직 field에 없지만 캡처되지도 않은" 중간 상태의 카드는
+    /// 슬롯을 그대로 유지한 채 다음 배정을 기다린다.</summary>
+    void SyncFieldSlotAssignments()
+    {
+        if (fieldSlotAssign.Count > 0)
+        {
+            var stale = fieldSlotAssign.Keys
+                .Where(c => !field.Contains(c) && captured.Any(cap => cap != null && cap.Contains(c)))
+                .ToList();
+            foreach (var c in stale) fieldSlotAssign.Remove(c);
+        }
+        foreach (var c in field) AssignFieldSlot(c);
+    }
+
+    /// <summary>이 카드가 배정받은(또는 지금 새로 배정되는) pos 슬롯 마커 그
+    /// 자체 — 카드가 attach될 부모이자, 애니메이션이 매 프레임 실시간으로
+    /// 추적할 살아있는 타겟이다. 마커가 씬에 없으면(방어적 폴백) fieldArea로
+    /// 대체한다.</summary>
+    RectTransform FieldSlotTransform(HwatuCard card)
+    {
+        var t = fieldPosSlots[AssignFieldSlot(card)];
+        return t != null ? t : fieldArea;
+    }
+
+    /// <summary>위 슬롯의 현재 월드 좌표 — 슬램다운 고스트가 처음 나타나는
+    /// 자리를 한 번 스냅샷으로 남겨둘 때만 쓴다(예: 조커 리빌 지점). 실제
+    /// 이동 애니메이션은 이 값이 아니라 <see cref="FieldSlotTransform"/>이
+    /// 돌려주는 살아있는 Transform을 매 프레임 추적한다 — "moveTo 포지션
+    /// 대신 타겟의 transform 위치로 이동" 요청 참고.</summary>
+    Vector3 FieldSlotWorldPos(HwatuCard card) => FieldSlotTransform(card).position;
+
+    /// <summary>pos1~pos12는 이제 영구 고정 자식이라 지우지 않는다 — 그
+    /// 밑에 실제로 붙어있는 카드(들)만 존별로 지운다. fieldArea 자체를
+    /// ClearChildren하던 예전 방식은 마커까지 파괴해서 참조 캐싱이
+    /// 불가능했던 원인이었다.</summary>
+    void ClearFieldPosSlots()
+    {
+        for (int i = 1; i <= 12; i++)
+            if (fieldPosSlots[i] != null) ClearFieldSlotChildrenKeepGhosts(fieldPosSlots[i]);
+    }
+
+    // 2026-09-02 — HwatuUI.ClearChildren을 그대로 안 쓰는 이유는 위 GhostMarker
+    // 주석 참고. 아직 살아있어야 하는(자기 차례가 안 온) 고스트만 건너뛰고
+    // 나머지(지난 턴에 그려진 실제 카드 등)는 그대로 지운다.
+    static void ClearFieldSlotChildrenKeepGhosts(Transform t)
+    {
+        for (int i = t.childCount - 1; i >= 0; i--)
+        {
+            var child = t.GetChild(i);
+            if (child.GetComponent<GhostMarker>() != null) continue;
+            Destroy(child.gameObject);
+        }
+    }
+
+    // 같은 pos 슬롯에 여러 장(뻑 무더기 등)이 쌓일 때 완전히 포개지지 않게
+    // 살짝 밀어내는 간격 — 몇 장인지 한눈에 보이면서도 "한 자리에 쌓였다"는
+    // 느낌은 유지된다. 2026-09-06(사용자 확인) — 장수가 늘수록 한 칸씩의
+    // 간격을 좁혀서(2장=30, 3장=15, 4장=10) 전체 퍼짐 폭이 너무 커지지
+    // 않게 했다(예전엔 장수와 무관하게 항상 20이라 4장이 쌓이면 3×20=60px
+    // 나 밀려나 옆 슬롯을 침범할 여지가 있었다).
+    static float FieldStackStep(int countInSlot) => countInSlot switch
+    {
+        2 => 30f,
+        3 => 15f,
+        >= 4 => 10f,
+        _ => 20f, // 1장뿐이면 i=0이라 어차피 안 쓰인다 — 안전한 기본값만 둔다
+    };
+
+    /// <summary>필드 — 2026-09-02: "카드를 각 pos에 attach" 요청으로 카드를
+    /// fieldArea가 아니라 배정받은 pos 슬롯 마커 그 자체의 자식으로 만든다
+    /// (마커 자신의 위치가 곧 카드 자리다). pos 마커가 fieldArea 밑에
+    /// 영구 고정돼 있으므로 카드 위치도 자동으로 고정된다. 같은 달 카드는
+    /// AssignFieldSlot이 같은 슬롯을 돌려주므로(뻑 등) 그 안에서
+    /// FIELD_STACK_OFFSET만큼씩 밀려 겹쳐 쌓인 모양으로 그려진다 — 다른
+    /// 달은 각자 새 슬롯을 받아 12칸에 펼쳐진다. 카드 자체의 판정(월 매칭
+    /// 등)은 전혀 안 건드렸다 — 이건 순수하게 "어디에 그릴지"만 담당한다.</summary>
     void DrawField()
     {
-        float fieldRowH = FIELD_H + 10f;
+        SyncFieldSlotAssignments();
 
-        var groups = field.GroupBy(c => c.month)
-                          .Select(g => g.OrderBy(c => (int)c.kind).ToList());
-
-        foreach (var g in groups)
+        foreach (var group in field.GroupBy(AssignFieldSlot))
         {
-            int month = g[0].month; // 조커(month=0)는 그리드 밖 — 별도 처리 필요 없이 열0/행0 쪽에 자연히 몰릴 수 있으나 실전에서 즉시 소비되는 카드라 문제 없음
-            int slotIdx = Mathf.Clamp(month - 1, 0, FIELD_COLS * 2 - 1);
-            int col = slotIdx % FIELD_COLS;
-            int row = slotIdx / FIELD_COLS;
-            float slotX = -FIELD_COL_PITCH * (FIELD_COLS - 1) * 0.5f + col * FIELD_COL_PITCH;
-            float slotY = -row * fieldRowH;
-
-            for (int i = 0; i < g.Count; i++)
+            var cardsInSlot = group.ToList();
+            float step = FieldStackStep(cardsInSlot.Count);
+            var slotTarget = FieldSlotTransform(cardsInSlot[0]); // 그룹 전체가 공유하는 슬롯 — 오버레이 배치용으로 미리 확보
+            for (int i = 0; i < cardsInSlot.Count; i++)
             {
-                float x = slotX + i * FIELD_STACK_OFFSET - (g.Count - 1) * FIELD_STACK_OFFSET * 0.5f;
-                var go = HwatuUI.MakeCard(g[i], fieldArea, new Vector2(x, slotY), FIELD_W, FIELD_H, null, false);
-                if (flyFrom.TryGetValue(g[i], out var from))
-                    StartCoroutine(SlamIn(go.transform as RectTransform, from));
+                var c = cardsInSlot[i];
+                var offset = new Vector2(i * step, -i * step);
+                var target = FieldSlotTransform(c);
+                var go = HwatuUI.MakeCard(c, target, offset, FIELD_W, FIELD_H, null, false);
+                // 2026-09-02 버그 수정 — "뒷패가 깔린 패 pos에 들어갈 때 sibling이
+                // 앞쪽으로 가나?" 신고로 발견. 이 슬롯에 아직 살아있는 고스트
+                // (GhostMarker — 자기 차례가 아직 안 온 뒷패 등, ClearFieldPosSlots가
+                // 건너뛴 것)가 있는데, 방금 만든 "진짜" 카드는 새 마지막 자식으로
+                // 붙는다 — sibling이 늦을수록 위에 그려지므로, 나중에 도착해서
+                // 원래 맨 위에 있어야 할 고스트가 방금 다시 그려진(먼저 있던)
+                // 카드에 가려지는 역전이 생겼다. 고스트보다 앞선 sibling index로
+                // 끼워 넣어 고스트가 항상 맨 위를 지키게 한다.
+                for (int k = 0; k < target.childCount; k++)
+                {
+                    if (target.GetChild(k).GetComponent<GhostMarker>() != null)
+                    {
+                        go.transform.SetSiblingIndex(k);
+                        break;
+                    }
+                }
+                if (flyFrom.TryGetValue(c, out var from))
+                {
+                    // 2026-09-02 버그 수정 — 손패/뒷패 고스트가 이미 이 정확한
+                    // 자리로 SlamDown(임팩트 플래시+펀치 스케일 포함)을 끝내고
+                    // 나서 여기 flyFrom에 "자기가 도착한 그 자리"를 그대로
+                    // 등록해 둔 경우(매칭 없이 필드에 남는 카드, 뻑으로 쌓이는
+                    // 카드 등)엔 from이 이 카드의 최종 위치와 완전히 같다 —
+                    // 그런데도 무조건 SlamIn을 또 돌리면 임팩트 플래시·펀치
+                    // 스케일(1→1.28→1, top-center 피벗 기준이라 카드 아랫변이
+                    // 아래로 부푼다)이 제자리에서 한 번 더 재생된다. 이게
+                    // "필드에 카드가 깜빡인다"/"카드가 잠깐 아래로 쏠려
+                    // 보인다"는 두 신고의 실제 정체 — 같은 자리에서 임팩트
+                    // 연출이 중복 재생된 것이었다. 실제로 위치가 다른
+                    // 경우(진짜 이동)만 애니메이션을 돌리도록 거리 체크를
+                    // 추가했다.
+                    var finalPos = (go.transform as RectTransform).position;
+                    if ((finalPos - from).sqrMagnitude > 1f)
+                        StartCoroutine(SlamIn(go.transform as RectTransform, from));
+                    else
+                        GoStopFX.SetArtShadow(go, true); // 사실상 제자리 — 애니메이션 없이 바로 "놓임" 표시
+                }
+                else
+                {
+                    GoStopFX.SetArtShadow(go, true); // 이번 리빌드에서 안 움직이는 정적 카드
+                }
+            }
+
+            // 2026-09-06(사용자 확인) — "겹쳐있는 패는 눌렀을 때 겹친 패를
+            // 확인할 수 있게, dim 배경 툴팁으로 보여달라" 요청. 2장 이상
+            // 쌓인 슬롯에만 슬롯 전체를 덮는 투명 오버레이를 하나 더
+            // 얹는다 — 맨 위 카드 하나만이 아니라 그 슬롯 어디를 눌러도
+            // 반응하도록. 오버레이는 이 그룹의 마지막 카드 자식(GhostMarker
+            // 없는 경우)보다도 나중 sibling이라 항상 최상단에서 입력을 받는다.
+            if (cardsInSlot.Count > 1)
+            {
+                var overlayGo = new GameObject("StackTooltipTrigger", typeof(RectTransform));
+                overlayGo.transform.SetParent(slotTarget, false);
+                var overlayRt = overlayGo.GetComponent<RectTransform>();
+                overlayRt.anchorMin = overlayRt.anchorMax = new Vector2(0.5f, 1f);
+                overlayRt.pivot = new Vector2(0.5f, 1f);
+                float extra = (cardsInSlot.Count - 1) * step;
+                overlayRt.sizeDelta = new Vector2(FIELD_W + extra, FIELD_H + extra);
+                overlayRt.anchoredPosition = new Vector2(extra * 0.5f, -extra * 0.5f); // 스택 전체의 대략적 중심
+                var overlayImg = overlayGo.AddComponent<Image>();
+                overlayImg.color = new Color(0f, 0f, 0f, 0f); // 완전 투명 — 레이캐스트만 받는다
+                var trigger = overlayGo.AddComponent<GoStopStackHoverTrigger>();
+                trigger.Init(cardsInSlot, GoStopCanvasRoot());
             }
         }
     }
 
-    // 6이면 1.5배 커진 카드가 존(-320/-60/+260) 간격을 침범해 옆 존과 겹친다
-    // (실측으로 확인) — 5로 줄여서 겹침 없이 맞춘다.
-    const int CAP_MAX_PER_ROW = 5;
+    /// <summary>2026-08-27(목업 정확히 이식) — 목업 씬(GoStopOrientalMockup)의
+    /// Seat_Left_Cap/Seat_Bottom_Cap 등을 직접 열어보니, 카드 위치를 코드로
+    /// 계산하는 대신 진짜 Unity LayoutGroup을 쓰고 있었다: 가로
+    /// (광 | 열끗+띠 | 피) 3열은 HorizontalLayoutGroup, 가운데 칸의 열끗(위)/
+    /// 띠(아래) 분리는 VerticalLayoutGroup, 각 리프 존 안의 줄바꿈은
+    /// GridLayoutGroup(고정 5열, 카드가 10px씩 겹치도록 음수 spacing)이
+    /// 전담한다 — 내 획득패든 상대 획득패든 좌석 구분 없이 이 구조 하나를
+    /// 공유한다(Seat_Bottom_Cap도 정확히 같은 계층이었다).
+    /// <br/>
+    /// 컨테이너당 한 번만 만들면 되는 "그릇"이라(카드 하나하나가 아니라
+    /// 광/끗/띠/피 GameObject 자체는 매턴 바뀌지 않는다) 이미 만들어져
+    /// 있으면(자식 "광"이 있으면) 그대로 재사용한다.</summary>
+    readonly struct CapZones
+    {
+        public readonly RectTransform gwang, yeol, ddi, pi;
+        public CapZones(RectTransform g, RectTransform y, RectTransform d, RectTransform p) { gwang = g; yeol = y; ddi = d; pi = p; }
+    }
+
+    CapZones EnsureCapLayoutHierarchy(RectTransform container)
+    {
+        var existingGwang = container.Find("광");
+        var existingHlg = container.GetComponent<HorizontalLayoutGroup>();
+        if (existingGwang != null && existingHlg != null)
+        {
+            return new CapZones((RectTransform)existingGwang,
+                                 (RectTransform)container.Find("끗띠/끗"),
+                                 (RectTransform)container.Find("끗띠/띠"),
+                                 (RectTransform)container.Find("피"));
+        }
+        // existingGwang != null인데 existingHlg == null인 경우 — 이
+        // 컨테이너가 GetOrCreateContainer/BuildEdgeSeatBlock의 "씬 참조
+        // 재사용" 경로를 거치며 StripStrayLayoutGroup에 의해 HLG가
+        // 지워진 것이다(그 함수는 "사용자가 실수로 붙인 LayoutGroup"을
+        // 걷어내는 용도라 이 의도적인 것과 구분을 못 한다). 자식까지
+        // 어중간하게 남아있으면 통째로 새로 짠다.
+        if (existingGwang != null) HwatuUI.ClearChildren(container);
+
+        // 2026-09-02 버그 수정 — existingHlg != null인데 existingGwang == null인
+        // "반대" 경우도 있다: ClearBoardForDealing()이 "광"/"끗띠"/"피" 자식만
+        // Destroy()하고(다음 새 판을 위해 캡 존을 비우는 용도) HLG 컴포넌트
+        // 자체는 안 건드리는데, 그 Destroy가 실제로 반영되는 건 프레임 끝이라
+        // DealingAnimationSeq()로 여러 프레임이 지난 뒤(다음 RebuildUI 시점)엔
+        // "자식은 사라졌지만 HLG는 그대로 남은" 상태가 된다. 이 상태에서
+        // 무조건 AddComponent<HorizontalLayoutGroup>()을 다시 호출하면 —
+        // LayoutGroup 계열은 DisallowMultipleComponent라 Unity가 추가를 거부하고
+        // null을 돌려줘서 바로 아래 hlg.spacing에서 NullReferenceException이
+        // 난다. 이 예외가 NewGameSeq 코루틴 한복판(RebuildUI 호출 지점)에서
+        // 터지면 코루틴 자체가 죽어 newGameStarting이 영원히 true로 남고
+        // "판을 몇 번 진행하면 AI가 멈춘다"는 증상으로 나타난다 — 이미 있는
+        // HLG를 재사용해서 막는다.
+        var hlg = existingHlg != null ? existingHlg : container.gameObject.AddComponent<HorizontalLayoutGroup>();
+        hlg.spacing = 0f;
+        hlg.childAlignment = TextAnchor.MiddleCenter;
+        hlg.childControlWidth = true; hlg.childControlHeight = true;
+        hlg.childForceExpandWidth = true; hlg.childForceExpandHeight = true;
+
+        RectTransform MakeGrid(string name, Transform parent)
+        {
+            var go = new GameObject(name, typeof(RectTransform));
+            go.transform.SetParent(parent, false);
+            var glg = go.AddComponent<GridLayoutGroup>();
+            // 목업 실측값 그대로 — 카드(30×42) 5열 고정, 음수 spacing으로
+            // 살짝 겹쳐 쌓인 느낌을 낸다(원래 CapStack이 overlap=14로 겹쳐
+            // 쌓던 것과 같은 목적, GridLayoutGroup에선 spacing이 그 역할).
+            glg.cellSize = new Vector2(CAP_W, CAP_H);
+            glg.spacing = new Vector2(-27.5f, -20f);
+            glg.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+            glg.constraintCount = 5;
+            glg.startCorner = GridLayoutGroup.Corner.LowerLeft;
+            glg.childAlignment = TextAnchor.LowerCenter;
+            glg.startAxis = GridLayoutGroup.Axis.Horizontal;
+            return (RectTransform)go.transform;
+        }
+
+        var gwangZone = MakeGrid("광", container);
+
+        var yeolDdiGo = new GameObject("끗띠", typeof(RectTransform));
+        yeolDdiGo.transform.SetParent(container, false);
+        var vlg = yeolDdiGo.AddComponent<VerticalLayoutGroup>();
+        vlg.spacing = 0f;
+        vlg.childAlignment = TextAnchor.MiddleCenter;
+        vlg.childControlWidth = true; vlg.childControlHeight = true;
+        vlg.childForceExpandWidth = true; vlg.childForceExpandHeight = true;
+        var yeolZone = MakeGrid("끗", yeolDdiGo.transform);
+        var ddiZone = MakeGrid("띠", yeolDdiGo.transform);
+
+        var piZone = MakeGrid("피", container);
+
+        return new CapZones(gwangZone, yeolZone, ddiZone, piZone);
+    }
+
+    /// <summary>리프 존 하나(광/끗/띠/피 중 하나)를 지우고 다시 채운다.
+    /// 카드 위치는 GridLayoutGroup이 알아서 계산하므로 <see cref="HwatuUI.MakeCard"/>
+    /// 에 넘기는 pos는 의미가 없다(즉시 덮어써짐). 애니메이션(flyFrom)이
+    /// 걸린 카드는 여기서 바로 코루틴을 시작하지 않고 <paramref name="pending"/>
+    /// 에 모아둔다 — GridLayoutGroup의 최종 위치는 이 프레임의 레이아웃
+    /// 패스가 돌아야 확정되는데, 그 전에 rt.position(월드 좌표)을 읽으면
+    /// 옛 위치가 잡힌다. 호출자가 4개 존을 다 채운 뒤
+    /// LayoutRebuilder.ForceRebuildLayoutImmediate로 강제로 확정시키고 나서야
+    /// pending을 순회하며 애니메이션을 시작해야 목적지가 정확하다.</summary>
+    /// <paramref name="weighted"/>는 피 존 전용 — GridLayoutGroup은 "장수"만
+    /// 세고 피 값(쌍피=2)을 모르므로 그냥 두면 줄마다 무조건 5장이 된다.
+    /// 보이지 않는 필러 칸으로 그리드가 쌍피를 "2칸짜리"로 착각하게
+    /// 만든다. 필러는 그 줄의 오른쪽 끝에 모아서 둔다(카드들 사이에 안
+    /// 끼어 있게) — 먼저 "이번 줄에 들어갈 카드들"을 weight 합이 5가
+    /// 될 때까지 모았다가 한 줄 분량이 차면(`FlushRow`) 그 줄의 실제
+    /// 카드 전부를 먼저 그리고 그 다음에 그 줄이 필요로 하는 필러
+    /// 개수만큼 이어서 그린다.
+    /// <br/>2026-09-03(사용자 확인) — <b>줄이 어중간하게 안 차는 걸
+    /// 최대한 피한다.</b> 예: 홑피 4장+쌍피 1장을 순서대로 넣으면(홑피가
+    /// 먼저 4장 쌓여 weight=4) 쌍피(weight2)가 그대로는 4+2=6으로
+    /// 넘친다 — 이때 그냥 새 줄을 시작하면 "홑피만 4장인 줄"과 "쌍피
+    /// 혼자인 줄"로 갈라져 점수 계산 시 헷갈린다는 지적을 받았다. 이
+    /// 게임의 피 값은 1(홑피)·2(쌍피)뿐이라 <b>이 오버플로는 수학적으로
+    /// 항상 "줄이 정확히 4, 새 카드가 쌍피(2)"인 경우뿐</b>이다(0~3에
+    /// 1이나 2를 더하면 항상 5 이하라 절대 안 넘친다) — 그래서 그 줄의
+    /// 마지막 카드가 홑피(weight1)면 그 한 장만 빼서 쌍피를 대신
+    /// 넣으면 정확히 5가 된다. 뺀 홑피는 다음 줄 맨 앞으로 넘긴다
+    /// (순서 보존 — "먼저 가져온 순으로" 원칙을 최대한 지키면서 딱
+    /// 한 장만 밀려난다). 줄 마지막이 쌍피라 뺄 수 없으면(빼도 2가
+    /// 남아 정확히 안 맞음 — 애초에 홀수 weight를 짝수 카드로는 못
+    /// 채운다) 줄을 있는 그대로(4/5) 닫는다 — 수학적으로 더 나은
+    /// 방법이 없는 경우다.
+    /// <br/>필러는 카드에 붙어 따라다닐 필요가 없다 — 이 함수가 매
+    /// RebuildUI마다 ClearChildren으로 존을 통째로 비우고 cards 목록
+    /// 그대로 다시 채우므로, 카드가 뻑·피뺏기 등으로 다른 곳에 가면
+    /// 다음 프레임엔 애초에 이 목록에 안 들어있어 필러도 자동으로 같이
+    /// 사라진다.
+    void FillCapZone(RectTransform zone, List<HwatuCard> cards, List<(RectTransform rt, HwatuCard card, Vector3 from, Vector3? hit, Vector2 fromSize)> pending, bool weighted = false)
+    {
+        HwatuUI.ClearChildren(zone);
+
+        void MakeOne(HwatuCard c)
+        {
+            var go = HwatuUI.MakeCard(c, zone, Vector2.zero, CAP_W, CAP_H, null, false);
+            if (flyFrom.TryGetValue(c, out var from))
+            {
+                Vector3? hit = flyViaField.TryGetValue(c, out var hitPoint) ? hitPoint : (Vector3?)null;
+                // 2026-09-04 — 등록이 없으면(대부분의 경우) 필드/더미에서
+                // 온 것으로 본다 — flyFromSize 문서 참고.
+                Vector2 fromSize = flyFromSize.TryGetValue(c, out var sz) ? sz : new Vector2(FIELD_W, FIELD_H);
+                pending.Add(((RectTransform)go.transform, c, from, hit, fromSize));
+            }
+            else
+            {
+                GoStopFX.SetArtShadow(go, true); // 이번 리빌드에서 안 움직이는 정적 카드
+            }
+        }
+
+        if (!weighted)
+        {
+            foreach (var c in cards) MakeOne(c);
+            return;
+        }
+
+        var rowCards = new List<HwatuCard>();
+        int rowWeight = 0;
+
+        void FlushRow()
+        {
+            if (rowCards.Count == 0) return;
+            foreach (var c in rowCards) MakeOne(c);
+            int fillers = rowCards.Count(c => c.EffectivePiValue == 2);
+            for (int i = 0; i < fillers; i++)
+                new GameObject("PiWeightFiller", typeof(RectTransform)).transform.SetParent(zone, false);
+            rowCards.Clear();
+            rowWeight = 0;
+        }
+
+        foreach (var c in cards)
+        {
+            int w = c.EffectivePiValue == 2 ? 2 : 1;
+
+            if (rowWeight + w <= 5)
+            {
+                rowCards.Add(c);
+                rowWeight += w;
+            }
+            else // 수학적으로 rowWeight==4 && w==2인 경우뿐
+            {
+                var last = rowCards[rowCards.Count - 1];
+                if (last.EffectivePiValue != 2)
+                {
+                    rowCards.RemoveAt(rowCards.Count - 1); // 마지막 홑피를 빼고
+                    rowCards.Add(c);                        // 쌍피를 넣어 정확히 5
+                    rowWeight = 5;
+                    FlushRow();
+                    rowCards.Add(last);                     // 뺀 홑피로 다음 줄 시작
+                    rowWeight = 1;
+                }
+                else
+                {
+                    FlushRow();          // 스왑 불가 — 4로 못 채운 채 닫기
+                    rowCards.Add(c);
+                    rowWeight = w;
+                }
+                continue;
+            }
+
+            if (rowWeight == 5) FlushRow();
+        }
+        FlushRow();
+    }
+
+    void FlushPendingCapAnimations(RectTransform container, List<(RectTransform rt, HwatuCard card, Vector3 from, Vector3? hit, Vector2 fromSize)> pending)
+    {
+        if (pending.Count == 0) return;
+        LayoutRebuilder.ForceRebuildLayoutImmediate(container);
+        var capSize = new Vector2(CAP_W, CAP_H);
+        foreach (var (rt, card, from, hit, fromSize) in pending)
+        {
+            if (fromSize == capSize)
+            {
+                // 2026-09-04 — 다른 획득패에서 온 카드(피뺏기)는 원래도
+                // CAP_W/H 그대로라 크기 튠이 필요 없다 — 기존 방식 그대로.
+                if (hit.HasValue) StartCoroutine(SlamInViaField(rt, from, hit.Value));
+                else StartCoroutine(SlamIn(rt, from));
+            }
+            else
+            {
+                // 필드/손패/뒷면 등 다른 크기에서 온 카드 — SlamToCap 참고.
+                StartCoroutine(SlamToCap(rt, card, from, fromSize, hit));
+            }
+        }
+    }
+
+    /// <summary>2026-09-04 — "필드에있는게 뿅사라지고 캡에 들어갈 사이즈로
+    /// 뿅변하는게 이상해" 신고로 추가. <paramref name="rt"/>(획득패 자리에
+    /// 이미 만들어진 "진짜" 카드)는 <see cref="EnsureCapLayoutHierarchy"/>의
+    /// GridLayoutGroup 자식이라 sizeDelta를 직접 튠해도 다음 레이아웃
+    /// 패스마다 cellSize로 강제로 되돌아간다(그리드가 자식 크기·위치를
+    /// 전부 통제) — 그래서 진짜 오브젝트는 끝까지 숨겨 두고(CanvasGroup
+    /// alpha 0), 레이아웃 그룹 밖(ui.ContentArea)에 별도 고스트를 하나
+    /// 띄워 위치+크기를 동시에 자유롭게 보간한 뒤, 도착하면 고스트를
+    /// 지우고 진짜 카드를 그 순간 드러낸다 — 이미 정확히 같은 자리·같은
+    /// 크기라 이어붙는 지점에서 티가 안 난다.
+    /// <br/>레이아웃 리빌드(<see cref="LayoutRebuilder.ForceRebuildLayoutImmediate"/>)
+    /// 는 이 코루틴이 시작되기 전에 이미 끝나 있으므로(FlushPendingCapAnimations
+    /// 참고) <c>rt.position</c>은 이 시점에 이미 최종 확정값이다 — 매 프레임
+    /// 다시 읽을 필요 없이 한 번만 스냅샷해서 쓴다(그리드 자식이 날아다니는
+    /// 동안 다시 움직일 리 없다).</summary>
+    IEnumerator SlamToCap(RectTransform rt, HwatuCard card, Vector3 from, Vector2 fromSize, Vector3? hit)
+    {
+        if (rt == null) yield break;
+        var cg = rt.gameObject.GetComponent<CanvasGroup>();
+        if (cg == null) cg = rt.gameObject.AddComponent<CanvasGroup>();
+        cg.alpha = 0f;
+        cg.blocksRaycasts = false;
+        cg.interactable = false;
+
+        Vector3 to = rt.position;
+        Vector2 toSize = new Vector2(CAP_W, CAP_H);
+
+        var stableParent = ui != null ? ui.ContentArea : null;
+        if (stableParent == null) { cg.alpha = 1f; cg.blocksRaycasts = true; cg.interactable = true; yield break; }
+
+        var ghostGo = HwatuUI.MakeCard(card, stableParent, Vector2.zero, fromSize.x, fromSize.y, null, false);
+        var ghost = ghostGo.transform as RectTransform;
+        ghost.position = from;
+
+        if (hit.HasValue)
+        {
+            // 2단 경유(필드에서 짝을 실제로 친 자리를 거쳐 감) — 1구간(필드
+            // 안에서의 이동)은 출발·경유지 둘 다 필드 크기라 사이즈가 안
+            // 바뀐다. 2구간에서만 획득패 크기로 줄어든다.
+            float t1 = CaptureFlightDistanceT(Vector3.Distance(from, hit.Value));
+            yield return FlyAndPunchGhost(ghost, from, hit.Value, fromSize, fromSize,
+                Mathf.Lerp(0.09f, 0.30f, t1), Mathf.Lerp(0.10f, 0.16f, t1));
+            if (ghost == null) { if (rt != null) { cg.alpha = 1f; cg.blocksRaycasts = true; cg.interactable = true; } yield break; }
+
+            float t2 = CaptureFlightDistanceT(Vector3.Distance(hit.Value, to));
+            yield return FlyAndPunchGhost(ghost, hit.Value, to, fromSize, toSize,
+                Mathf.Lerp(0.14f, 0.34f, t2), Mathf.Lerp(0.16f, 0.22f, t2));
+        }
+        else
+        {
+            float t01 = CaptureFlightDistanceT(Vector3.Distance(from, to));
+            yield return FlyAndPunchGhost(ghost, from, to, fromSize, toSize,
+                Mathf.Lerp(0.11f, 0.38f, t01), Mathf.Lerp(0.14f, 0.22f, t01));
+        }
+
+        if (rt != null)
+        {
+            cg.alpha = 1f;
+            cg.blocksRaycasts = true;
+            cg.interactable = true;
+            GoStopFX.SetArtShadow(rt.gameObject, true);
+        }
+        if (ghost != null) Destroy(ghost.gameObject);
+    }
+
+    /// <summary><see cref="FlyAndPunch"/>와 같은 위치 이동+임팩트+펀치
+    /// 스케일이지만, 그 사이 <c>sizeDelta</c>도 <paramref name="fromSize"/>→
+    /// <paramref name="toSize"/>로 같이 보간한다 — 레이아웃 그룹의 통제를
+    /// 안 받는 고스트 전용이라 sizeDelta를 직접 건드려도 안전하다. 펀치
+    /// 배율(1.28)은 <see cref="FlyAndPunch"/>와 통일해서 같은 타격감을 낸다.</summary>
+    IEnumerator FlyAndPunchGhost(RectTransform ghost, Vector3 from, Vector3 to, Vector2 fromSize, Vector2 toSize, float flyDur, float punchDur)
+    {
+        Vector3 baseScale = ghost.localScale;
+
+        float t = 0f;
+        while (t < flyDur)
+        {
+            t += Time.deltaTime;
+            float p = 1f - Mathf.Pow(1f - Mathf.Clamp01(t / flyDur), 3f); // ease-out
+            if (ghost == null) yield break;
+            ghost.position = Vector3.Lerp(from, to, p);
+            ghost.sizeDelta = Vector2.Lerp(fromSize, toSize, p);
+            yield return null;
+        }
+        if (ghost == null) yield break;
+        ghost.position = to;
+        ghost.sizeDelta = toSize;
+        SpawnImpactFlash(ghost);
+
+        t = 0f;
+        while (t < punchDur)
+        {
+            t += Time.deltaTime;
+            float p = Mathf.Clamp01(t / punchDur);
+            float s = p < 0.4f ? Mathf.Lerp(1f, 1.28f, p / 0.4f) : Mathf.Lerp(1.28f, 1f, (p - 0.4f) / 0.6f);
+            if (ghost == null) yield break;
+            ghost.localScale = baseScale * s;
+            yield return null;
+        }
+        if (ghost != null) ghost.localScale = baseScale;
+    }
 
     void DrawPlayerCaptured()
     {
@@ -1308,78 +2115,17 @@ public partial class GoStop3PGame
         var ddi = cap.Where(c => c.EffectiveKind == HwatuKind.Ddi).OrderBy(c => c.month).ToList();
         var pi = cap.Where(c => c.EffectiveKind == HwatuKind.Pi).OrderBy(c => c.month).ToList();
 
-        // 2026-08-18: "Cap 영역 카드들이 외곽선과 겹친다, 여백을 줘야 한다"
-        // 요청 — 예전엔 baseline이 컨테이너 바닥에 정확히 닿아서(광/띠 줄
-        // 하단 여백 0) 카드가 테두리에 붙어 보였다. 위/아래 8px씩 안쪽으로 뺐다.
-        const float CAP_PAD = 8f;
-        float baseline = -(CAP_ROW_PITCH * 2f - CAP_H) + CAP_PAD;
-        // maxTopY — 이 존이 위로 올라갈 수 있는 한계(존이 소유한 세로 예산의
-        // 위쪽 끝). 광/피는 컨테이너 전체(두 줄 예산)를 혼자 쓰므로 컨테이너
-        // 상단(로컬 Y=0)에서 CAP_PAD만큼만 남기고, 띠/열끗은 같은 칸(-60)을
-        // 절반씩 나눠 쓰므로 서로의 경계(열끗 baseline)를 넘지 못한다.
-        DrawZone(gwang, -320f, baseline, -CAP_PAD);
-        DrawZone(ddi, -60f, baseline, baseline + CAP_ROW_PITCH - 4f);
-        DrawZone(yeol, -60f, baseline + CAP_ROW_PITCH, -CAP_PAD);
-        DrawZone(pi, 260f, baseline, -CAP_PAD, weighted: true); // 5장이 아니라 5피(쌍피=2) 기준으로 줄바꿈
-
-        void DrawZone(List<HwatuCard> cards, float centerX, float baselineY, float maxTopY, bool weighted = false)
-        {
-            var rows = HwatuUI.GroupIntoRows(cards, CAP_MAX_PER_ROW, weighted);
-            // 2026-08-24: "Cap 높이가 낮아져서 피가 3줄 이상이면 바깥으로
-            // 삐져나간다" 신고 — 줄 간격이 항상 고정(CAP_H+4)이라 이 존이
-            // 가진 세로 예산(maxTopY까지)을 넘는 줄 수가 되면 그대로
-            // 컨테이너 밖으로 넘쳤다. 자연 간격으로 다 못 채우는 경우에만
-            // 줄 간격을 좁혀(카드를 위아래로 살짝 겹쳐) 예산 안에 눌러
-            // 담는다 — 필드의 같은 달 카드를 부채처럼 겹쳐 쌓는 것과 같은
-            // 원리. 완전히 겹쳐 안 보이게 되는 것만 최소 간격으로 막는다.
-            const float normalStep = CAP_H + 4f;
-            float step = normalStep;
-            if (rows.Count > 1)
-            {
-                float naturalTop = baselineY + (rows.Count - 1) * normalStep;
-                if (naturalTop > maxTopY)
-                    step = Mathf.Max((maxTopY - baselineY) / (rows.Count - 1), CAP_H * 0.35f);
-            }
-            for (int row = 0; row < rows.Count; row++)
-            {
-                var rowCards = rows[row];
-                float rowWidth = (rowCards.Count - 1) * CAP_PITCH + CAP_W;
-                float y = baselineY + row * step;
-                for (int i = 0; i < rowCards.Count; i++)
-                {
-                    float x = centerX - rowWidth * 0.5f + CAP_W * 0.5f + i * CAP_PITCH;
-                    var go = HwatuUI.MakeCard(rowCards[i], playerCapArea, new Vector2(x, y), CAP_W, CAP_H, null, false);
-                    if (flyFrom.TryGetValue(rowCards[i], out var from))
-                    {
-                        if (flyViaField.TryGetValue(rowCards[i], out var hitPoint))
-                            StartCoroutine(SlamInViaField(go.transform as RectTransform, from, hitPoint));
-                        else
-                            StartCoroutine(SlamIn(go.transform as RectTransform, from));
-                    }
-                }
-            }
-        }
+        var zones = EnsureCapLayoutHierarchy(playerCapArea);
+        var pending = new List<(RectTransform, HwatuCard, Vector3, Vector3?, Vector2)>();
+        FillCapZone(zones.gwang, gwang, pending);
+        FillCapZone(zones.yeol, yeol, pending);
+        FillCapZone(zones.ddi, ddi, pending);
+        FillCapZone(zones.pi, pi, pending, weighted: true);
+        FlushPendingCapAnimations(playerCapArea, pending);
     }
 
-    /// <summary>상대(슬롯 1/3, 좌·우) 획득패. 2026-08-20 4차 정정 — 사용자가
-    /// 씬에 직접 참조용 GameObject 5개(광/띠·끗 그룹/끗/띠/피)를 배치해
-    /// 정확한 목표 구조를 지정해줬다: Cap 컨테이너(로컬 미회전 기준
-    /// 가로 400×세로 200)를 **가로로 3등분**(각 1/3 폭, 세로는 꽉 채움)
-    /// — 광 | 열끗+띠 그룹 | 피. 가운데 열끗+띠 그룹만 **세로로 반씩**
-    /// 나눠 위쪽에 끗, 아래쪽에 띠. 이전 시도들(세로로 쌓기, 폭만 늘리기)
-    /// 은 전부 "카드 스프레드 축=로컬X, 존 나열 축=로컬Y"였는데, 이번
-    /// 참조 구조는 정반대(존 나열=로컬X, 존 안에서의 카드 스프레드는
-    /// 여전히 로컬X이지만 존 폭 자체가 컨테이너의 1/3로 좁아짐, 로컬Y는
-    /// 존별 세로 버짓으로 쓰인다) — 좌표는 참조 오브젝트의 실측값을
-    /// 그대로 공식화했다(top-left 앵커 기준 값을 top-center 기준으로
-    /// 환산: centerX = topLeftX - capW/2).
-    /// <br/>
-    /// 존 폭·세로 버짓은 <b>컨테이너의 실제 sizeDelta에서 매번 다시
-    /// 계산</b>한다 — 하드코딩하면 사용자가 나중에 Cap1/Cap3 크기를 또
-    /// 바꿀 때마다 여기도 다시 고쳐야 한다. 좌측 -90도·우측 +90도(기존과
-    /// 동일) — 카드는 평소처럼(회전 안 걸린 것처럼) 그리면 부모 회전
-    /// 때문에 자동으로 돌아간 모습으로 보인다(<see cref="DrawCapZone"/>은
-    /// 이번에도 손 안 댔다).</summary>
+    /// <summary>상대(슬롯 1/2/3) 획득패 — 내 획득패와 완전히 같은 구조
+    /// (<see cref="EnsureCapLayoutHierarchy"/>)를 그대로 재사용한다.</summary>
     void DrawAiCaptured(int slot, int seat)
     {
         var cap = captured[seat];
@@ -1389,71 +2135,13 @@ public partial class GoStop3PGame
         var pi    = cap.Where(c => c.EffectiveKind == HwatuKind.Pi).OrderBy(c => c.month).ToList();
 
         var container = capAreaAI[slot];
-        float capW = container.sizeDelta.x;
-        float capH = container.sizeDelta.y;
-        float colW = capW / 3f;
-        const float CAP_PAD = 8f; // 상단 여백 — "카드가 외곽선과 겹친다" 요청
-
-        // 3열: 광(왼쪽,전체높이) | 열끗(가운데 위쪽 절반)+띠(가운데 아래쪽
-        // 절반) | 피(오른쪽,전체높이) — centerX는 참조 오브젝트 실측값을
-        // 일반화한 공식(±capW/3, 가운데 0).
-        // 2026-08-24: "피랑 광이 윗줄부터 차는데 아래줄부터 위로 차도록"
-        // 요청 — 전체 높이를 혼자 쓰는 광/피만 바닥 기준(bottomUp)으로
-        // 바꿨다. 열끗/띠는 가운데 칸을 위아래로 나눠 쓰는 별개의 배치라
-        // 요청 대상이 아니라 그대로 뒀다(열끗=위쪽 절반 상단고정, 띠=
-        // 아래쪽 절반 상단고정 — 내 획득패(DrawPlayerCaptured)의 광/피와
-        // 같은 방향으로 통일한 것이기도 하다).
-        // 버그 수정 — MakeCard는 카드를 "윗변" 기준(피벗 0.5,1)으로 놓으므로
-        // anchoredPosition.y는 카드의 윗변이지 아랫변이 아니다. 카드
-        // 아랫변이 바닥에서 CAP_PAD만큼 떨어지게 하려면 그 윗변(=y값)은
-        // 카드 높이(CAP_AI_H)만큼 더 위에 있어야 한다 — 이걸 빼먹어서
-        // "카드가 cap 밖에서부터 쌓인다"(카드 아랫부분이 컨테이너 바닥을
-        // 뚫고 나감) 버그가 났었다.
-        float bottomY = -capH + CAP_PAD + CAP_AI_H;
-        DrawCapZoneInBox(container, gwang, -colW, bottomY, colW, bottomUp: true);
-        DrawCapZoneInBox(container, yeol,  0f,    -CAP_PAD, colW);
-        DrawCapZoneInBox(container, ddi,   0f,    -capH * 0.5f - CAP_PAD, colW);
-        DrawCapZoneInBox(container, pi,    colW,  bottomY, colW, weighted: true, bottomUp: true);
-    }
-
-    /// <summary><see cref="DrawCapZone"/>의 얇은 래퍼 — 존 폭(<paramref
-    /// name="boxWidth"/>)에서 한 줄에 몇 장이 들어가는지(maxPerRow)를
-    /// 역산해서 넘긴다. 카드가 없으면 조용히 건너뛴다.</summary>
-    void DrawCapZoneInBox(RectTransform area, List<HwatuCard> cards, float centerX, float baselineY, float boxWidth, bool weighted = false, bool bottomUp = false)
-    {
-        if (cards.Count == 0) return;
-        int maxPerRow = 5;
-        float rowStep = CAP_AI_H + 3f;
-        DrawCapZone(area, cards, centerX, baselineY, rowStep, maxPerRow, weighted, bottomUp);
-    }
-
-    /// <summary>상대 획득패 한 존(광/열끗/띠/피 중 하나)을 그린다.
-    /// <paramref name="bottomUp"/>이 false(기본)면 위쪽 기준 정렬(<paramref
-    /// name="baselineY"/>가 0번째 줄, 아래로 줄이 늘어난다) — true면 그
-    /// 반대로 <paramref name="baselineY"/>가 바닥이고 위로 줄이 늘어난다.
-    /// <paramref name="weighted"/>가 true면 장수가 아니라 피 값(쌍피=2) 합으로
-    /// 줄바꿈한다("5장씩"이 아니라 "5피씩" 쌓여야 한다는 사용자 확인 규칙).</summary>
-    void DrawCapZone(RectTransform area, List<HwatuCard> cards, float centerX, float baselineY, float rowStep, int maxPerRow, bool weighted = false, bool bottomUp = false)
-    {
-        var rows = HwatuUI.GroupIntoRows(cards, maxPerRow, weighted);
-        for (int row = 0; row < rows.Count; row++)
-        {
-            var rowCards = rows[row];
-            float rowWidth = (rowCards.Count - 1) * CAP_AI_PITCH + CAP_AI_W;
-            float y = bottomUp ? baselineY + row * rowStep : baselineY - row * rowStep;
-            for (int i = 0; i < rowCards.Count; i++)
-            {
-                float x = centerX - rowWidth * 0.5f + CAP_AI_W * 0.5f + i * CAP_AI_PITCH;
-                var go = HwatuUI.MakeCard(rowCards[i], area, new Vector2(x, y), CAP_AI_W, CAP_AI_H, null, false);
-                if (flyFrom.TryGetValue(rowCards[i], out var from))
-                {
-                    if (flyViaField.TryGetValue(rowCards[i], out var hitPoint))
-                        StartCoroutine(SlamInViaField(go.transform as RectTransform, from, hitPoint));
-                    else
-                        StartCoroutine(SlamIn(go.transform as RectTransform, from));
-                }
-            }
-        }
+        var zones = EnsureCapLayoutHierarchy(container);
+        var pending = new List<(RectTransform, HwatuCard, Vector3, Vector3?, Vector2)>();
+        FillCapZone(zones.gwang, gwang, pending);
+        FillCapZone(zones.yeol, yeol, pending);
+        FillCapZone(zones.ddi, ddi, pending);
+        FillCapZone(zones.pi, pi, pending, weighted: true);
+        FlushPendingCapAnimations(container, pending);
     }
 
     void DrawPlayerHand()
@@ -1461,19 +2149,48 @@ public partial class GoStop3PGame
         bool showBombSkip = bombCredits[PLAYER_SEAT] > 0 && state == State.Turn && currentSeat == PLAYER_SEAT;
         var h = hand[PLAYER_SEAT];
         int n = h.Count + (showBombSkip ? 1 : 0);
-        float total = n * (HAND_W + 6f) - 6f;
+        // 2026-09-05(사용자 확인) — 맞고(SEATS==2)는 손패가 10장까지
+        // 나와서 고정 간격(HAND_W+6, 3~4인 고스톱의 7장 기준으로 맞춘
+        // 값)으로는 handArea 폭을 넘친다. 상대 뒷패 렌더링(backArea
+        // 루프)과 같은 원칙 — 넉넉하면 원래 간격 그대로, 부족할 때만
+        // 겹치게 좁힌다. 카드 자체 크기(HAND_W)는 그대로 둬서 가독성이
+        // 안 깨진다.
+        // handArea는 좌우 스트레치 앵커라 sizeDelta.x가 실제 폭이 아니다
+        // (음수로 나올 수도 있다 — 이번에 실측으로 확인) — 실제 렌더 폭은
+        // 항상 rect.width로 읽어야 한다.
+        float pitch = HAND_W + 6f;
+        if (n > 1) pitch = Mathf.Min(pitch, Mathf.Max((handArea.rect.width - HAND_W) / (n - 1), 1f));
+        float total = (n - 1) * pitch + HAND_W;
 
         for (int i = 0; i < h.Count; i++)
         {
             var card = h[i];
-            float x = -total * 0.5f + HAND_W * 0.5f + i * (HAND_W + 6f);
-            bool playable = state == State.Turn && currentSeat == PLAYER_SEAT && field.Any(f => f.month == card.month);
-            // 2026-08-18: "하이라이트 크기가 패랑 안 맞는다"는 신고 — 손패
-            // 카드가 107×174로 커진 만큼 하이라이트도 다시 맞췄다(114×183,
-            // posY=4, 사용자 확인 값).
-            var go = HwatuUI.MakeCard(card, handArea, new Vector2(x, 0f), HAND_W, HAND_H,
-                () => OnPlayerPlay(card), playable,
-                highlightSize: new Vector2(114f, 183f), highlightOffset: new Vector2(0f, 4f));
+            float x = -total * 0.5f + HAND_W * 0.5f + i * pitch;
+            bool myTurnNow = state == State.Turn && currentSeat == PLAYER_SEAT;
+            bool playable = myTurnNow && field.Any(f => f.month == card.month);
+            // 2026-08-27(목업 참고, 사용자 확인) — 목업(PlaceHand)은 강조할
+            // 카드를 위로 34px 띄워서 표시한다. 기존 골드 링 강조는 그대로
+            // 두고(둘 다 있는 게 더 눈에 띈다는 판단), 여기에 "낼 수 있는
+            // 패는 위로 뜬다"를 더한다 — 링(highlightOffset)은 이 pos를
+            // 그대로 이어받아 계산되므로(HwatuUI.MakeCard 참고) 카드와 함께
+            // 자동으로 따라 올라간다.
+            // 2026-09-06(사용자 확인) — "내 턴이 돌아왔을 때 낼 차례라는
+            // 느낌이 약하다" — 내 턴이 아닐 땐 손패 전체를 -50px 내려서
+            // "지금은 못 낸다"는 느낌을 주고, 내 턴이 되는 순간 0으로
+            // 복귀시킨다. playable(카드별 +34 강조)은 정의상 내 턴일 때만
+            // true이므로(위 myTurnNow 조건 포함) 두 오프셋이 겹칠 일이 없다
+            // — 내 턴이 아니면 항상 -50, 내 턴이면 기존 그대로(0 또는 34).
+            float y = !myTurnNow ? -50f : (playable ? 34f : 0f);
+            // 2026-09-01: 하이라이트가 CardFront 프리팹 내부의 Highlight
+            // 자식(스트레치 앵커)으로 바뀌면서 카드 크기에 자동으로 맞춰져,
+            // 손패 전용 크기를 따로 안 넘겨도 된다.
+            // 2026-09-02(사용자 확인) — 손패를 handArea 바닥에 붙이고 싶어서
+            // anchor/pivot을 (0.5,0)(bottom)으로 바꿨다. 카드 자체가 아래쪽
+            // 기준으로 자라 올라가므로, playable일 때 y=34로 올리는 이 "위로
+            // 뜬다" 연출은 그대로 유지된다(카드 바닥이 handArea 바닥에서
+            // 34px 뜬다는 뜻으로 자연스럽게 재해석된다).
+            var go = HwatuUI.MakeCard(card, handArea, new Vector2(x, y), HAND_W, HAND_H,
+                () => OnPlayerPlay(card), playable, pivotBottom: true);
 
             // 폭탄/흔들기/굳은자 가능 표시 — 카드 자체는 안 건드리고 작은
             // 아이콘을 모서리에 얹는다. 셋 다 손패 안에서만 조건이 갈리므로
@@ -1524,7 +2241,7 @@ public partial class GoStop3PGame
 
         if (showBombSkip)
         {
-            float x = -total * 0.5f + HAND_W * 0.5f + h.Count * (HAND_W + 6f);
+            float x = -total * 0.5f + HAND_W * 0.5f + h.Count * pitch;
             MakeBombSkipSlot(new Vector2(x, 0f));
         }
     }
@@ -1534,8 +2251,13 @@ public partial class GoStop3PGame
         var go = new GameObject("BombSkip", typeof(RectTransform));
         go.transform.SetParent(handArea, false);
         var rt = go.GetComponent<RectTransform>();
-        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 1f);
-        rt.pivot = new Vector2(0.5f, 1f);
+        // 2026-09-02(사용자 확인) — 손패 카드들이 이제 bottom-pivot으로 바닥에
+        // 붙는다(MakeCard pivotBottom, DrawPlayerHand 참고). 이 슬롯은
+        // MakeCard를 안 쓰는 별도 오브젝트라 여기서도 똑같이 맞춰야
+        // 나머지 손패와 세로로 어긋나지 않는다 — 자식(라벨 등)의 상대
+        // 좌표는 go 자신의 로컬 좌표계라 이 변경과 무관하게 그대로 둔다.
+        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0f);
+        rt.pivot = new Vector2(0.5f, 0f);
         rt.sizeDelta = new Vector2(HAND_W, HAND_H);
         rt.anchoredPosition = pos;
 
@@ -1558,7 +2280,7 @@ public partial class GoStop3PGame
         capLabel.text = "덱만";
         var numLabel = HwatuUI.MakeLabel(go.transform, new Vector2(0f, -HAND_H * 0.5f - 2f), new Vector2(HAND_W - 8f, 56f), 30f, Color.white);
         numLabel.text = bombCredits[PLAYER_SEAT].ToString();
-        numLabel.fontStyle = FontStyles.Bold;
+        numLabel.font = HwatuTheme.FontBold;
 
         var btn = go.AddComponent<Button>();
         btn.targetGraphic = frame;
@@ -1615,31 +2337,56 @@ public partial class GoStop3PGame
     // ── 연출 ─────────────────────────────────────────────
     /// <summary>출발 월드 좌표에서 최종 자리까지 짧게 이동한 뒤 살짝 부풀었다
     /// 줄어드는 펀치 스케일 — 짝을 안 맞추고 그냥 필드에 놓이는 카드
-    /// (매칭 없음)에 쓰는 1단 연출.</summary>
+    /// (매칭 없음)에 쓰는 1단 연출. 목적지는 rt 자기 자신(이미 최종 부모
+    /// 밑에 배치돼 있다 — pos 슬롯 마커 또는 Cap zone)을 타겟으로 매 프레임
+    /// 실시간으로 추적한다("moveTo 포지션이 아니라 타겟의 transform 위치로
+    /// 이동" 요청 참고 — 예전엔 rt.position을 코루틴 시작 시점에 한 번
+    /// 스냅샷 떠서 고정 Vector3로 이동했다).</summary>
+    // 2026-09-02(사용자 확인) — "패를 내고 들어올 때 어느 유저가 냈고
+    // 어느 유저가 가져가는지 잘 안 보인다, 순간적으로 뿅 없어지는
+    // 느낌"이라는 신고 — SlamIn이 필드↔획득패 사이의 캡처 비행에도
+    // 쓰이는데, 그 거리(실측 600~1400px, 화면을 거의 가로지른다)에
+    // 고정 0.11초는 너무 짧아 눈이 못 따라간다. 반면 필드 내부의 아주
+    // 짧은 보정용 SlamIn(거의 안 걸림, 걸려도 몇십 px)은 지금 속도가
+    // 이미 자연스럽다는 확인을 받았으므로 그대로 둔다 — 거리에 따라
+    // 지속시간을 자동으로 늘리면 두 상황을 하나의 함수로 같이 만족시킬
+    // 수 있다(짧으면 스냅, 길면 눈으로 좇을 수 있게).
+    static float CaptureFlightDistanceT(float dist) => Mathf.Clamp01(dist / 500f);
+
     IEnumerator SlamIn(RectTransform rt, Vector3 fromWorld)
     {
         if (rt == null) yield break;
-        yield return FlyAndPunch(rt, fromWorld, rt.position, 0.11f, 0.14f);
+        float t01 = CaptureFlightDistanceT(Vector3.Distance(fromWorld, rt.position));
+        float flyDur = Mathf.Lerp(0.11f, 0.38f, t01);
+        float punchDur = Mathf.Lerp(0.14f, 0.22f, t01);
+        yield return FlyAndPunch(rt, fromWorld, rt, flyDur, punchDur);
     }
 
     /// <summary>필드의 짝을 실제로 쳐서 맞추는 2단 연출 — 손/더미에서 <b>맞은
     /// 필드패 자리까지</b> 먼저 날아가 딱 맞고 튕긴 다음(1구간), 거기서 다시
     /// 최종 획득패 자리까지 날아간다(2구간). "cap으로 즉시 들어오는 느낌이라
-    /// 어색하다"는 신고로 도입 — 카드가 어디서 왔는지 눈으로 따라갈 수 있다.</summary>
+    /// 어색하다"는 신고로 도입 — 카드가 어디서 왔는지 눈으로 따라갈 수 있다.
+    /// <paramref name="hitWorld"/>(1구간 경유지)는 캡처 직전 사라질 필드패의
+    /// 스냅샷 지점이라 살아있는 Transform이 없다 — 여기만 예외적으로 Vector3
+    /// 그대로 쓴다. 최종 목적지(2구간)는 SlamIn과 같은 이유로 rt 자기
+    /// 자신을 타겟으로 매 프레임 추적한다.</summary>
     IEnumerator SlamInViaField(RectTransform rt, Vector3 fromWorld, Vector3 hitWorld)
     {
         if (rt == null) yield break;
-        Vector3 toWorld = rt.position;
 
-        yield return FlyAndPunch(rt, fromWorld, hitWorld, 0.09f, 0.10f);
+        // 2026-09-02 — SlamIn과 같은 이유로 각 구간을 거리에 맞춰 늘린다.
+        float t1 = CaptureFlightDistanceT(Vector3.Distance(fromWorld, hitWorld));
+        yield return FlyAndPunch(rt, fromWorld, hitWorld, Mathf.Lerp(0.09f, 0.30f, t1), Mathf.Lerp(0.10f, 0.16f, t1));
         if (rt == null) yield break;
 
-        yield return FlyAndPunch(rt, hitWorld, toWorld, 0.14f, 0.16f);
+        float t2 = CaptureFlightDistanceT(Vector3.Distance(hitWorld, rt.position));
+        yield return FlyAndPunch(rt, hitWorld, rt, Mathf.Lerp(0.14f, 0.34f, t2), Mathf.Lerp(0.16f, 0.22f, t2));
     }
 
-    /// <summary>이동(감속) + 도착 시 임팩트 플래시 + 펀치 스케일. SlamIn 계열이
-    /// 공유하는 한 구간 — 기존 SlamIn의 이동/펀치 곡선을 그대로 뽑아냈다
-    /// (2인판과 달리 baseScale을 기준으로 삼는 이 파일의 관례를 유지).</summary>
+    /// <summary>이동(감속) + 도착 시 임팩트 플래시 + 펀치 스케일 — 목적지가
+    /// 정적 스냅샷(Vector3)인 경우 전용. 캡처 직전 사라지는 필드패 자리처럼
+    /// 살아있는 Transform이 없는 경유지에서만 쓴다. 살아있는 목적지가 있으면
+    /// 아래 RectTransform 오버로드를 쓸 것.</summary>
     IEnumerator FlyAndPunch(RectTransform rt, Vector3 from, Vector3 to, float flyDur, float punchDur)
     {
         Vector3 baseScale = rt.localScale;
@@ -1667,7 +2414,51 @@ public partial class GoStop3PGame
             rt.localScale = baseScale * s;
             yield return null;
         }
-        if (rt != null) rt.localScale = baseScale;
+        if (rt != null)
+        {
+            rt.localScale = baseScale;
+            GoStopFX.SetArtShadow(rt.gameObject, true); // 착지 애니메이션 완료 — 이제 "놓임" 그림자 표시
+        }
+    }
+
+    /// <summary>이동(감속) + 도착 시 임팩트 플래시 + 펀치 스케일 — 목적지가
+    /// 살아있는 Transform인 경우("moveTo 포지션 대신 타겟의 transform
+    /// 위치로 이동" 요청). 매 프레임 <paramref name="target"/>.position을
+    /// 다시 읽으므로 애니메이션이 도는 동안 그 값이 바뀌어도(이 프로젝트의
+    /// pos1~12는 실제로는 고정이라 안 바뀌지만) 항상 최신 위치에 정확히
+    /// 도착한다.</summary>
+    IEnumerator FlyAndPunch(RectTransform rt, Vector3 from, RectTransform target, float flyDur, float punchDur)
+    {
+        Vector3 baseScale = rt.localScale;
+
+        float t = 0f;
+        while (t < flyDur)
+        {
+            t += Time.deltaTime;
+            float p = 1f - Mathf.Pow(1f - Mathf.Clamp01(t / flyDur), 3f); // ease-out
+            if (rt == null || target == null) yield break;
+            rt.position = Vector3.Lerp(from, target.position, p);
+            yield return null;
+        }
+        if (rt == null || target == null) yield break;
+        rt.position = target.position;
+        SpawnImpactFlash(rt);
+
+        t = 0f;
+        while (t < punchDur)
+        {
+            t += Time.deltaTime;
+            float p = Mathf.Clamp01(t / punchDur);
+            float s = p < 0.4f ? Mathf.Lerp(1f, 1.28f, p / 0.4f) : Mathf.Lerp(1.28f, 1f, (p - 0.4f) / 0.6f);
+            if (rt == null) yield break;
+            rt.localScale = baseScale * s;
+            yield return null;
+        }
+        if (rt != null)
+        {
+            rt.localScale = baseScale;
+            GoStopFX.SetArtShadow(rt.gameObject, true); // 착지 애니메이션 완료 — 이제 "놓임" 그림자 표시
+        }
     }
 
     // ── 2026-08-23: 카드 애니메이션 시퀀스 재설계 ──────────────
@@ -1678,41 +2469,50 @@ public partial class GoStop3PGame
     // 여기 추가된 건 그 전에 잠깐 보여주는 "고스트"(임시 GameObject)뿐이라
     // 캡처·점수·피 뺏기 등 실제 판정 로직은 전혀 안 건드린다.
 
-    /// <summary>월(1~12) 하나가 필드에서 차지하는 그리드 슬롯의 fieldArea
-    /// 로컬 좌표 — DrawField가 실제 카드를 그릴 때 쓰는 것과 완전히 같은
-    /// 공식이다(그 카드가 지금 필드에 있든 없든, 매칭됐든 안 됐든 이 슬롯은
-    /// 항상 같다 — 매칭되는 카드도 안 되는 카드도 결국 같은 월이면 같은
-    /// 자리에 앉으므로 고스트 착지 지점을 이 공식 하나로 통일할 수 있다).</summary>
-    Vector2 FieldSlotLocalPos(int month)
+
+    /// <summary>슬램다운 고스트 카드 — pos 슬롯 마커처럼 "앞으로도 살아있을"
+    /// 대상에 붙일 때 쓴다. 도착 타겟의 <b>자식으로 직접 attach</b>한다
+    /// (부모 자신이 타겟이므로 자동으로 그 위치가 된다. DrawField가 실제
+    /// 카드를 붙이는 방식과 완전히 동일해서 고스트→실카드 인계가 어긋날
+    /// 수 없다). 실제 클릭은 안 받는 순수 연출용이라 onClick은 항상 null.
+    /// <br/>
+    /// 2026-09-02: 이 슬롯에 이미 카드가 있으면(AssignFieldSlot의 같은 달
+    /// 그룹핑으로 합류하는 경우 — 단, "이 카드가 무엇과 매칭됐는지"까지는
+    /// 몰라도 된다, target.childCount로 충분) DrawField가 나중에 그릴
+    /// FIELD_STACK_OFFSET 간격을 미리 반영한다 — 안 그러면 고스트가 항상
+    /// (0,0)에 등장해 기존 카드와 완전히 겹친 채 도착한 뒤에야 갑자기
+    /// 옆으로 밀려나는 것처럼 보인다("해당 pos에 이미 카드가 있다면
+    /// FIELD_STACK_OFFSET 적용된 포지션이면 딱 맞을듯" 요청).</summary>
+    // 2026-09-02 버그 수정 — "손패는 안 깜빡이는데 뒷패만 깜빡인다"는 신고로
+    // 발견. 뒷패 고스트는 "② 뒷패 슬램다운" 단계에서 pos 슬롯의 자식으로
+    // 착지한 뒤에도, 자기 차례(GoStopRules.Resolve(drawn, field) 호출 +
+    // 그 결과를 그리는 RebuildUI)가 오기 전에 "④ 손패 결과 배치" 단계의
+    // RebuildUI가 먼저 한 번 낀다 — 그 RebuildUI 맨 앞의 ClearFieldPosSlots()
+    // 가 pos 슬롯 자식을 통째로(뒷패 고스트까지 포함해서) 지워버려서, 아직
+    // 자기 차례도 안 왔는데 뒷패가 조기에 사라졌다가 한참 뒤(다음 몇 번의
+    // WaitForSeconds/선택 팝업을 지나) 실제 카드로 다시 나타났다 — 손패
+    // 고스트는 자기 것을 지우는 DestroyGhosts 호출이 항상 "④"의 바로 그
+    // RebuildUI 직전이라 이 문제가 안 생겼다(이미 없어진 뒤라 지울 게
+    // 없다). GhostMarker로 표시해서 ClearFieldPosSlots가 "아직 살아있어야
+    // 하는 고스트"는 건너뛰게 한다.
+    sealed class GhostMarker : MonoBehaviour { }
+
+    GameObject SpawnGhostCard(HwatuCard card, RectTransform target)
     {
-        float fieldRowH = FIELD_H + 10f;
-        int slotIdx = Mathf.Clamp(month - 1, 0, FIELD_COLS * 2 - 1);
-        int col = slotIdx % FIELD_COLS;
-        int row = slotIdx / FIELD_COLS;
-        float slotX = -FIELD_COL_PITCH * (FIELD_COLS - 1) * 0.5f + col * FIELD_COL_PITCH;
-        float slotY = -row * fieldRowH;
-        return new Vector2(slotX, slotY);
+        int existing = target.childCount;
+        float step = FieldStackStep(existing + 1); // +1 — 이 카드까지 포함한 최종 장수 기준(DrawField와 같은 규칙)
+        var offset = new Vector2(existing * step, -existing * step);
+        var go = HwatuUI.MakeCard(card, target, offset, FIELD_W, FIELD_H, null, false);
+        go.AddComponent<GhostMarker>();
+        return go;
     }
 
-    Vector3 FieldSlotWorldPos(int month) => fieldArea.TransformPoint(FieldSlotLocalPos(month));
-
-    /// <summary>슬램다운 고스트 카드를 만든다 — ContentArea(안 지워지는 안정된
-    /// 부모)에 최종 착지 위치로 바로 놓는다. 실제 클릭은 안 받는 순수
-    /// 연출용이라 onClick은 항상 null.</summary>
-    // 2026-08-24 버그 수정 — "슬램다운 착지지점이 실제 카드 위치와 많이
-    // 차이난다" 신고로 발견: `InverseTransformPoint`로 구한 로컬 좌표를
-    // 그대로 `anchoredPosition`에 대입하면, 카드(HwatuUI.MakeCard, 앵커/
-    // 피벗 항상 (0.5,1) 상단중앙)의 앵커가 부모(ContentArea, 피벗 (0.5,0.5)
-    // 중앙)의 피벗과 다를 때 어긋난다 — anchoredPosition은 "부모 rect 위의
-    // 앵커 기준점"에서 잰 값인데, InverseTransformPoint는 "부모 Transform의
-    // 피벗"에서 잰 값이라 둘이 다른 기준점이다. 실측으로 확인된 어긋남은
-    // Y축으로 정확히 540px(ContentArea 높이 1080 × (카드앵커.y 1.0 −
-    // ContentArea피벗.y 0.5)) — 고스트가 항상 의도한 자리보다 540px 위에
-    // 떨어졌다. 이 프로젝트의 다른 모든 "월드 좌표로 정확히 놓기" 헬퍼
-    // (GoStopFX.FlyMoney/FlyDealCard, SlamDown/SlamIn 등)는 전부 앵커
-    // 수학을 거치지 않고 생성 직후 `rt.position = worldPos`를 직접
-    // 대입하는 방식을 쓴다 — 여기도 그 방식으로 통일해서, 부모/카드의
-    // 피벗이 무엇이든 항상 정확히 그 월드 좌표에 놓이게 했다.
+    /// <summary>슬램다운 고스트 카드 — 2026-09-02: 매칭된 필드 카드처럼 곧
+    /// 파괴될(RebuildUI가 지울) 대상의 "이미 렌더링된 정확한 자리"에 놓을
+    /// 때 쓴다. 그 자리는 실측 스냅샷(Vector3)일 수밖에 없다 — 살아있는
+    /// Transform에 붙이면 그 오브젝트가 파괴되는 순간 고스트까지 같이
+    /// 사라진다. ContentArea(안 지워지는 안정된 부모)에 만들고 그 좌표로
+    /// 바로 놓는다.</summary>
     GameObject SpawnGhostCard(HwatuCard card, Vector3 worldLandingPos)
     {
         var go = HwatuUI.MakeCard(card, ui.ContentArea, Vector2.zero, FIELD_W, FIELD_H, null, false);
@@ -1720,25 +2520,55 @@ public partial class GoStop3PGame
         return go;
     }
 
-    static void DestroyGhost(GameObject go) { if (go != null) Destroy(go); }
+    // 2026-09-02 버그 수정 — "매칭 안 되는 패가 빈 슬롯에 놓일 때 깜빡인다"는
+    // 재신고로 발견. Destroy()는 실제 제거가 그 프레임 끝까지 미뤄지는데,
+    // 이 함수를 부른 직후(같은 프레임 안, yield 없이) RebuildUI()가 곧장
+    // "진짜" 카드를 같은 pos 슬롯의 자식으로 새로 만드는 호출부가 여러 곳
+    // 있다 — 그러면 그 한 프레임 동안 죽어가는 고스트와 새 카드가 같은
+    // 자리에 동시에 존재해서 겹쳐 그려진다(매칭된 카드는 필드를 아예
+    // 떠나 Cap으로 이동하므로 이 문제가 없다 — 그 자리에 아무것도 새로
+    // 안 생기니까. 매칭 안 된 카드만 "그 자리에 새 카드가 또 생기는"
+    // 경우라 여기서만 증상이 났다). DestroyImmediate로 그 자리에서 바로
+    // 제거해 겹치는 프레임 자체를 없앤다.
+    static void DestroyGhost(GameObject go) { if (go != null) DestroyImmediate(go); }
     static void DestroyGhosts(List<GameObject> list)
     {
         if (list == null) return;
         foreach (var g in list) DestroyGhost(g);
     }
 
-    /// <summary>"공중에서 내려치는" 슬램 모션 — 기존 SlamIn(좌우/사선 이동,
-    /// ease-out)과 의도적으로 다르게 만들었다. 착지 지점 위쪽에서 시작해
-    /// ease-in(가속)으로 빠르게 떨어뜨린 뒤 충격 플래시 + 펀치 스케일로
-    /// 마무리한다 — "카드를 탁 내려놓는다"는 손맛을 노린 것. rt.position이
-    /// 이미 최종 착지 좌표로 설정돼 있어야 한다(SpawnGhostCard가 그렇게
-    /// 만든다) — 그 자리를 기준으로 위쪽 시작점을 역산한다.</summary>
-    IEnumerator SlamDown(RectTransform rt, float dropHeight = 170f, float dropDur = 0.10f, float punchDur = 0.12f)
+    /// <summary>2026-09-04(사용자 확인 — "쪼는 맛, 호쾌한 맛, 힘없이 실망한
+    /// 느낌이 들게, 패를 낼 때마다/뒷패를 깔 때마다 유저 심리가 들어가면
+    /// 좋겠다") — 착지 결과에 따라 <see cref="SlamDown"/>의 완급을 정해준다.
+    /// 폭탄("쎄게")·뻑 형성("힘없이")은 이미 각자 전용 프리셋을 직접
+    /// 부르고 있어 이 함수를 안 거친다 — 나머지 모든 착지(①손패 슬램·
+    /// ②뒷패 슬램·덱만 넘기는 턴)가 이걸로 통일된다. 못 먹으면(그냥
+    /// 필드에 놓임) 낮고 느리고 거의 안 튕기는 김빠진 낙하, 먹으면 높고
+    /// 빠르고 크게 튕기는 호쾌한 낙하, 이미 3장 쌓인 자리를 마저 먹으면
+    /// (뻑 먹기 등 4장을 한 번에 쓸어가는 순간) 그보다 한 단계 더 세게.</summary>
+    (float dropHeight, float dropDur, float punchDur, float punchScale) LandingMood(bool willCapture, bool bigCapture)
+    {
+        if (bigCapture) return (220f, 0.07f, 0.14f, 1.38f);   // 호쾌 — 왕창 쓸어감
+        if (willCapture) return (190f, 0.085f, 0.13f, 1.30f); // 호쾌 — 평범한 캡처
+        return (95f, 0.13f, 0.09f, 1.08f);                     // 힘없이 — 아무것도 못 먹고 그냥 놓임
+    }
+
+    /// <summary>"공중에서 내려치는" 슬램 모션 — 목적지가 정적 스냅샷(Vector3)인
+    /// 경우 전용(예: 매칭된 필드 카드의 이미 렌더링된 자리 — 그 오브젝트는
+    /// 곧 파괴될 예정이라 살아있는 Transform을 못 쓴다). 착지 지점 위쪽에서
+    /// 시작해 ease-in(가속)으로 빠르게 떨어뜨린 뒤 충격 플래시 + 펀치
+    /// 스케일로 마무리한다 — "카드를 탁 내려놓는다"는 손맛을 노린 것.</summary>
+    // 2026-09-02(사용자 확인) — "이펙트가 나오는 특수한 상황에서는 다들
+    // 같은 속도감으로 흘러가서 긴장감이 안 산다, 쎄게 내려친다던지 뻑났을
+    // 땐 힘없이 내려놓는다던지" 요청으로 punchScale을 노출한다 — 기본값
+    // 1.22f는 기존 동작 그대로라 이 값을 안 넘기는 모든 호출부(일반
+    // 매칭 등)는 전혀 안 바뀐다. 폭탄처럼 "쎄게"는 이 값을 키우고,
+    // 뻑 형성처럼 "힘없이"는 1.0에 가깝게 낮춰서 부른다.
+    IEnumerator SlamDown(RectTransform rt, Vector3 landing, float dropHeight = 170f, float dropDur = 0.10f, float punchDur = 0.12f, float punchScale = 1.22f)
     {
         if (rt == null) yield break;
-        Vector3 landing = rt.position;
-        Vector3 start = landing + new Vector3(0f, dropHeight, 0f);
         Vector3 baseScale = rt.localScale;
+        Vector3 start = landing + new Vector3(0f, dropHeight, 0f);
         rt.position = start;
 
         float t = 0f;
@@ -1759,7 +2589,173 @@ public partial class GoStop3PGame
         {
             t += Time.deltaTime;
             float p = Mathf.Clamp01(t / punchDur);
-            float s = p < 0.4f ? Mathf.Lerp(1f, 1.22f, p / 0.4f) : Mathf.Lerp(1.22f, 1f, (p - 0.4f) / 0.6f);
+            float s = p < 0.4f ? Mathf.Lerp(1f, punchScale, p / 0.4f) : Mathf.Lerp(punchScale, 1f, (p - 0.4f) / 0.6f);
+            if (rt == null) yield break;
+            rt.localScale = baseScale * s;
+            yield return null;
+        }
+        if (rt != null) rt.localScale = baseScale;
+    }
+
+    /// <summary>2026-09-04(사용자 확인 — "뒷패가 까질 때 DrawPile 뭉치에서
+    /// cardback 하나가 뒤집어져서 나오는 느낌이 약하다") — <paramref
+    /// name="rt"/>(이미 앞면으로 렌더링돼 있는 고스트) 바로 위에 카드
+    /// 뒷면 이미지를 겹쳐 놓고, 잠깐 그대로 보여준 뒤 세로 높이만 0으로
+    /// 줄여 사라지게 한다("좌우로 접히니 뒷면 이미지랑 겹쳐 보인다,
+    /// 상하로 접히게 해달라"는 2차 수정 — 세로로 접히듯 얇아지며 사라지면
+    /// 그 밑에 이미 있던 앞면(rt)이 "뒤집혀서 드러난" 것처럼 보인다).
+    /// rt 자신의 스프라이트를 바꿀 필요가 없어서(그러면 이 뒤에 이어지는
+    /// 착지 로직이 어떤 카드가 진짜인지 헷갈릴 위험이 있다) 덧대는 방식을
+    /// 택했다. 뒷면은 rt와 같은 부모(pos 슬롯)의 자식이라, rt가 도중에
+    /// 파괴되면(예: 판이 갑자기 끝나는 등) 뒷면도 계층 구조를 따라
+    /// 자동으로 같이 사라진다. 호출 시점의 <c>rt.position</c>이 곧 이
+    /// 연출이 벌어지는 자리다 — <see cref="SlamDown"/>이 이 함수를 부르기
+    /// 전에 <c>rt.position</c>을 DrawPile 위로 옮겨두므로(2차 수정, 아래
+    /// 참고) 결과적으로 더미 위에서 뒤집힌다.</summary>
+    IEnumerator FlipRevealBack(RectTransform rt)
+    {
+        if (rt == null) yield break;
+        var back = HwatuUI.MakeCardBack(rt.parent, rt.anchoredPosition, rt.sizeDelta.x, rt.sizeDelta.y);
+        back.SetAsLastSibling(); // rt(앞면) 바로 위에 그려지도록 보장
+
+        yield return new WaitForSeconds(0.08f); // "뒷면이 나왔다"를 눈에 담을 짧은 틈
+        if (back == null) yield break;
+
+        // 2026-09-04 3차 수정(사용자 확인 — "너무 빠르게 애니메이팅돼서
+        // 그냥 패만 끊겨 보인다, 속도를 줄여달라") — 0.12초 선형 보간은
+        // 프레임 몇 개 만에 끝나 접히는 과정 자체가 안 보이고 순간적으로
+        // 컷된 것처럼 보였다. 0.24초로 늘리고, 시작·끝이 부드러운
+        // smoothstep 곡선을 써서(선형이면 등속이라 여전히 뚝뚝 끊겨
+        // 보인다) 실제로 접히는 움직임이 눈에 들어오게 했다.
+        const float flipDur = 0.24f;
+        Vector3 baseScale = back.localScale;
+        float t = 0f;
+        while (t < flipDur)
+        {
+            t += Time.deltaTime;
+            float linear = Mathf.Clamp01(t / flipDur);
+            float p = linear * linear * (3f - 2f * linear); // smoothstep
+            if (back == null) yield break;
+            // 2026-09-04 2차 수정(사용자 확인) — "좌우로 접히니 뒷면 이미지랑
+            // 겹쳐 보인다, 상하로 접히게 해달라" — x축 대신 y축을 줄인다
+            // (가로 폭은 그대로 두고 세로만 접히듯 얇아진다).
+            back.localScale = new Vector3(baseScale.x, baseScale.y * (1f - p), baseScale.z);
+            yield return null;
+        }
+        if (back != null) Destroy(back.gameObject);
+    }
+
+    /// <summary>"공중에서 내려치는" 슬램 모션 — 목적지가 살아있는 Transform인
+    /// 경우 전용(pos 슬롯 마커처럼 앞으로도 유지되는 대상). <paramref
+    /// name="target"/>의 position을 매 프레임 다시 읽는다("moveTo 포지션이
+    /// 아니라 타겟의 transform 위치로 이동" 요청).
+    /// <br/>
+    /// <b>함정 — 카드 피벗(top-center 0.5,1)과 pos 마커 피벗(center
+    /// 0.5,0.5)이 다르다.</b> target.position을 그대로 착지 지점으로 쓰면
+    /// 카드가 반 장 높이만큼 아래로 처진다(실측으로 확인 — pos 슬롯은
+    /// sizeDelta=(120,196)/pivot=(0.5,0.5)인데 카드는 pivot=(0.5,1)이라,
+    /// "카드의 top-center를 마커의 center에 맞추는" 셈이 돼서 카드 전체가
+    /// 절반만큼 아래로 밀린다). rt는 SpawnGhostCard가 이미 anchoredPosition
+    /// 기준으로 target 밑에 정확히 배치해 뒀으므로, 생성 직후의 실제
+    /// 오프셋(anchorOffset = rt.position − target.position)을 한 번 구해서
+    /// 매 프레임 그 보정값을 다시 더한다 — target이 움직여도(GridLayoutGroup
+    /// 등) 정확한 피벗 보정이 유지된다.
+    /// <br/>
+    /// <paramref name="suspensePulses"/>(2026-09-04, "뒷패를 깔때마다 쪼는
+    /// 맛이 있으면" 요청) — 0보다 크면 뒷패 전용 시퀀스로 들어간다.
+    /// 뒷패(덱카드)를 까는 모든 지점에서만 쓰고, 이미 결과를 아는 손패
+    /// 슬램에는 안 쓴다.
+    /// <br/>
+    /// 2026-09-04 2차 수정(사용자 확인 — "매칭되는 패 있을 땐 필드 위로,
+    /// 없으면 빈 곳에서 애니메이팅되기 때문에 뭐가 나오는지 뻔하게
+    /// 노출된다") — 예전엔 낙하 시작점(hover 자리, target 바로 위)에서
+    /// 곧장 <see cref="FlipRevealBack"/>을 걸었는데, hover 자리 자체가
+    /// 이미 target(매칭 슬롯이면 그 카드 위, 빈 슬롯이면 빈 자리) 근처라
+    /// 뒤집히기도 전에 위치만으로 결과가 샜다. 이제 <b>DrawPile 위로
+    /// 옮겨서</b> 그 자리에서 뒤집은 뒤에야 hover 자리까지 날아간다 —
+    /// 뒤집히기 전까지는 화면 어디를 봐도 "더미에서 막 나온 카드"로만
+    /// 보이고, 그 이후(흔들림 펄스 → 낙하 → 충격 이펙트)는 예전과
+    /// 동일하다.</summary>
+    IEnumerator SlamDown(RectTransform rt, RectTransform target, float dropHeight = 170f, float dropDur = 0.10f, float punchDur = 0.12f, float punchScale = 1.22f, int cardMonth = 0, int suspensePulses = 0)
+    {
+        if (rt == null || target == null) yield break;
+        Vector3 anchorOffset = rt.position - target.position;
+        Vector3 baseScale = rt.localScale;
+        Vector3 hoverPos = target.position + anchorOffset + new Vector3(0f, dropHeight, 0f); // 낙하 시작점(타겟 바로 위)
+
+        if (suspensePulses > 0)
+        {
+            // 2026-09-04 2차 수정(사용자 확인 — "매칭되는 패가 있을 땐
+            // 필드 위로, 없으면 빈 곳에서 애니메이팅되기 때문에 뭐가
+            // 나오는지 뻔하게 노출된다") — hover 위치 자체가 이미 target
+            // (매칭 슬롯이면 카드 위, 빈 슬롯이면 빈 자리) 근처라 뒤집기
+            // 전부터 위치만 보고도 결과가 샜다. 이제 DrawPile 위에서
+            // 뒷면을 먼저 보여주고 뒤집은 뒤에야 최종 자리(hover) 쪽으로
+            // 날아간다 — 뒤집히기 전까지는 화면 어디를 봐도 "그냥 더미
+            // 위에 뜬 카드"로만 보인다.
+            rt.position = drawPileArea.position;
+            yield return FlipRevealBack(rt);
+            if (rt == null || target == null) yield break;
+
+            Vector3 flyStart = rt.position;
+            float flyT = 0f;
+            const float flyDur = 0.16f;
+            while (flyT < flyDur)
+            {
+                flyT += Time.deltaTime;
+                float p = 1f - Mathf.Pow(1f - Mathf.Clamp01(flyT / flyDur), 3f); // ease-out
+                if (rt == null || target == null) yield break;
+                rt.position = Vector3.Lerp(flyStart, hoverPos, p);
+                yield return null;
+            }
+            if (rt == null || target == null) yield break;
+            rt.position = hoverPos;
+
+            // 기존 흔들림 펄스(문제 삼지 않은 부분)는 그대로 유지.
+            float susDur = suspensePulses * 0.11f;
+            float st = 0f;
+            while (st < susDur)
+            {
+                st += Time.deltaTime;
+                float wobble = 1f + 0.06f * Mathf.Sin(st / 0.11f * Mathf.PI * 2f);
+                if (rt == null || target == null) yield break;
+                rt.localScale = baseScale * wobble;
+                yield return null;
+            }
+            if (rt == null || target == null) yield break;
+            rt.localScale = baseScale;
+        }
+        else
+        {
+            rt.position = hoverPos; // 손패 슬램 — 기존과 동일(더미 경유 없음)
+        }
+
+        float t = 0f;
+        while (t < dropDur)
+        {
+            t += Time.deltaTime;
+            float p = Mathf.Pow(Mathf.Clamp01(t / dropDur), 2f); // ease-in — 내려찍는 가속감
+            if (rt == null || target == null) yield break;
+            Vector3 landing = target.position + anchorOffset; // 매 프레임 살아있는 값을 다시 읽는다
+            rt.position = Vector3.Lerp(landing + new Vector3(0f, dropHeight, 0f), landing, p);
+            yield return null;
+        }
+        if (rt == null || target == null) yield break;
+        rt.position = target.position + anchorOffset;
+        SpawnImpactFlash(rt);
+        // 2026-09-03 — "필드에 패 나올 때 그 달에 맞는 파티클(1월→소나무 등)"
+        // 요청. 임팩트 플래시와 같은 순간(착지 직후)에 카드 월별 모티프
+        // 버스트를 같이 띄운다 — cardMonth<=0(조커, 또는 호출부가 아직
+        // 이 파라미터를 안 넘기는 경우)이면 SpawnCardMotifBurst 내부에서
+        // 조용히 무시된다.
+        if (cardMonth >= 1 && cardMonth <= 12) SpawnCardMotifBurst(rt, cardMonth);
+
+        t = 0f;
+        while (t < punchDur)
+        {
+            t += Time.deltaTime;
+            float p = Mathf.Clamp01(t / punchDur);
+            float s = p < 0.4f ? Mathf.Lerp(1f, punchScale, p / 0.4f) : Mathf.Lerp(punchScale, 1f, (p - 0.4f) / 0.6f);
             if (rt == null) yield break;
             rt.localScale = baseScale * s;
             yield return null;
@@ -1786,14 +2782,30 @@ public partial class GoStop3PGame
     /// 호출 횟수로 표현 — 함수 자체는 항상 1:1).
     /// <br/>쉬는 좌석 등 화면에 슬롯이 없는 좌석(<see cref="SlotOf"/>가 -1)
     /// 이면 날아갈 시작/도착점이 없으므로 조용히 아무것도 안 한다.</summary>
-    void FlyMoneyFX(int fromSeat, int toSeat, int amount)
+    /// <paramref name="reason"/>는 채팅 로그용 사유(예: "첫뻑비") — 생략하면
+    /// "OO이(가) OO에게 N원 지급"처럼 사유 없이 적는다. 시각 효과와 무관하게
+    /// 돈이 실제로 움직인 사실 자체는 항상 기록해야 하므로, 슬롯이 없어
+    /// 이펙트를 못 그리는 경우(아래 return들)에도 로그는 먼저 남긴다.</summary>
+    void FlyMoneyFX(int fromSeat, int toSeat, int amount, string reason = null)
     {
         if (amount <= 0) return;
+        string reasonPart = string.IsNullOrEmpty(reason) ? "" : reason + " ";
+        AppendChatLine($"{SeatNameFor(fromSeat, -1)}이(가) {SeatNameFor(toSeat, -1)}에게 {reasonPart}{amount:N0}원 지급");
         int fromSlot = SlotOf(fromSeat), toSlot = SlotOf(toSeat);
         if (fromSlot < 0 || toSlot < 0) return;
         var fromLbl = moneyText[fromSlot]; var toLbl = moneyText[toSlot];
         if (fromLbl == null || toLbl == null) return;
-        GoStopFX.FlyMoney(ui.ContentArea, fromLbl.transform.position, toLbl.transform.position, amount);
+        // 2026-09-06 — "돈 변화 연출이 잘 안 보인다" 신고. 최종 정산
+        // (EndGame)에서 이 함수가 불릴 때는 그 직후(같은 프레임 안) 승패
+        // 오버레이가 뜬다 — 예전처럼 ui.ContentArea를 부모로 쓰면 Overlay가
+        // 나중 sibling이라 그 위에 그려져(이 프로젝트가 여러 번 확립한
+        // "Overlay는 ContentArea보다 나중에 그려진다" 규칙) 코인이 뜨자마자
+        // 오버레이에 가려 안 보였다. PlayWinConfettiFX와 같은 방식으로
+        // Canvas 레벨(canvasRoot)에 붙여서 Overlay보다도 위에 그려지게
+        // 한다 — 게임 중(오버레이가 없을 때)에도 더 위에 그려질 뿐이라
+        // 부작용은 없다.
+        var canvasRoot = ui.ContentArea.parent.parent as RectTransform;
+        GoStopFX.FlyMoney(canvasRoot != null ? canvasRoot : ui.ContentArea, fromLbl.transform.position, toLbl.transform.position, amount);
     }
 
     /// <summary>충격 지점에 흰 원이 확 퍼졌다 사라지는 짧은 플래시 + 작은
@@ -1825,6 +2837,21 @@ public partial class GoStop3PGame
             Vector2 localPos = stableParent.InverseTransformPoint(at.position);
             GoStopIcons.SpawnBurst(stableParent, localPos, new Color(1f, 0.9f, 0.6f), count: 5);
         }
+    }
+
+    /// <summary>카드가 필드에 착지한 자리에 그 달의 모티프 파티클(1월→소나무
+    /// 등, <see cref="GoStopMotifAtlas"/>)을 정확히 터뜨린다. <see cref="GoStopWindParticles.Burst"/>
+    /// 의 문서화된 계약대로 Canvas 기준 좌표(ContentArea가 아니라 그
+    /// 두 단계 위)로 변환해서 넘긴다 — ContentArea 기준으로 넘기면 HUD
+    /// 높이만큼 어긋날 수 있다는 <see cref="ShowActionPopup"/>의 기존
+    /// 경고와 같은 이유(이번엔 HUD가 꺼져 있어 지금 당장은 우연히 맞지만,
+    /// 계약대로 정확히 맞춰 둔다).</summary>
+    void SpawnCardMotifBurst(RectTransform at, int month)
+    {
+        var canvasRoot = ui != null ? ui.ContentArea.parent.parent as RectTransform : null;
+        if (canvasRoot == null) return;
+        Vector2 localPos = canvasRoot.InverseTransformPoint(at.position);
+        GoStopWindParticles.Instance?.BurstCardMotif(localPos, month);
     }
 
     IEnumerator FlashAndDestroy(RectTransform rt, Image img)

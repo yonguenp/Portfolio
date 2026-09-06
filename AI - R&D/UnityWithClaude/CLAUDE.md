@@ -7,15 +7,68 @@
 
 ## Unity CLI
 
+Unity Technologies 공식 CLI(beta, 2026-07-20 발표)를 쓴다. 예전엔 서드파티
+도구(`youngwoocho02/unity-cli` + `com.youngwoocho02.unity-cli-connector`,
+켜져 있는 에디터에 HTTP로 붙어 C#을 즉석 실행하는 방식)를 썼는데, 2026-08-28에
+완전히 제거했다 — 바이너리 삭제, `Packages/manifest.json`의 의존성 라인 제거,
+에디터가 자동으로 재리졸브해 `packages-lock.json`·`Library/PackageCache` 캐시까지
+깨끗이 정리됨(확인 완료).
+
+2026-08-28에 실제로 설치·검증 완료. **에디터에 붙어 있는 HTTP 서버(Pipeline
+패키지)가 명령을 받아 실행하는 구조** — 예전 서드파티 도구와 통신 방식은
+비슷하지만 `--usings` 같은 편의 플래그가 없어서 `eval` 안의 C#은 **모든
+타입을 완전히 정규화해서** 써야 한다(예: `Image`가 아니라
+`UnityEngine.UI.Image`, `Object.FindObjectOfType<T>()`는 obsolete라
+`UnityEngine.Object.FindFirstObjectByType<T>()`를 쓸 것).
+
 ```bash
-export PATH="$HOME/.local/bin:$PATH"
-unity-cli --project /Users/yonguen/UnityWithClaude/UnityWithClaude exec --timeout 90000 \
-  --usings "UnityEditor,UnityEditor.SceneManagement,UnityEditor.Events,UnityEngine,UnityEngine.UI,UnityEngine.EventSystems,UnityEngine.InputSystem.UI,TMPro" \
-  "..."
+# 설치 (macOS/Linux)
+curl -fsSL https://public-cdn.cloud.unity3d.com/hub/prod/cli/install.sh | UNITY_CLI_CHANNEL=beta bash
+
+# Pipeline 패키지 설치 (프로젝트당 1회, 설치 후 에디터 재시작 필요 —
+# 재시작해야 HTTP 서버가 실제로 뜬다)
+unity pipeline install
+
+# 에디터에 붙은 Pipeline 서버 확인 (포트 번호가 매번 다를 수 있음)
+unity pipeline list
+
+# C# 즉석 실행 (에디터가 켜져 있고 Pipeline 서버가 떠 있어야 함)
+unity command eval "return UnityEngine.Application.version;"
+
+# 컴파일 강제 + 상태 폴링
+unity command recompile
+unity command recompile_status
+
+# 콘솔 로그 확인 (positional JSON 인자, --params 플래그 없음)
+unity command console '{"count":50}'
+
+# 빌드 타겟 전환 (전체 리임포트 유발 — confirm 필수)
+unity command switch_build_target '["WebGL", true]'
+unity command switch_build_target_status
+
+# 빌드 (비동기 — 즉시 반환되므로 status로 폴링)
+unity command build '["WebGL", "WebBuild", null, null, null, true, false]'
+unity command build_status
+
+# Play 모드 제어
+unity command editor_play
+unity command editor_stop
+unity command editor_status
 ```
 
-- `exec` 결과는 마지막 `return "..."` 값이 stdout으로 나옴
-- 씬 저장: `EditorSceneManager.SaveScene(sc, "Assets/Scenes/씬이름.unity")`
+- 스크립트 수정 후 반드시 `unity command recompile` + `recompile_status`
+  (또는 `console`)로 컴파일 에러 확인
+- `capture_game_view`는 **Main Camera가 렌더한 화면만** 캡처한다 —
+  Screen Space Overlay Canvas(이 프로젝트 UI 전부)는 안 찍힌다. UI 검증은
+  스크린샷이 아니라 항상 `eval`로 씬 상태를 직접 읽는 방식을 쓸 것(이
+  프로젝트 전역에서 이미 확립된 원칙과 동일한 이유 — 아래 GoStop 섹션들
+  참고).
+- `switch_build_target`은 **전체 에셋 리임포트**를 유발해 수 분 걸릴 수
+  있다 — `switch_build_target_status`로 완료를 확인하고 나서 다음 명령을
+  보낼 것.
+- Pipeline 서버가 "No Unity Editor instances found with reachable Pipeline
+  servers"를 돌려주면 에디터가 안 켜져 있거나, Pipeline 패키지 설치 직후
+  에디터를 재시작 안 한 상태다.
 
 ## 캔버스 설정 (전 씬 공통)
 
@@ -8446,3 +8499,3209 @@ HandleGameStarting`이 인원수와 무관하게 이미 항상 `GoStop3PScene`�
 > "스퓨리어스 드리프트"라는 개념 자체를 이제 신뢰하지 않는다 — 과거
 > 세션들이 겪었다고 기록한 사례 다수가 실제로는 이런 식으로 사용자의
 > 동시 편집을 지운 것이었을 가능성이 있다.
+
+## 고스톱 — 채팅/이벤트 로그 (2026-08-28)
+
+"채팅창은 우측하단에 항상 최상단으로, 유저 행동·결과도 간단히 적어달라"는
+요청 — `GoStop3PGame.Chat.cs`(신규 partial class 파일, Core/UI 분리 관례를
+그대로 따름) + `Assets/Resources/Prefabs/GoStop/UI/ChatPanel.prefab`
+(+ `GoStopChatView.cs` 필드 홀더)로 구현했다.
+
+**항상 최상단 — `Canvas.overrideSorting`.** sibling index로는 다른 팝업
+(고/스톱 선택, 점수 상세 등)이 나중에 뜨면 그 밑으로 가려질 수 있어서,
+채팅 패널 자체에 `Canvas`(overrideSorting=true, sortingOrder=500)를 얹어
+렌더 순서를 sibling index와 완전히 분리했다.
+
+> **함정 — `Canvas.overrideSorting`은 프리팹으로 저장하는 순간 `false`로
+> 리셋된다.** 프리팹 저장 시점엔 그 Canvas 위에 부모 Canvas 컨텍스트가
+> 없어서 Unity가 "의미 없는 값"으로 보고 지워버린다 — 실제로 구운
+> 프리팹 에셋을 리플렉션으로 열어봤더니 `overrideSorting=False`였다.
+> `BuildChatUI()`에서 `Instantiate` 직후 `overrideSorting=true;
+> sortingOrder=500;`을 다시 강제로 세팅해서 고쳤다 — **프리팹 루트에
+> Canvas를 얹어 sortingOrder를 쓰는 패턴은 항상 런타임에서 재확인/
+> 재설정할 것.**
+
+**네트워크 이벤트 릴레이 — 기존 채널 재사용 + 새 채널 하나만 추가.**
+- 게임 이벤트(뻑/따닥/쪽/싹쓸이/폭탄/흔들기/보너스/총통/나가리 등)는
+  이미 `Toast(seat, label)`이 `GoStopNetMessage.Type.Event`로 게스트에게
+  중계하고 있었다(처음엔 "이거 데드 코드인 줄 알았는데 조사해보니 이미
+  연결돼 있었다") — `Toast()` 안에서 `LogLocalLine(...)`을 한 줄 추가해
+  채팅 로그에 얹기만 하면 됐다. **여기서 또 브로드캐스트하면 안 된다** —
+  `Toast` 자신이 이미 릴레이 중이라 이중 전송이 된다.
+- 돈이 오가는 이벤트(`ApplyMoneyBonus`/`FlyMoneyFX`)와 선 결정
+  (`DetermineDealerSeq`)·카드 플레이(`PlaySeq`)·게임 종료(`EndGame`)처럼
+  기존 릴레이 경로가 없던 지점엔 `AppendChatLine(...)`을 직접 추가했다.
+- 유저가 직접 치는 채팅(게스트→호스트→전체)과 시스템 로그를 구분하려고
+  새 메시지 타입 `GoStopNetMessage.Type.ChatLog`를 만들었다 — `boolValue`
+  필드를 "isChat"(채팅탭에 넣을지) 플래그로 재사용해서 새 필드를 안
+  늘렸다.
+- `AppendChatLine`(브로드캐스트 O) vs `LogLocalLine`(브로드캐스트 X,
+  받은 메시지를 그릴 때만 사용) — 이름이 비슷해서 헷갈리기 쉬우니
+  주의할 것. 호스트가 게스트에게 받은 채팅을 다시 그릴 때
+  `AppendChatLine`을 쓰면 자기가 받은 메시지를 다시 브로드캐스트하는
+  무한 루프가 될 수 있다(실제로 이렇게 짤 뻔했다 — `HandleIncomingGuestChat`
+  은 반드시 `AppendChatLine`으로 "새로 만들어서 전체에 알리는" 경로를
+  타야 하고, 반대로 자기 자신이 받은 걸 그리기만 할 땐 `LogLocalLine`).
+- **로컬(vs AI) 모드에서도 시스템 메시지가 떠야 한다**는 후속 요청 —
+  `LogLocalLine`이 네트워크 여부와 무관하게 항상 리스트에 쌓고 다시
+  그리므로, 오프라인에서도 자연히 동작한다(네트워크가 없으면
+  `AppendChatLine`의 브로드캐스트 부분만 조용히 스킵된다).
+
+**탭(전체/채팅/로그) — 카테고리 하나로 필터링.** `ChatEntry{ text, isChat }`
+리스트를 `CHAT_MAX_LINES=80`으로 캡핑해서 들고 있다가, 탭 선택
+(`ChatFilter.All/Chat/Log`)에 따라 LINQ로 걸러 한 번에 다시 그린다(개별
+줄을 UI 오브젝트로 만드는 대신 하나의 TMP 텍스트로 합침 — 카드처럼
+값마다 색이 다른 콘텐츠가 아니라 순수 텍스트라 이 방식이 훨씬 단순하다).
+
+**정적 틀=프리팹, 가변 콘텐츠=코드 원칙 재확인.** 배경·헤더·탭 버튼 3개·
+스크롤뷰·입력 필드·전송 버튼까지 전부 프리팹에 미리 구워두고, 코드는
+`chatEntries` 리스트→텍스트 렌더링과 버튼 클릭 핸들러 연결만 담당한다.
+`TMP_InputField`는 이 프로젝트에서 처음 쓴 컴포넌트라(닉네임 입력 등에서
+"전례 없음"으로 미뤄왔던 것) 표준 필드 세팅
+(`textViewport`/`textComponent`/`placeholder`/`lineType=SingleLine`)을
+새로 잡아야 했다.
+
+**검증 — 실제 플레이로 로그가 정상적으로 쌓이는 것까지 확인.** 리플렉션
+기반 강제 게임 시작 호출이 이 세션에서 원인 불명으로 한 번 멈춘 적이
+있었는데(딜링 전 상태에서 계속 멈춰 보임 — `Time.frameCount`는 정상
+진행 중이라 에디터 자체가 멈춘 건 아니었다), 그 직전에 자연스럽게 플레이
+중이던 세션에서 이미 채팅 로그에 실제 포맷된 줄들이 정상적으로 쌓이는
+것을 확인했었다 — 그 강제-호출 테스트의 "멈춤"은 리플렉션 테스트 스크립트
+쪽 문제일 가능성이 높다고 보고 있다(이 프로젝트가 이미 여러 번 겪은
+"unity-cli exec가 특정 타이밍의 조합에서 원인 불명으로 멈춘다"는 계열과
+같다). **버튼을 실제로 눌러 처음부터 끝까지 플레이하며 재확인이 필요**하다
+— 아직 그 확인은 못 했다.
+
+## 웹(WebGL) 빌드 + GitHub Pages 배포 (2026-08-28)
+
+Portfolio 저장소(`github.com/yonguenp/Portfolio`)가 GitHub Pages로 이미
+연결돼 있어서, 그 저장소의 `main` 브랜치 밑에 폴더를 하나 만들어 빌드
+산출물을 넣는 방식으로 배포했다. 실제 플레이 가능한 링크:
+`https://yonguenp.github.io/Portfolio/unitywithclaude/`.
+
+**빌드 자체는 공식 Unity CLI로.** `switch_build_target WebGL`(전체
+리임포트, 수 분 소요) → `build WebGL WebBuild ...`(비동기, `build_status`
+폴링) — 위 "Unity CLI" 섹션의 명령 그대로.
+
+> **함정 — 네트워크 대전 코드가 WebGL에서 컴파일은 되는데 런타임에
+> 안 먹는다.** `System.Net.Sockets`(TCP/UDP)는 WebGL 빌드 타겟에서
+> **컴파일 에러가 안 난다** — 그냥 브라우저 샌드박스가 런타임에 막을
+> 뿐이다. `#if UNITY_WEBGL` 전처리기로 코드 자체를 걷어내는 대신,
+> `GoStopNetLobby.HostRoom()`/`StartScanningForRooms()` 호출부에
+> `Application.platform == RuntimePlatform.WebGLPlayer`를 확인해 즉시
+> "웹 버전은 네트워크 대전을 지원하지 않습니다" 안내로 빠지게 했다 —
+> 코드를 걷어내면 에디터/모바일 빌드와 소스가 갈라져 유지보수 부담이
+> 커지고, 어차피 호출 시점에 막는 게 훨씬 안전하다.
+> **웹에서 이 안내 문구가 실제로 뜨는지는 아직 실브라우저로 확인 못 했다**
+> (리플렉션으로 가드 조건만 확인) — 다음에 웹 버전에서 네트워크 대전
+> 버튼을 눌러볼 것.
+
+> **함정 — 기본 Brotli 압축이 GitHub Pages에서 빌드를 깨뜨린다.**
+> Unity WebGL 기본 압축(`WebGL.compressionFormat = Brotli`,
+> `decompressionFallback = false`)은 `.br` 확장자 파일을 만들고 브라우저가
+> `Content-Encoding: br` 헤더를 보고 자동 압축 해제하는 걸 전제한다 —
+> **GitHub Pages는 이 헤더를 설정할 방법이 없어서** 그대로 올리면 WASM/
+> 데이터 로드가 실패한다. `PlayerSettings.WebGL.decompressionFallback =
+> true`로 바꿔서 고쳤다 — 파일 확장자가 `.unityweb`로 바뀌고 `loader.js`
+> 안에 JS 기반 압축 해제기가 내장돼, 어떤 정적 호스팅에서도 헤더 설정 없이
+> 그냥 서빙만 하면 동작한다. **정적 호스팅(GitHub Pages 등)에 WebGL을
+> 올릴 땐 이 설정을 항상 켤 것** — 서버가 커스텀 헤더를 붙여줄 수 있는
+> 환경(자체 서버, Cloudflare 등)이면 기본 Brotli가 더 빠르지만, GitHub
+> Pages는 그 조건을 못 맞춘다.
+
+> **함정 — GitHub Pages 소스가 어느 브랜치인지 API로 먼저 확인해야 한다.**
+> "Pages로 배포"라길래 처음엔 `gh-pages`라는 이름의 새 orphan 브랜치를
+> 만들어 거기 빌드를 올리고 푸시했는데, `GET /repos/{owner}/{repo}/pages`로
+> 실제 설정을 확인해보니 **이 저장소의 Pages는 `main` 브랜치의 루트를
+> 서빙**하도록 이미 설정돼 있었다 — `gh-pages` 브랜치는 서빙 대상이
+> 아니라 그냥 죽은 브랜치로 푸시한 셈이었다. Pages 소스 자체를
+> `gh-pages`로 바꾸려고 `POST /repos/.../pages`를 시도했지만 **403**
+> (fine-grained PAT가 "Contents: Read/write"만 있고 "Administration"
+> 권한이 없어서 Pages 설정 변경은 못 한다) — 대신 빌드를 `main` 브랜치의
+> `unitywithclaude/` 폴더에 직접 커밋·푸시하는 쪽으로 방향을 바꿔서
+> 권한 문제 없이 바로 배포됐다. **Pages 배포 전엔 항상 `GET .../pages`로
+> 실제 소스 브랜치/경로를 먼저 확인할 것** — 새 브랜치를 만들기 전에
+> 이것부터 봤으면 헛수고를 안 했을 것이다. (지금 저장소에 안 쓰는
+> `gh-pages` 브랜치가 하나 남아 있다 — 삭제 여부는 사용자 확인 대기 중.)
+
+**빌드 산출물은 프로젝트에 커밋하지 않는다.** `WebBuild/`는
+`.gitignore`에 올렸다(2026-08-29) — 90MB에 육박하는 바이너리 산출물을
+매번 리빌드해서 올리는 대신, **배포는 별도 저장소(Portfolio)의 별도
+폴더로 나가고, 이 프로젝트 저장소엔 소스만 남긴다**는 원칙을 지키기
+위해서다.
+
+## 고스톱 4인판 — 필드 카드를 pos1~12 마커에 attach + 슬램다운 애니메이션
+버그 3종 (2026-09-02)
+
+"필드에 드랍되는 카드들을 각 pos에 attach시키고 싶다, pos는 항상 고정,
+moveTo 포지션 대신 타겟의 transform 위치로 이동"이라는 요청으로 필드 카드
+렌더링 방식을 바꿨다 — 예전엔 매턴 필드 컨테이너를 통째로
+`ClearChildren`하고 좌표 값(Vector2)만 캐싱해 다시 그렸는데, 이제
+`fieldArea/pos1~12` 마커 12개를 **영원히 고정**해 두고 카드는 그
+자식으로만 attach/detach한다.
+
+- `fieldPosSlots[13]`(RectTransform 참조 캐싱, `CacheFieldPosSlots()`가
+  씬의 `pos1~12`를 한 번만 찾아둔다) + `fieldSlotAssign`
+  (Dictionary&lt;HwatuCard,int&gt;, 카드→슬롯 번호 메모이제이션).
+  `AssignFieldSlot(card)` — 같은 달 카드는 같은 슬롯을 공유(뻑 무더기가
+  한 자리에 쌓이게), 다른 달은 빈 슬롯을 새로 배정한다.
+  `ClearFieldPosSlots()`(신규)는 마커 자체는 안 건드리고 각 pos의
+  **자식만** 지운다 — `RebuildUI()`/`ClearBoardForDealing()` 둘 다 기존
+  `HwatuUI.ClearChildren(fieldArea)` 호출을 이걸로 교체했다.
+- `FieldCards`(필드 컨테이너)에 붙어 있던 `StripStrayLayoutGroup` 호출을
+  뺐다 — 사용자가 GridLayoutGroup을 직접 걸어 pos1~12를 자동 정렬하고
+  싶어해서, 이 컨테이너만 예외로 남긴다. **다른 재사용 컨테이너
+  (Cap 존·StatusBox·Back/Cap 슬롯)의 `StripStrayLayoutGroup`은 그대로
+  전부 유지** — 공유 헬퍼 하나를 통째로 비활성화했다가 Cap 존이
+  `NullReferenceException`으로 깨진 적이 있어서(아래 버그 1과는 별개
+  사건), 딱 필드 하나에만 좁혀서 제외했다.
+
+### 버그 1 — 판을 거듭하면 AI가 멈춘다 (진짜 원인은 예외로 죽는 코루틴)
+
+"판을 연속으로 진행하면 AI가 멈춰서 게임이 진행 안 되는 케이스가
+왕왕있음" 신고. 재현: 리플렉션으로 `NewGame()`을 반복 호출하며 스트레스
+테스트하니 두 번째 이후의 `NewGame()`마다 `newGameStarting=True`인 채
+영원히 멈췄다. 콘솔에서 정확히 그 시점의 예외를 찾았다:
+
+```
+NullReferenceException: Object reference not set to an instance of an object
+GoStop3PGame.EnsureCapLayoutHierarchy (...) (GoStop3PGame.UI.cs:1559)
+GoStop3PGame.DrawAiCaptured (...) 
+GoStop3PGame.RebuildUI ()
+GoStop3PGame+<NewGameSeq>d__258.MoveNext ()
+```
+
+`ClearBoardForDealing()`이 새 판 시작 때 획득패(Cap) 존의 **자식만**
+지우고(`HwatuUI.ClearChildren`) `HorizontalLayoutGroup` 컴포넌트 자체는
+그대로 뒀다. 다음 `RebuildUI()`에서 `EnsureCapLayoutHierarchy`가 이
+상태("자식 없음, HLG는 있음")를 못 구분하고 "처음부터 새로 짜는" 분기로
+빠져 `AddComponent&lt;HorizontalLayoutGroup&gt;()`을 **또** 불렀는데,
+`LayoutGroup` 계열은 `[DisallowMultipleComponent]`라 Unity가 추가를
+거부하고 `null`을 돌려줘서 바로 다음 줄(`hlg.spacing = 0f`)에서
+NRE가 났다.
+
+이 예외가 `NewGameSeq()` 코루틴 한복판에서 터지면 코루틴 자체가 죽어서
+맨 끝의 `newGameStarting = false`까지 못 간다 — 그래서 두 번째 이후
+판마다 게임이 영원히 멈췄다. 고침: `existingHlg != null`이면 새로
+`AddComponent` 하지 않고 **그 컴포넌트를 그대로 재사용**한다.
+
+```csharp
+var hlg = existingHlg != null ? existingHlg : container.gameObject.AddComponent<HorizontalLayoutGroup>();
+```
+
+**검증.** 수정 전: 리플렉션으로 `NewGame()`을 반복 호출하며 판을 20~40회
+진행 → 두 번째 `NewGame()`에서 정확히 재현(`newGameStarting` 영원히
+`True`). 수정 후: 같은 스트레스 테스트를 105라운드·`NewGame()` 5회
+완주까지 돌려도 재현 안 됨, 콘솔 에러 0건.
+
+> **함정 — 자동화 스크립트가 어떤 팝업을 답 안 해줬는지 늘 의심할 것.**
+> 이 조사 도중 "새로운 freeze"처럼 보인 경우가 두 번 더 나왔는데, 둘 다
+> 진짜 버그가 아니라 **테스트 스크립트가 안 다루는 팝업**(2·3번째 참가
+> 선언 `declarePopup`, 필드 2장 선택 `fieldChoicePopup`)이 정상적으로
+> 응답을 기다리고 있던 것뿐이었다 — `pendingXxx` 필드를 직접 채워보니
+> 즉시 풀렸다. **`newGameStarting`/`actionBusy` 같은 플래그가 안 풀릴 때는
+> 먼저 모든 popup 필드의 `activeSelf`를 확인해서 "합법적으로 기다리는
+> 중"인지부터 가려낼 것** — 예외 로그가 없으면(이 프로젝트가 이미 여러
+> 번 쓴 방법) 진짜 코드 버그가 아니라 이쪽일 확률이 높다.
+
+### 버그 2 — 매칭 안 되는 패가 빈 슬롯에 놓일 때 깜빡임
+
+고스트 카드(`SpawnGhostCard`)가 이미 최종 위치까지 슬램다운(임팩트
+플래시+펀치 스케일 1→1.28→1)을 끝내고 사라지는데, `DrawField()`가 그
+직후 그리는 "진짜" 카드가 **같은 자리에서 `SlamIn`을 또 재생**하고
+있었다 — 도착 지점이 이미 똑같은데도 무조건 애니메이션을 돌리는 게
+원인. `DrawField()`에 거리 체크를 추가해 실제 이동이 없으면(등록된
+`flyFrom`이 카드의 최종 위치와 거의 같으면) `SlamIn` 자체를 건너뛴다.
+
+```csharp
+if (flyFrom.TryGetValue(c, out var from))
+{
+    var finalPos = (go.transform as RectTransform).position;
+    if ((finalPos - from).sqrMagnitude > 1f)
+        StartCoroutine(SlamIn(go.transform as RectTransform, from));
+}
+```
+
+이 수정은 부수적으로 **"카드가 잠깐 아래로 쏠려 보인다"**는 신고도 같이
+해결했다 — 카드 피벗이 top-center라 펀치 스케일이 커질 때 아랫변만
+아래로 부푸는데, 같은 자리에서 두 번 연달아 재생되니 그 쏠림이 두 배로
+도드라졌던 것. 애니메이션이 한 번만 재생되면 이 증상도 사라진다.
+
+### 버그 3 — 그런데도 여전히 "잠깐 아래로 이동했다 원위치"가 남아있었다
+
+버그 2를 고친 뒤에도 사용자가 "매칭 안 되는 패가 슬램다운될 때 카드가
+아랫쪽으로 잠깐 이동했다가 다시 원래대로 돌아온다"고 재신고 — 버그 2의
+거리 체크가 있는데도 왜 애니메이션이 여전히 걸리는지 원인을 다시 팠다.
+
+`PlaySeq`의 "매칭 없음" 분기가 `flyFrom[card]`에 등록하는 값 자체가
+**틀려 있었다**:
+
+```csharp
+var target = FieldSlotTransform(card);
+landing = target.position;   // 버그 — pos 마커 자체의 피벗 좌표
+ghost = SpawnGhostCard(card, target);
+```
+
+`target.position`은 pos 마커의 **자기 피벗**(보통 center) 좌표인데,
+고스트/실제 카드는 `HwatuUI.MakeCard`가 top-center 피벗+오프셋으로
+그 마커의 자식에 배치하므로 실제 렌더 위치와 다르다 — 리플렉션으로
+직접 재보니 **92px**나 차이났다(pivot 차이(Y) + 슬롯 내 스택
+오프셋(X)이 겹친 값). 그래서 버그 2의 거리 체크(`sqrMagnitude > 1f`)가
+"실제로 이동했다"고 오판해 매번 애니메이션을 걸었던 것 — 버그 2 자체는
+정확했지만, 비교 대상인 `flyFrom` 값이 애초에 잘못 등록되고 있었다.
+
+고침: `landing`을 마커의 좌표가 아니라 **고스트가 실제로 놓인 자리**
+(`ghost.transform.position`, `SpawnGhostCard` 호출 직후 값)로 바꿨다 —
+이 값은 `DrawField()`가 나중에 "진짜" 카드를 그릴 때 쓰는 것과 완전히
+동일한 `HwatuUI.MakeCard(card, target, offset, ...)` 호출로 계산되므로
+구조적으로 항상 일치한다. 같은 패턴(`target.position`을 landing/flyFrom에
+직접 쓰는 것)이 `PlaySeq` 안에 4곳 더 있어서 전부 같이 고쳤다(폭탄
+3장 중 매칭 없는 낱장, 손패 매칭 없음, 뒷패 조커, 뒷패 매칭 없음).
+
+**검증.** `SpawnGhostCard(card, target)`을 리플렉션으로 직접 호출해
+`ghost.transform.position`과 `target.position`의 diff를 실측(92.2px,
+버그 재현), 수정 후 코드 리뷰로 landing이 `ghost.transform.position`을
+쓰도록 바뀐 것 확인 + 실제 플레이 40라운드 회귀 테스트(콘솔 에러 0건)로
+마무리했다.
+
+> **교훈 — "같은 자리인지" 판정 코드를 넣기 전에, 비교 대상 두 값이
+> 애초에 같은 좌표계·같은 기준점을 쓰는지부터 의심할 것.** 버그 2에서
+> 거리 체크라는 올바른 방향의 수정을 넣었는데도 신고가 재발한 이유는
+> 정작 비교 대상 중 하나(`flyFrom`에 등록된 값)가 "카드의 실제 렌더
+> 위치"가 아니라 "그 카드가 속한 컨테이너 마커 자체의 피벗 좌표"라는,
+> 미묘하지만 완전히 다른 값이었기 때문이다. 이 프로젝트에 이미 여러 번
+> 기록된 "부모 피벗과 자식 피벗이 다르면 `rt.position = target.position`
+> 직접 대입이 어긋난다"는 함정과 같은 뿌리 — 이번엔 대입이 아니라
+> "나중에 비교할 값을 기록해두는" 코드에서 같은 함정을 밟았다.
+
+리플렉션 스트레스 테스트 방법(참고용) — 팝업 4종(참가 선언·선 뽑기·
+필드 선택·9월 열끗)을 전부 자동으로 넘겨주는 폴링 루프를 bash `for`
+로 짜고, 매 반복마다 `state`/`currentSeat`를 읽어 내 턴이면
+`OnPlayerPlay`, GoStopChoice면 스톱, GameOver면 `NewGame()`을 자동
+호출했다 — bash 2분 타임아웃에 걸리지 않도록 30~40라운드씩 나눠 돌렸다.
+
+### 버그 4 — 버그 2·3을 고친 뒤에도 남아있던 깜빡임의 진짜 정체
+
+"아래로 처지던 문제는 수정된 거 확인됨, 그러나 매칭되는 패가 없을 때
+빈 pos로 배치될 때 깜빡임 현상 확인됨"이라는 재신고 — 버그 3(잘못된
+`flyFrom` 좌표)을 고치면서 SlamIn 자체는 정확히 스킵되고 있는데도 여전히
+깜빡였다. 매칭되는 카드는 신고에서 빠져 있다는 게 결정적 단서였다.
+
+원인: `DestroyGhosts(handGhosts)`/`DestroyGhost(deckGhost)`가 `Destroy()`
+를 썼는데, 이건 **그 프레임 끝까지 실제 제거를 미룬다.** 이 호출 직후
+(같은 프레임 안, yield 없이) `RebuildUI()`가 곧장 불려서 "진짜" 카드를
+**같은 pos 슬롯의 자식으로** 새로 만드는 지점이 PlaySeq 안에 여러 곳
+있었다(④ 손패 결과 배치, 조커/뒷패 매칭 없음 분기 등). **매칭된 카드는
+필드를 완전히 떠나 Cap으로 이동하므로 그 슬롯에 새로 생기는 게
+없다** — 그래서 매칭 케이스는 애초에 이 문제가 성립하지 않는다. 반대로
+매칭 안 된 카드만 "고스트가 죽어가는 바로 그 자리에 진짜 카드가 또
+생기는" 경우라, 딱 한 프레임 동안 두 카드 오브젝트가 같은 자리에
+동시에 존재하며 겹쳐 그려졌다 — 신고 내용(매칭 없는 경우에만 깜빡임)과
+정확히 일치한다.
+
+고침: `DestroyGhost`/`DestroyGhosts`를 `Destroy()` 대신 `DestroyImmediate()`
+로 바꿔서 겹치는 프레임 자체를 없앴다. 이 프로젝트 GoStop 코드에서
+`DestroyImmediate`를 쓴 첫 사례다 — 지금까지는 전부 `Destroy()`(다음 프레임
+정리 전제)만 썼는데, "파괴 직후 같은 프레임 안에서 그 자리에 새 오브젝트를
+만든다"는 이번처럼 특수한 케이스에서만 필요하다.
+
+**검증.** 컴파일 클린 확인 후 4인 게임을 새로 시작해 팝업 4종(참가 선언·
+선 뽑기·필드 선택·9월 열끗)을 자동으로 넘겨주며 80라운드·`NewGame()`
+2회 완주까지 스트레스 테스트, 콘솔 에러 0건(경고만 있던 것 확인). 실제
+화면을 볼 수 없는 이 환경 특성상 "깜빡임 자체가 사라졌는지"는 사용자의
+다음 실플레이 확인이 필요하다 — 다만 원인(1프레임 오브젝트 중복)과
+증상(매칭 없을 때만 발생)이 정확히 들어맞고, 고침 자체가 그 중복
+프레임을 구조적으로 없애는 방식이라 논리적으로 확실하다.
+
+### 버그 5 — 뒷패가 슬램다운한 슬롯과 실제 렌더 슬롯이 어긋난다
+
+사용자가 정확한 재현 절차를 직접 짚어줬다: "pos1에 매칭되는 손패를 냄 →
+슬램다운 연출 후 뒷패 깜 → 매칭되는 패 없음으로 pos2에 슬램다운 연출 →
+이후 pos1에 있는 패는 cap으로 이동, **pos2에 생성되어야 될 뒷패가 pos1에
+생성됨**." — 위 버그 4(DestroyImmediate)와는 완전히 별개의, 더 근본적인
+버그였다.
+
+원인은 `SyncFieldSlotAssignments()`의 "반납" 조건이 너무 성급했던 것.
+`GoStopRules.Resolve(played, field)`는 매칭이 없으면 그 자리에서
+**즉시** `field.Add(played)`를 한다(순수하게 동기 호출) — 그런데 이
+호출 타이밍이 손패(`card`)와 뒷패(`drawn`)에서 다르다:
+
+- **손패**: `r1 = GoStopRules.ResolveWithBomb(card, h, field, out bomb)`가
+  PlaySeq **맨 앞**에서 불려서, `card`가 매칭 안 됐으면 field에 곧바로
+  들어간다 — 이후 어떤 RebuildUI가 끼어도 항상 field 안에 있다.
+- **뒷패**: `r2 = GoStopRules.Resolve(drawn, field)`는 "④ 손패 결과를
+  Cap에 배치"(그 안에서 `RebuildUI()`가 한 번 돈다)를 **지나고 나서**야
+  불린다 — 슬램다운 애니메이션(고스트 생성 + `AssignFieldSlot(drawn)`으로
+  슬롯 2 배정)은 그보다 훨씬 전(② 단계)에 이미 끝나 있는데, 정작
+  `field.Add(drawn)`은 한참 뒤에야 일어난다.
+
+그 사이에 끼는 "④"의 `RebuildUI()` → `DrawField()` → `SyncFieldSlotAssignments()`
+가 문제였다. 이 시점엔 `drawn`이 **아직 field에 없다**(Resolve를 안 불렀으니)
+— 그런데 예전 코드는 "field에 없으면 무조건 반납"이었으므로, 진짜로
+캡처된 게 아닌데도 `drawn`의 슬롯2 배정을 스토리 없이 반납해버렸다.
+동시에 매칭됐던 손패가 있던 슬롯1도(이미 캡처돼 진짜로 반납돼야 맞음)
+같이 비워진다. 나중에 `drawn`이 진짜로 `field.Add`되고 나서 다시
+`AssignFieldSlot(drawn)`이 불리면, 슬롯2 배정 기록이 이미 지워졌으니
+"현재 비어있는 가장 낮은 번호"를 새로 받는데, 그게 방금 비워진
+**슬롯1**이었다 — 애니메이션은 pos2로 날아갔는데 실제 렌더는 pos1에
+되는, "패가 순간이동하는" 것처럼 보이는 불일치가 이렇게 생겼다.
+
+고침: 반납 조건을 "field에 없다"에서 "field에 없고 **누군가의 captured에
+실제로 들어갔다**"로 좁혔다.
+
+```csharp
+var stale = fieldSlotAssign.Keys
+    .Where(c => !field.Contains(c) && captured.Any(cap => cap != null && cap.Contains(c)))
+    .ToList();
+```
+
+이 규칙이 성립하는 이유: 이 게임에서 필드를 떠나는 카드는 항상 정확히
+둘 중 하나다 — 어느 좌석의 `captured`로 들어가거나(뻑 등 여러 장을
+필드에 임시로 쌓아두는 경우 포함, 결국은 captured로 간다), 혹은 아직
+`field.Add`를 안 한 "in-transit" 상태(뒷패처럼 애니메이션은 끝났지만
+Resolve 호출 전)뿐이다. "captured에도 없고 field에도 없는" 카드는 반드시
+후자이므로, 그 경우엔 반납하지 않고 기존 슬롯 배정을 그대로 지켜서
+나중에 `field.Add`된 뒤 같은 슬롯을 돌려받게 한다(`AssignFieldSlot`의
+캐시 체크가 `fieldSlotAssign.TryGetValue` 우선이므로 자동으로 그렇게
+된다).
+
+**검증.** 순수 함수 단위 테스트로 정확히 이 시나리오를 재현했다 —
+`fieldSlotAssign`에 (A) 진짜로 `captured[0]`에 들어간 카드를 슬롯1로,
+(B) `field`에도 `captured`에도 없는 "전송 중" 카드를 슬롯2로 각각
+강제로 세팅한 뒤 `SyncFieldSlotAssignments()`를 직접 호출 — 결과:
+(A)는 정확히 반납됨(`ContainsKey=False`), (B)는 슬롯2 그대로 유지됨
+(`ContainsKey=True, slot=2`) — 수정 전이었다면 (B)도 함께 반납돼 다음
+배정 때 슬롯1로 밀려났을 상황. 추가로 실제 게임을 여러 라운드 자연
+진행시킨 뒤 `field`의 모든 카드에 대해 "배정된 슬롯 = 실제 렌더링된
+슬롯"이 100% 일치하는 것도 별도로 확인했다. 콘솔 에러 0건.
+
+### 버그 6 — "손패는 안 깜빡이는데 뒷패만 깜빡인다"
+
+버그 5(슬롯 좌표 어긋남)를 고친 뒤에도 재신고 — 정확한 관찰이었다.
+원인은 `RebuildUI()` 맨 앞의 `ClearFieldPosSlots()`가 **매번 무조건**
+모든 pos 슬롯의 자식을 지운다는 데 있었다. 손패와 뒷패는 이 청소를
+맞는 타이밍이 서로 다르다:
+
+- **손패 고스트**: "④ 손패 결과를 Cap에 배치" 단계에서
+  `DestroyGhosts(handGhosts)`를 부른 **바로 다음 줄**에 `RebuildUI()`가
+  있다 — 그 RebuildUI의 `ClearFieldPosSlots()`가 돌 때는 이미 손패
+  고스트가 지워진 뒤(버그 4의 DestroyImmediate 덕에 확실히 사라진
+  상태)라 청소할 게 없다.
+- **뒷패 고스트**: "② 뒷패 슬램다운"에서 착지한 뒤, 자기 차례
+  (`GoStopRules.Resolve(drawn, field)` + 그 결과를 그리는 RebuildUI)가
+  오기 **한참 전에** "④"의 RebuildUI가 먼저 낀다. 이 RebuildUI는 손패
+  결과만 처리하려는 것뿐인데, 그 안의 `ClearFieldPosSlots()`가 뒷패
+  고스트까지 무차별로 지워버렸다 — 아직 살아있어야 할 카드가 조기에
+  사라졌다가, 한참 뒤(다음 `PLAY_STEP_DELAY`들 + 필드 선택 팝업 대기 등을
+  지나) 실제 카드로 다시 나타나는, 훨씬 눈에 띄는 "사라졌다 나타남"이
+  됐다.
+
+고침: 슬램다운 중인 고스트에 빈 마커 컴포넌트(`GhostMarker`)를 붙이고,
+`ClearFieldPosSlots()`가 이 마커가 있는 자식은 건너뛰도록 바꿨다 —
+자기 차례가 아직 안 온 고스트는 조기 청소에서 제외되고, 최종적으로는
+각 코드 경로의 명시적인 `DestroyGhost(...)` 호출(버그 4에서 이미
+`DestroyImmediate`로 바꿔둔 것)이 정확한 타이밍에 없앤다.
+
+```csharp
+sealed class GhostMarker : MonoBehaviour { }
+// SpawnGhostCard(HwatuCard, RectTransform)에서: go.AddComponent<GhostMarker>();
+// ClearFieldPosSlots → ClearFieldSlotChildrenKeepGhosts: GhostMarker 있으면 skip
+```
+
+**검증.** 씬의 실제 pos 슬롯에 합성 자식 두 개(GhostMarker 있는 것/없는
+것)를 만들어 `ClearFieldPosSlots()`를 직접 호출 — 마커 없는 자식만
+지워지고 마커 있는 자식은 자연 게임 진행(백그라운드에서 여러 번의 실제
+RebuildUI가 낀 뒤에도) 살아남는 것을 확인했다. 이후 40라운드·`NewGame()`
+1회 완주 스트레스 테스트로 콘솔 에러 0건, `field` 전체의 "배정 슬롯=실제
+렌더 슬롯" 일치(버그 5 검증과 동일한 방식) + "화면에 남아있는 GhostMarker
+자식 수 = 0"(고스트가 자기 차례가 끝나면 정상적으로 다 청소됨, 새는 것
+없음)까지 확인했다.
+
+### 버그 7 — 뒷패가 깔린 패 자리에 들어갈 때 sibling 순서가 뒤집힌다
+
+버그 6(GhostMarker로 조기 청소 방지) 직후 사용자가 "뒷패는 깔린패 pos에
+들어갈 때 sibling이 앞쪽으로 가나? 어색한 부분이 생기는데"라고 정확히
+짚었다 — GhostMarker가 살아남는 건 맞았는데, 그 슬롯에 **같이 있던 다른
+실제 카드**가 중간에 다시 그려지면서 문제가 생겼다.
+
+타임라인: 뒷패 고스트가 어떤 슬롯에 착지해 살아있는 채로(GhostMarker
+보호) 그 슬롯의 **마지막 sibling**(=가장 위에 그려짐)으로 남아있다.
+그런데 "④ 손패 결과 배치" RebuildUI가 그 사이에 한 번 더 돈다 —
+`ClearFieldPosSlots()`가 뒷패 고스트는 건너뛰지만, **그 슬롯에 원래
+같이 있던 다른 진짜 카드**는 그냥 지운다(`Destroy()`, 프레임 끝까지
+지연). `DrawField()`가 이어서 그 진짜 카드를 **새 마지막 자식**으로
+다시 만든다 — sibling 순서상 방금 만든 게 고스트보다 **나중**이 되어
+버려서, 나중에 도착해 원래 맨 위에 있어야 할 뒷패 고스트가 방금 다시
+그려진(원래 먼저 있던) 카드에 가려지는 역전이 생겼다.
+
+고침: `DrawField()`가 카드를 새로 만든 직후, 같은 부모(pos 마커)에
+GhostMarker 자식이 있으면 그 자식의 sibling index로 새로 만든 카드를
+끼워 넣는다(`SetSiblingIndex`) — 고스트보다 항상 앞쪽(=아래에 그려짐)에
+자리하도록 강제한다.
+
+```csharp
+for (int k = 0; k < target.childCount; k++)
+{
+    if (target.GetChild(k).GetComponent<GhostMarker>() != null)
+    {
+        go.transform.SetSiblingIndex(k);
+        break;
+    }
+}
+```
+
+**검증.** pos5에 GhostMarker 달린 합성 자식(고스트 역할)을 미리 만들고,
+그 슬롯에 배정된 실제 field 카드 하나를 추가한 뒤 `DrawField()`를
+직접 호출 — 결과 sibling index: 진짜 카드=1, 고스트=2(진짜 카드가
+고스트보다 앞선 인덱스 = 아래에 그려짐, 고스트가 항상 맨 위 유지)로
+정확히 기대대로 나왔다. 이후 40라운드 스트레스 테스트로 콘솔 에러 0건,
+`field`-슬롯 일치성도 재확인했다.
+
+### 버그 4~7의 진짜 공통 원인 — matchedLanding 구조 재설계 (2026-09-02)
+
+버그 4~7을 한 번에 하나씩 고쳐가다 보니 사용자가 "첫패/뒷패 애니메이션
+로직이 계속 싱크가 안 나서 오류가 나는 경우가 많은데 구조적으로 문제가
+있는 거 아닌지 체크"라고 정확히 짚었다 — 조사해보니 실제로 **한 가지
+설계가 이 버그들 대부분의 공통 뿌리**였다.
+
+**원인.** 매칭된 손패(또는 폭탄 3장)가 어디로 슬램다운할지 정하는
+`matchedLanding` 값이, "매칭된 필드 카드 중 아무거나 하나(`Skip().
+FirstOrDefault()`)의 flyFrom 스냅샷에 `FIELD_STACK_OFFSET` **딱 한 칸만**
+더한 고정 좌표"였다. 이 계산은 그 슬롯에 **지금 몇 장이 쌓여 있는지를
+전혀 모른다** — 그래서:
+- 1:1 매칭(쌓인 패 없음)일 때만 우연히 맞았다.
+- **뻑 해소**(3장 무더기 위에 4번째로 올라가야 함)에서는 항상 1칸만
+  올라가서 실제 스택보다 훨씬 낮게 떨어졌다.
+- **따닥**(필드 2장 중 하나를 고른 뒤 3번째로 올라가야 함)도 마찬가지로
+  낮게 떨어졌다.
+- **폭탄**은 3장 전부 `matchedLanding.Value`(반복문 밖에서 딱 한 번 계산한
+  고정값)를 그대로 썼다 — 3장이 전부 완전히 같은 자리에 겹쳐 떨어져서
+  "파파팍"이 아니라 그냥 한 덩어리로 보였다.
+- **뻑 형성**(couldBePpeok)의 뒷패는 아예 손패 고스트의 flyFrom을 그대로
+  재사용해서(오프셋을 더하지도 않고) 손패와 완전히 같은 자리에 겹쳤다.
+
+즉 이미 "no match" 카드에는 쓰고 있던 훨씬 견고한 메커니즘
+(`SpawnGhostCard(HwatuCard, RectTransform)`가 `target.childCount`로
+"지금 이 슬롯에 몇 장이 있는지"를 직접 세어 그 바로 위 자리를 자동으로
+내주는 것, 버그 3에서 확정)이 **매칭된 카드 쪽에는 적용되지 않고
+있었다** — 두 갈래 경로가 따로 존재해서, 매칭 여부에 따라 "정확한
+메커니즘"과 "부정확한 지름길"이 갈리고 있었던 게 근본 원인.
+
+**고침.** `matchedLanding`(Vector3 스냅샷 + 고정 오프셋 한 칸) 계산을
+통째로 없애고, 매칭된 카드 쪽도 "no match" 카드와 **완전히 같은
+메커니즘**을 쓰게 통일했다 — 매칭된 필드 카드가 배정받은 슬롯
+(`matchedSlot = FieldSlotTransform(matchedFieldCard)`)을 그대로
+`SpawnGhostCard(HwatuCard, RectTransform)`에 넘긴다. 이 시점엔 매칭된
+필드 카드의 "진짜" 렌더링이 아직 파괴되지 않고 그 슬롯의 자식으로 남아
+있으므로(④의 RebuildUI가 아직 안 돌았다), `target.childCount`가 "지금
+이 슬롯에 실제로 몇 장이 쌓여 있는지"를 정확히 세어 그 바로 위 자리를
+내준다 — 1:1 매칭·뻑 형성·뻑 해소·따닥·폭탄 전부 하나의 계산식으로
+자동 처리된다. 폭탄은 반복문 안에서 매번 새로 `target.childCount`를
+재는 구조라, 각 카드가 앞서 내려친 카드만큼 자동으로 한 칸씩 밀려나
+계단식으로 퍼진다("파파팍"이 실제로 파파팍처럼 보이게 된 부수 효과).
+뻑 형성의 뒷패도 `flyFrom[card]`(카드의 정확한 위치인지 보장 안 되는
+스냅샷) 대신 `FieldSlotTransform(card)`(같은 슬롯, 살아있는 마커)를
+써서 같은 메커니즘에 편입시켰다.
+
+**부수 발견 — 뻑 형성 시 field 삽입 순서 불일치.** 위 수정 후 실측
+검증 중, 애니메이션이 쌓은 시각적 순서(매칭됐던 필드 카드가 맨 아래=
+안 움직임, 손패 고스트가 그 위, 뒷패가 맨 위)와 뻑이 형성될 때
+`field.AddRange(r1.captured)`(순서: [card, matchedFieldCard]) +
+`field.Add(drawn)`가 만드는 최종 `field` 리스트 순서가 **정반대**임을
+발견했다 — `DrawField()`는 `field` 리스트 순서대로 스택 인덱스를
+매기므로, 고스트가 사라지고 "진짜" 카드로 넘어가는 순간 방금 낸 손패와
+원래 있던 필드 카드가 자리를 맞바꾼 것처럼 보이는 잔여 버그가 남아
+있었다. `field.Add(matchedFieldCard); field.Add(card); field.Add(drawn);`
+순서로 명시적으로 재배열해서 애니메이션 순서와 최종 렌더 순서를
+일치시켰다(뻑 **해소**·따닥·폭탄·일반 매칭은 캡처된 카드가 Cap으로
+빠지고 field로 다시 안 들어가므로 이 문제 자체가 없다 — 뻑 **형성**만
+"캡처했다가 다시 field에 되돌려 넣는" 유일한 경로라 여기만 해당).
+
+**검증.** 실제 게임 상태를 리플렉션으로 직접 조작해 세 시나리오를
+정확히 재현했다:
+1. **뻑 형성** — 필드 1장(month 3/5) + 손패 1장(같은 달) + 다음 뒷패
+   1장(같은 달)을 강제 배치하고 실제로 플레이 — 최종 `field`에 3장이
+   정확한 슬롯에, sibling 순서(및 y좌표)가 matchedFieldCard(맨 아래) →
+   card(중간) → drawn(맨 위)으로 애니메이션 순서와 정확히 일치하는 것을
+   두 번(month 3, month 5) 확인했다.
+2. **뻑 해소** — 필드에 3장짜리 무더기(month 7)를 미리 만들고 손패의
+   4번째 장을 플레이 — 예외 없이 4장 전부 내 획득패로 들어가고 필드에서
+   그 달이 완전히 비는 것까지 확인했다(전체 캡처 파이프라인이 안 깨짐).
+3. 40라운드 자연 진행 스트레스 테스트 + `NewGame()` 1회 + 실제 고/스톱
+   판정을 거친 정상 게임오버까지, 콘솔 에러 0건.
+
+**따닥도 별도로 직접 재현 검증했다.** 필드에 같은 달 2장(9월, 국열끗
+포함) + 손패 1장 + 다음 뒷패 1장을 강제 배치 → 실제 플레이 →
+필드선택 팝업에서 하나를 고름(9월 국열끗이 아닌 쪽) → 뒷패가 남은
+국열끗을 잡아 따닥 확정 → 국열끗 선택 팝업까지 정상적으로 뜨고 응답
+처리됨 → 최종적으로 4장 전부(선택 캡처 2장 + 따닥 캡처 2장) 내
+획득패로 정확히 들어가고 필드에서 그 달이 완전히 비는 것까지 확인했다.
+콘솔 에러 0건 — 국열끗(쌍피 선택) 같은 부가 로직과의 상호작용도 이번
+구조 변경으로 안 깨졌다는 것까지 같이 확인된 셈이다.
+
+**남은 것.** 폭탄의 "3장이 계단식으로 퍼지는" 개선은 로직상 확인했지만
+(반복문 안에서 매번 `target.childCount`를 다시 재므로 구조적으로
+그렇게 될 수밖에 없다), 실제 폭탄 시나리오를 리플렉션으로 강제 재현해
+좌표까지 재확인하지는 못했다 — 다음에 폭탄이 발생하면 확인할 것.
+
+## 손패 카드 앵커/피벗 — bottom-pivot으로 전환 (2026-09-02)
+
+"핸드에 패가 앵커 top-pivot(0.5,1)로 pos y 0/38인데, bottom-pivot(0.5,0)
+으로 바꿔서 바닥에 붙이고 싶다"는 요청. `HwatuUI.MakeCard`가 **필드·Cap·
+손패 전부가 공유하는 단일 함수**라 top-pivot이 하드코딩돼 있었는데 —
+이번 세션 내내 고친 필드 카드 위치 계산(`FieldSlotTransform`의
+childCount 오프셋, `matchedSlot` 기반 착지 등, 버그 3~8 전부)이 예외
+없이 top-pivot을 전제로 하고 있어서, 이걸 전역으로 바꾸면 그 검증들이
+전부 무효가 된다 — **손패에만 적용되는 선택적 파라미터**로 좁혔다.
+
+```csharp
+public static GameObject MakeCard(..., bool highlight, bool pivotBottom = false)
+{
+    ...
+    rt.anchorMin = rt.anchorMax = pivotBottom ? new Vector2(0.5f, 0f) : new Vector2(0.5f, 1f);
+    rt.pivot = pivotBottom ? new Vector2(0.5f, 0f) : new Vector2(0.5f, 1f);
+    ...
+}
+```
+
+기본값 `false`라 필드/Cap 등 나머지 9곳의 호출부는 전혀 안 건드리고,
+`DrawPlayerHand()`의 손패 카드 생성 호출 한 곳에만
+`pivotBottom: true`를 넘긴다. posY 값(0/34, 낼 수 있는 패는 위로 뜸)은
+그대로 — bottom-pivot에서는 "카드 바닥이 handArea 바닥에서 34px
+뜬다"는 뜻으로 자연스럽게 재해석된다.
+
+**부수 발견 — 폭탄 크레딧 슬롯("덱만" 카드 자리)도 같이 고쳐야 했다.**
+`MakeBombSkipSlot`은 `MakeCard`를 안 쓰고 직접 만든 별도 GameObject라,
+top-pivot이 자체적으로 하드코딩돼 있었다 — 손패만 bottom-pivot으로
+바꾸고 이건 그대로 두면, 이 슬롯만 손패 줄에서 세로로 어긋나 보였을
+것이다(손패는 바닥에서 자라 올라가는데 이 슬롯은 위에서 매달려
+내려오는 모양). 같이 bottom-pivot으로 맞췄다 — 슬롯 내부 라벨 등
+자식 오브젝트는 부모(슬롯) 자신의 로컬 좌표계 안에서 상대 배치되므로
+이 변경과 무관해 손 안 댔다.
+
+**검증.** 컴파일 클린 확인 후 라이브 Play에서 손패 7장 전부
+`anchorMin=(0.5,0), anchorMax=(0.5,0), pivot=(0.5,0)`, `anchoredPos.y`가
+정확히 0 또는 34(낼 수 있는 패)인 것을 확인했다. 카드 재생(`OnPlayerPlay`)
+직접 호출로 손패가 정상적으로 줄어드는 것(클릭/로직 경로가 pivot 변경과
+무관하게 정상 작동), 30라운드 자연 진행 + `NewGame()` 1회 완주까지
+콘솔 에러 0건.
+
+## 획득패 이동 연출 가시성 + 특수 상황 애니메이션 강약 조절 (2026-09-02)
+
+**1) 씬 확인 요청.** 사용자가 씬에서 직접 PlayerCap(내 획득패)의 광/끗띠/피
+존 분리 누락과 Cap3(오른쪽 유저)의 끗/띠 존 누락을 고쳤다는 보고 —
+라이브로 4개 Cap 컨테이너(PlayerCap/Cap1/Cap2/Cap3)의 실제 계층을
+전부 덤프해서 확인했다. 넷 다 `HLG(광|끗띠|피) → 끗띠는 VLG(끗/띠)`
+구조가 일치하고, Cap3도 October_Tane이 정확히 끗 존에 들어가 있는 것
+확인 — `EnsureCapLayoutHierarchy`의 "이미 있으면 재사용" 분기가 사용자의
+씬 수정을 정확히 인식하고 있다. 코드 변경 불필요, 확인만으로 종료.
+
+**2) "패를 냈다/가져갔다가 순간적으로 뿅 없어지는 느낌" — 원인은 캡처
+비행 거리 대비 지속시간.** 필드→획득패 캡처 비행에 쓰는 `SlamIn`이
+고정 0.11초였는데, 실측 거리는 필드~각 Cap 사이 600~1400px(화면을
+거의 가로지른다) — 이렇게 먼 거리를 0.11초에 주파하면 눈이 중간
+과정을 못 따라가고 "그냥 사라졌다 나타난" 것처럼 보인다. 반면 필드
+내부의 아주 짧은 보정용 SlamIn(수십 px 이내, 이미 "일반 상황엔 잘
+어울린다"는 확인을 받음)은 그대로 둬야 했다.
+
+```csharp
+static float CaptureFlightDistanceT(float dist) => Mathf.Clamp01(dist / 500f);
+// SlamIn: flyDur = Lerp(0.11f, 0.38f, t01), punchDur = Lerp(0.14f, 0.22f, t01)
+```
+
+거리를 매 호출 시점에 실측해서 짧으면 기존 속도 그대로, 500px 이상
+(모든 실제 필드→Cap 거리가 여기 해당)이면 0.38초로 자동으로 늘어난다
+— 한 함수로 두 상황을 동시에 만족시킨다. `SlamInViaField`(2단 경유
+비행, `DeckOnlySeq` 등에서 아직 쓰임)도 각 구간을 자기 거리에 맞춰
+같은 방식으로 늘렸다.
+
+**3) "이펙트 나오는 특수 상황은 다 같은 속도감이라 긴장감이 없다,
+쎄게 내려친다던지 뻑났을 땐 힘없이 내려놓는다던지" — SlamDown에
+punchScale을 노출하고 두 가지 프리셋을 적용.**
+
+`SlamDown`(카드가 필드에 내려찍히는 연출)은 이미 `dropHeight`/`dropDur`/
+`punchDur`가 선택 인자였는데 펀치 스케일(도착 시 튕기는 배율)만
+1.22로 고정돼 있었다. `punchScale`을 추가 인자로 열고(기본값 그대로라
+안 건드리는 호출부는 전혀 안 바뀐다), 사용자가 준 두 예시를 그대로
+구현했다:
+
+| 상황 | dropHeight | dropDur | punchScale | 의도 |
+|---|---|---|---|---|
+| 기본값(안 바뀜) | 170 | 0.10 | 1.22 | 기존 그대로 |
+| **폭탄**(쎄게) | 230 | 0.07 | **1.4** | 더 높이서 더 빠르게 떨어져 강한 임팩트 |
+| **뻑 형성**(힘없이) | 60 | 0.22 | **1.06** | 낮게·느리게·거의 안 튕기는 김빠진 낙하 |
+
+뻑 형성(couldBePpeok, 뒷패가 3번째 장으로 쌓이는 순간)과 폭탄(3장
+연속 슬램)의 `SlamDown` 호출에 각각 이 프리셋을 넘겼다. 쪽·싹쓸이·
+첫뻑·따닥 등 나머지 특수 이벤트는 이번엔 기본값 그대로 뒀다 — 필요하면
+같은 패턴(프리셋 표에 항목 추가)으로 쉽게 확장 가능하다.
+
+**검증.** `CaptureFlightDistanceT`를 리플렉션으로 직접 호출해 거리별
+지속시간이 설계대로 나오는 것(0px→0.11s, 500px 이상→항상 0.38s)
+확인. 폭탄 시나리오(4장 강제 배치 후 실제 플레이) → 4장 전부 정상
+캡처, 콘솔 에러 0건. 뻑 형성 시나리오 → 3장 정상 스택, 콘솔 에러 0건.
+이후 70라운드 이상 자연 진행 스트레스 테스트(내 손패 실제 소진·
+고/스톱 선택·`NewGame()` 2회 완주 포함) 콘솔 에러 0건.
+
+> **함정 — 테스트 중 한 번 "게임이 멈췄다"고 오판할 뻔했다.** 폭탄/뻑
+> 시나리오를 리플렉션으로 강제 재현하려고 `hand`/`field`/`drawPile`을
+> 직접 스플라이스하는 걸 이번 세션 내내 반복했는데, 그 누적된 수동
+> 조작이 정상 게임에서는 절대 안 생기는 카드 분포를 만들어 `AdvanceTurn`
+> 의 `DelayedPlayerHandEmpty`(내 손이 빈 채로 내 차례가 됐을 때 0.6초
+> 뒤 자동으로 덱만 넘기게 하는 1회성 트리거) 타이밍이 어긋나 "내 턴에서
+> `drawPile`이 전혀 안 줄고 멈춘 것처럼" 보였다. `NewGame()`으로 상태를
+> 완전히 새로 딜해서 재확인하니 즉시 정상으로 돌아왔고, 이후 70라운드
+> 넘게 자연 진행시켜도 재현되지 않았다 — **리플렉션으로 게임 내부
+> 리스트(hand/field/drawPile)를 직접 스플라이스하는 테스트는 실제
+> 게임에서는 절대 발생 안 하는 카드 분포를 만들 수 있다는 걸 항상
+> 염두에 둘 것.** "멈췄다"는 증상이 나오면 먼저 `NewGame()`으로 깨끗한
+> 상태에서 재현되는지부터 확인하고, 재현 안 되면 테스트 오염을 의심할
+> 것 — 코드 버그로 단정하고 되돌리지 않는다.
+
+## 버그 8 — "pos1이 비어있는데 다른 슬롯부터 찬다" (fieldSlotAssign 누수) (2026-09-02)
+
+사용자 질문("pos1이 비어있는데 다른데부터 패가 차는 이유? pos 선택의
+기준이 뭐야?")으로 발견한 진짜 버그 — 버그 5(뻑/따닥 슬롯 배정 수정)의
+**부작용**이었다.
+
+**원인.** `fieldSlotAssign`(카드→슬롯 번호 매핑 캐시)이 게임 시작 시
+**한 번도 초기화된 적이 없었다.** 버그 5에서 "field에 없다"만으로
+반납하던 걸 "field에 없고 **실제로 누군가의 captured에 들어갔다**"로
+좁혔는데 — `NewGame()`이 매판 `captured[s] = new List<HwatuCard>()`로
+아예 새 리스트를 만들어 끼우다 보니, **지난 판에 캡처됐거나 나가리로
+그냥 끝난 카드는 새 captured 목록엔 당연히 없어서** 이 반납 조건을
+영원히 만족 못 시키고 죽은 참조로 `fieldSlotAssign`에 계속 쌓였다.
+새 판은 카드 객체 자체가 매번 새로 생성되니(참조가 다르다) 지난 판의
+슬롯 배정은 완전히 무의미한데도, `AssignFieldSlot`의 "가장 낮은 빈
+슬롯" 탐색(`!fieldSlotAssign.ContainsValue(i)`)은 이 죽은 참조들의
+슬롯 번호도 여전히 "사용 중"으로 계산했다 — 판을 거듭할수록 실제로는
+비어있는 슬롯 번호까지 점점 더 많이 막혀서, 새로 깔리는 카드들이 낮은
+번호(pos1 등)를 건너뛰고 점점 더 높은 번호부터 채우기 시작했다. 실측
+확인 시점엔 `fieldSlotAssign.Count=42`인데 실제 `field.Count=6`뿐이었고
+— 12개 슬롯 번호 전부가 "사용 중"으로 잡혀 있었다(극단적으로 가면
+전부 막혀 모든 새 카드가 폴백 슬롯1에 겹쳐 쌓일 수도 있는 상황).
+
+**고침.** `NewGameSeq()`의 다른 `.Clear()` 호출들(flyFrom·flyViaField·
+ppeokCauser 등)과 같은 자리에 `fieldSlotAssign.Clear()`를 추가했다 —
+새 판은 카드 객체가 전부 새로 생성되므로 이전 배정은 통째로 비워도
+안전하다(오히려 안 비우는 쪽이 버그였다).
+
+**검증.** 수정 전 실측: `fieldSlotAssign.Count=42, field.Count=6,
+occupiedSlotNumbers=1~12 전부`(스테일 36개). 수정 후 새 판 시작
+직후: `fieldSlotAssign.Count=6=field.Count, stale=0`. `NewGame()`을
+3회 연속 돌리며 매번 카운트가 실제 필드 카드 수와 정확히 일치하고
+스테일 항목이 0으로 유지되는 것 확인. 70+ 라운드 자연 진행에도
+콘솔 에러 0건(재시작 직후의 일시적 Pipeline 타임아웃 1건은 게임
+코드와 무관).
+
+**"pos 선택 기준" 정리(사용자 질문에 대한 답)** — `AssignFieldSlot`은:
+1. 이미 배정된 카드면 그 슬롯 그대로(멱등).
+2. 아니면 같은 달 카드가 이미 필드에 있으면 그 슬롯을 같이 쓴다(뻑
+   무더기처럼 쌓임).
+3. 그 외엔 **pos1부터 순서대로 "지금 아무도 안 쓰는 가장 낮은 번호"**
+   를 새로 배정한다 — 정상 동작이라면 항상 pos1부터 채워져야 맞고,
+   이번에 고친 버그가 바로 그 "아무도 안 쓰는"이라는 판단 자체가
+   죽은 참조 때문에 틀렸던 경우였다.
+
+## 고스톱 — 족보 완성 풀스크린 벡터 카드 이펙트 (`GoStopVectorEffect`) (2026-09-02)
+
+사용자가 `Assets/Art/hwatu_svg/`에 화투 SVG 원본을 추가하고, "족보 이펙트가
+발생할 때 해당하는 패들을 전체화면으로 크게 빡 박혔다가 페이드"하는 연출을
+요청했다 — Unity 6.3(에디터 버전 `6000.3.11f1`)이 지원하는 SVG를 UI Toolkit으로
+쓰자는 제안과 함께.
+
+**아키텍처 결정 — UGUI 대신 UI Toolkit을 새로 들인 이유.** 처음엔 클래식
+SVG 임포터(텍셀레이션→Sprite)로 기존 UGUI `GoStopEffectPopup` 파이프라인에
+얹는 쪽을 권했으나, 사용자가 "이펙트는 어차피 최상단에 잠깐 뜨는 것뿐이라
+순서 문제는 없다"고 확인하면서 UI Toolkit 네이티브 SVG 경로로 확정했다.
+실측해보니 `Assets/Art/hwatu_svg/*.svg`는 **이미 svgType=3(VectorImage)로
+임포트돼 있었다**(SVGImporter 기본값이 이미 이렇게 맞춰져 있었음) — UI
+Toolkit `Image.vectorImage`에 바로 꽂을 수 있는 상태였다.
+
+**만든 것.**
+- `Assets/Scripts/Games/GoStop/GoStopVectorEffect.cs` — 싱글톤
+  MonoBehaviour(`GoStopAudio`/`GoStopIcons`와 같은 `Ensure()` 패턴).
+  `UIDocument`+`PanelSettings`로 화면 전체를 덮는 딤+카드 로우+타이틀
+  라벨을 만든다. `Play(title, accent, IEnumerable<HwatuCard> cards)` 하나가
+  전체 API — 딤 페이드인 → 카드 스태거 슬램인(작게 시작→오버슈트→정착,
+  카드마다 0.08초씩 늦게 시작) → 타이틀 페이드인 → 0.9초 홀드 → 전체
+  페이드아웃 → 자동 클리어까지 코루틴 하나로 처리한다.
+- `Assets/Resources/Hwatu_SVG/` — 필요한 17장만 `Assets/Art/hwatu_svg/`에서
+  역할 이름(`{Month}_{Kind}.svg`, 기존 raster PNG 네이밍과 동일)으로 복사.
+  Kenney 때 확립한 "원본은 Art, 실제 쓰는 것만 Resources" 원칙을 그대로
+  따랐다 — 고도리(2·4·8월 열끗)·홍단(1·2·3월 띠)·초단(4·5·7월 띠)·
+  청단(6·9·10월 띠)·광(1·3·8·11·12월 광) 전부.
+- `Assets/Resources/Prefabs/GoStop/Effects/GoStopVectorEffectPanel.asset` —
+  `PanelSettings` 실제 .asset(코드에서 매번 `ScriptableObject.CreateInstance`
+  하는 대신). referenceResolution=(1920,1080)+Expand — `GoStop3PGame.Start()`가
+  이 씬의 CanvasScaler를 강제로 덮어쓰는 것과 정확히 같은 값(2/3/4인 전부
+  이 씬 하나를 공유하므로 무조건 이 설정). `themeStyleSheet`에
+  `Assets/UI Toolkit/UnityThemes/UnityDefaultRuntimeTheme.tss`(이 세션에서
+  UI Toolkit을 처음 건드리며 자동 생성된 기본 테마)를 연결 — 이게 없으면
+  "No Theme Style Sheet set to PanelSettings, UI will not render properly"
+  경고와 함께 텍스트 등이 정상 렌더링 안 된다.
+
+**호출부 — 광 제외 4세트는 코드 변경 최소로, 광은 프리팹 4개를 통째로
+걷어냄.** `GoStop3PGame.cs`의 `FireAchievement(seat, setName)` → `FireAchievement(seat,
+setName, List<HwatuCard> cards)`로 시그니처 확장(호출부 `CheckEmergencies()`가
+`mine.Where(EmergencySets[i].pred).ToList()`로 그 순간 실제로 세트를
+완성시킨 카드를 넘긴다 — 고정 목록이 아니라 매번 실측). 예전 래스터 팝업
+(`HwatuUI.InstantiateEffect<GoStopEffectPopup>(prefabName, ...)`) 호출을
+`GoStopVectorEffect.Ensure().Play(...)`로 교체. `FireGwangAchievement`도
+동일 — 예전엔 광 3/4/5장·비삼광 여부에 따라 프리팹 4개
+(`EffectBiSamGwang`/`EffectSamGwang`/`EffectSaGwang`/`EffectOGwang`)를
+갈랐는데, 이제 좌석이 실제로 든 광 카드(`gwangCards`, 3~5장 어느 달인지도
+그대로)를 그대로 보여주므로 라벨 문구만 갈리면 되고 프리팹 분기 자체가
+필요 없어졌다. **파티클 버스트(`GoStopIcons.SpawnBurst`)는 그대로 남겨서
+두 이펙트가 겹치며 화려함을 더한다.** 비상(2/3 경고, `FireEmergency`)
+쪽은 이번 범위에서 안 건드렸다 — 여전히 래스터 `GoStopEffectPopup`을
+쓴다. 예전 5개 래스터 완성 프리팹(`EffectGodoriAchieved` 등)은 삭제하지
+않고 그냥 안 쓰는 채로 남겨뒀다.
+
+**버그 3개를 실제로 잡았다(전부 라이브 Play 세션에서 발견·수정·재검증):**
+1. **`VisualElement.transform.scale`이 obsolete(CS0618)** — 컴파일 경고
+   확인 중 발견. `wrap.style.scale = new StyleScale(new Scale(...))`로
+   교체(권장 대체 API, 리플렉션으로 `ObsoleteAttribute.Message` 직접
+   확인해 정확한 대체 경로를 확정한 뒤 적용).
+2. **PanelSettings에 themeStyleSheet를 안 채우면 텍스트가 정상 렌더링
+   안 된다** — 콘솔에서 "No Theme Style Sheet" 경고를 보고 발견. 위
+   "만든 것" 항목의 `GoStopVectorEffectPanel.asset`으로 해결.
+3. **`GameObject.SetActive(false)`로 경고를 없애려다 만든 진짜 크래시.**
+   `UIDocument.OnEnable`이 `AddComponent`되는 순간 동기로 돌면서
+   panelSettings 없이 한 번 초기화돼 그 경고가 뜨길래, "GameObject를
+   비활성으로 만들어 두고 panelSettings까지 다 채운 뒤 SetActive(true)"로
+   막으려 했다 — 그런데 `UIDocument.rootVisualElement`는 **OnEnable이
+   돌기 전(비활성 상태)엔 null**이라서, 그 상태에서 `root.Add(dim)` 등
+   트리를 짓는 코드가 그대로 `NullReferenceException`을 던져 `Ensure()`
+   전체가 깨졌다(`Instance`엔 이미 반쯤 초기화된 깨진 인스턴스가 남아서
+   재시도해도 `if (Instance != null) return Instance;`에 막혀 계속
+   깨진 채로 재사용됨 — Play 세션을 재시작해야만 풀렸다). **고침**:
+   `Setup()`을 `panelSettings 할당`과 `BuildTree()`(root 이하 트리 구성)
+   두 단계로 쪼개서, `go.SetActive(false)` → UIDocument 붙이고
+   panelSettings 채움(트리는 안 건드림) → `go.SetActive(true)`(이제야
+   OnEnable, 경고 없이 rootVisualElement 정상 생성) → `BuildTree()`
+   순서로 재배치. 세 번째 시도만에 경고도 크래시도 둘 다 없는 상태로
+   확정됐다.
+
+**검증(Play 모드 라이브, 스크린샷 대신 리플렉션 — 이 프로젝트 확립된
+방식).** 4인 게임을 띄우고 `FireAchievement`/`FireGwangAchievement`를
+private 메서드 그대로 리플렉션으로 호출해 8가지 전부(고도리·홍단·초단·
+청단·3광·비삼광·4광·5광) 실제 카드 데이터로 순차 재생 — 매번 `cardRow`
+자식 수·`Image.vectorImage` 이름이 기대한 SVG와 정확히 일치하는 것,
+카드 크기가 장수별 공식(n≤3→520h, n=4→440h, n=5→380h, 폭은 h×0.62)대로
+나오는 것, 애니메이션이 끝나면 `cardRow.childCount=0`·딤 알파=0으로
+깨끗이 정리되는 것까지 확인했다. Play 세션 시작(13:48:24) 이후 콘솔
+`error`/`exception`/`assert` 레벨 로그 **0건**(순수 CLI 도구 자체의
+무관한 경고 1건만 있었다).
+
+**아직 손 안 댄 것 — 다음에 이어서 할 수 있는 것들.**
+- 비상(2/3 경고) 이펙트는 여전히 래스터. 원하면 같은 방식으로 확장 가능.
+- 서로 다른 좌석이 짧은 간격으로 다른 세트를 동시에 완성하면, 싱글턴
+  하나뿐인 `GoStopVectorEffect`가 뒤에 온 `Play()` 호출로 앞 애니메이션을
+  중단시키고 갈아탄다(`StopAllCoroutine` 없이 `playing` 코루틴 참조 하나만
+  교체) — 큐잉 없이 "나중 것이 이긴다"는 단순한 정책이다. 실전에서 겹치는
+  빈도가 낮다고 보고 이번엔 큐를 안 만들었다 — 자주 겹친다는 신고가 오면
+  간단한 FIFO 큐를 추가할 것.
+- 진짜 게임 내 자연 발생(합성 카드가 아니라 실제 플레이로 세트를 완성시켜
+  트리거)까지는 이번 세션에서 못 봤다 — `CheckEmergencies()`의 detection
+  로직 자체는 이번에 전혀 안 건드렸고(호출 시그니처만 확장), `FireAchievement`/
+  `FireGwangAchievement`는 정확히 그 함수가 넘기는 것과 같은 모양의
+  데이터로 직접 검증했으니 위험은 낮다고 판단했다.
+
+## 고스톱 — Cap 피 존 GridLayoutGroup이 쌍피 값을 무시하던 버그 (2026-09-03)
+
+"캡에 피 놓을 때 5장씩 쌓아 올라가는데, 쌍피는 한 장당 2개로 쳐서 로우에
+쌍피가 1장 껴있으면 4장, 2장 껴있으면 3장이어야 하는데 무조건 5장이 된다"는
+신고. 원인은 목업 이식 세션(`EnsureCapLayoutHierarchy`, 2026-08-27)에서
+광/끗/띠/피 4존을 전부 진짜 Unity `GridLayoutGroup`(고정 5열)으로 통일한
+것 — 그리드는 "장수"만 셀 뿐 카드의 `EffectivePiValue`(쌍피=2)를 전혀
+모른다. 예전(v10, 2인/4인 공용) `HwatuUI.GroupIntoRows(cards, maxPerRow,
+weighted)`가 정확히 이 문제를 풀던 함수였는데, 그리드 기반으로 갈아타면서
+피 존만 그 가중치 인식을 잃은 것이었다.
+
+**해결 — 사용자가 준 두 방안 중 방안 2(그리드 유지 + 투명 더미)를 택했다.**
+방안 1(그리드를 버리고 피만 직접 좌표 계산)도 가능했지만, 이 파일의
+Cap 렌더링(`FillCapZone`)이 **매 `RebuildUI()`마다 존을 통째로
+`ClearChildren` 후 `cards` 목록 그대로 다시 채우는 구조**라, 방안 2가
+우려했던 "피뺏기 등 액션에서 더미가 카드를 따라다녀야 한다"는 문제
+자체가 애초에 성립하지 않았다 — 카드가 다른 곳으로 가면 다음 리빌드
+시점에 그 카드 자체가 이 존의 `cards` 목록에서 빠지므로, 더미도 자동으로
+같이 안 그려진다. 그래서 그리드(광/끗/띠와 일관된 구조)를 그대로 두고
+더미만 끼워 넣는 쪽이 코드 변경이 훨씬 작았다.
+
+`FillCapZone`에 `weighted` 매개변수를 추가 — 쌍피(`EffectivePiValue==2`)
+카드를 만든 직후 `Image`/`Button` 없는 빈 `RectTransform`(`PiWeightFiller`)을
+같은 부모(zone)에 sibling으로 하나 더 만든다. `GridLayoutGroup`은 자식의
+개별 크기를 안 보고 `cellSize`로 전부 균일하게 배치하므로 더미에
+sizeDelta를 따로 안 줘도 그리드 한 칸을 그대로 차지한다 — 쌍피 카드
+바로 다음 sibling이라 "그 카드가 2칸짜리"인 것처럼 그리드가 착각하게
+만드는 효과. `DrawPlayerCaptured`/`DrawAiCaptured` 양쪽 다
+`FillCapZone(zones.pi, pi, pending, weighted: true)`로 호출부만 한 줄씩
+바꿨다(광/끗/띠는 가중치 개념이 없어 그대로 `weighted` 기본값 false).
+
+**검증(Play 모드 라이브, 사용자가 설명한 시나리오 그대로 재현).** 내
+획득패에 피 7장(1행: 쌍피1+홑피3, 2행: 쌍피2+홑피1)을 강제로 채우고
+`RebuildUI()`를 직접 호출 — 피 존의 자식 순서가 정확히
+`[쌍피, PiWeightFiller, 홑피, 홑피, 홑피, 쌍피, PiWeightFiller, 쌍피,
+PiWeightFiller, 홑피]`(총 10개=그리드 5열 기준 2행)로 나와, 1행은 실제
+카드 4장(쌍피 1장 포함, 5피), 2행은 실제 카드 3장(쌍피 2장 포함, 5피)로
+사용자가 요구한 규칙과 정확히 일치했다. `GridLayoutGroup`은 sibling
+순서/개수로 줄바꿈을 계산하므로(FixedColumnCount=5) 이 자식 배열이 곧
+"1행에 5칸, 그중 쌍피가 2칸씩 차지"를 그대로 보장한다. 콘솔 에러 0건
+(무관한 CLI 자체의 타임아웃 1건만 있었음 — Play 모드 재시작 직후의
+기존 패턴).
+
+## 고스톱 — 쉬는 좌석 StatusBox에 dim 처리 (2026-09-03)
+
+"유저가 쉬는 중이면 statusbox에 dim을 켜줘" 요청. `GoStop3PGame.UI.cs`의
+`FillSlot`은 이미 `sittingOutSeat == seat` 조건으로 "쉬는 중 (광팔이)"/
+"쉬는 중 (참가 포기)" 문구는 띄우고 있었지만 배경/글자에 별도 흐림
+처리는 없었다.
+
+**1차 시도(CanvasGroup, 되돌림) — "코드로 조절하라는 말이 아니라
+프리팹에 dim을 켜달라는 것"이라는 정정을 받았다.** 처음엔
+`GoStopStatusBoxView`에 `CanvasGroup.alpha`로 박스 전체를 흐리는
+`SetDim(bool)`을 만들었는데, 커밋 직전 `git status`에서 손 안 댄
+`StatusBoxView.prefab`이 이미 수정돼 있는 걸 발견했다 — diff를 보니
+사용자가 프리팹 에디터에서 **직접 "Dim"이라는 이름의 GameObject**
+(전체 스트레치 Image, 기본 비활성, 회갈색 반투명)를 이미 만들어 둔
+상태였다. 처음엔 "제가 안 건드린 파일이 바뀌어 있다"고만 보고하고
+커밋은 보류했는데, 사용자가 바로 "그 Dim 오브젝트를 SetActive로 켜
+달라는 뜻이었다"고 확인해줬다 — 코드에서 새로 만들 필요 없이 이미
+있는 걸 참조만 하면 되는 상황이었다.
+
+**최종 구현.** `SetDim`의 내용을 CanvasGroup 방식에서
+`[SerializeField] GameObject dimOverlay;`를 `SetActive(active)`로
+토글하는 방식으로 교체했다. 컴파일해서 `dimOverlay` 필드가 실제로
+존재하게 만든 뒤, `PrefabUtility.LoadPrefabContents` +
+`SerializedObject.FindProperty("dimOverlay").objectReferenceValue =
+그 Dim GameObject` + `PrefabUtility.SaveAsPrefabAsset`로 프리팹 자체에
+참조를 구워 넣었다(이 프로젝트가 여러 번 써온 프리팹 필드 와이어링
+패턴 — `OverlayCard`/`StatusBoxView` 초기 프리팹화 세션 등과 동일).
+
+> **함정 — `PrefabUtility.UnloadPrefabContents(root)` 다음 줄에서
+> `root`(또는 그 자식)의 프로퍼티를 읽으면 "destroyed but you are
+> still trying to access it" 예외가 난다.** 로그 문자열을 만들려고
+> `dimT.name`을 `UnloadPrefabContents` 호출 **뒤에** 읽었다가 걸렸다 —
+> `LoadPrefabContents`가 만드는 임시 씬 오브젝트는 `Unload` 시점에
+> 실제로 파괴되므로, 필요한 값은 반드시 Unload 전에 지역 변수로
+> 미리 뽑아둘 것. (다행히 저장(`SaveAsPrefabAsset`) 자체는
+> `Unload` 전에 이미 끝나 있어서 이 예외와 무관하게 와이어링은
+> 정상적으로 저장돼 있었다 — 프리팹 파일을 직접 grep해서 확인.)
+
+**검증(Play 모드 라이브).** 4인 게임의 4개 슬롯 전부에서
+`dimOverlay`가 실제로 그 "Dim" GameObject로 와이어링돼 있는 것 확인
+(reflection으로 private 필드 직접 조회). 좌석2를 `sittingOutSeat`로
+강제 지정 → `RebuildUI()` → 좌석2가 매핑된 슬롯(slotSeat 실측 확인)만
+`dim.activeSelf=True`, 나머지 3슬롯은 `False`. `sittingOutSeat=-1`
+(전원 참가)로 되돌리고 다시 `RebuildUI()` → 방금 켜졌던 슬롯이
+정확히 `False`로 복귀하는 것까지(리셋 경로) 확인했다. 콘솔 에러 0건.
+
+## 고스톱 — 배경 바람 파티클(화투 12개월 모티프) (2026-09-03)
+
+"밋밋한 게임 화면을 방해하지 않는 선에서 채우는, 바람에 날리듯 여유롭게
+움직이는 배경 파티클 — 소나무 솔잎·매화·벚꽃잎·등나무 꽃·붓꽃·모란·싸리·
+억새·국화·단풍·오동·빗방울이 랜덤 로테이션으로, 필드 이펙트가 터질 때는
+같이 확 퍼지는 연출도" 요청. 두 파일로 나눴다.
+
+**`GoStopMotifAtlas.cs` — 12칸(4×3) 절차적 텍스처 아틀라스.** 화투
+카드 SVG(`Assets/Art/hwatu_svg`)는 카드 한 장 전체 구도라 잎/꽃 하나만
+떼어 쓰기 어렵다 — 작고 흐릿하게 떠다니는 배경 파티클은 디테일보다
+"실루엣만으로 그 계절 식물처럼 읽히는지"가 기준이라, 이 프로젝트가
+오디오·아이콘을 전부 코드로 합성해 온 원칙 그대로 절차적 도형을 택했다.
+Signed-distance 근사값(경계에서 0, 안쪽이 음수)에 feather 폭만큼 알파를
+부드럽게 깎는 `Paint()` 헬퍼 하나로 타원·노치(V자 홈)·바늘·칼날(휜 타원)·
+꽃(원형으로 배치한 여러 타원)·별(각도별 반지름 보간)·하트형 잎·물방울,
+8가지 원형(archetype)을 조합해 12개 모티프를 그렸다.
+
+> **검증 — 스크린샷 대신 실제로 PNG를 저장해서 봤다.** 이 환경의 Game
+> 뷰 스크린샷은 신뢰할 수 없다는 이 프로젝트의 기존 제약이 있지만, 이번엔
+> `Texture2D`를 직접 만드는 절차적 아트라 `ImageConversion.EncodeToPNG`로
+> 파일로 저장해서 Read 툴로 직접 볼 수 있었다 — 리플렉션 좌표 확인보다도
+> 확실한 검증 방법. 처음 렌더에서 매화·모란(꽃 모티프)이 그냥 원으로만
+> 보이는 버그를 발견했다 — `FlowerBlob`이 개별 꽃잎(원)들을 배치하는
+> 고리 반지름(ringR)이 꽃잎 자체 반지름(petalR)보다 너무 작아서, 꽃잎들이
+> 서로의 중심에 거의 다 겹쳐 그냥 하나의 큰 원처럼 보였다(모란은 한술 더 떠
+> `ringR=0`으로 잘못 넣어서 n개 원이 전부 정확히 같은 자리에 겹쳐 있었다 —
+> 사실상 원 1개). ringR/petalR 비율을 1.0~1.3 정도로 올려서(매화
+> 0.28/0.22, 모란 0.32/0.26) 꽃잎 경계가 겹치되 바깥으로 삐져나온 스캘럽
+> (물결 모양) 윤곽이 보이도록 고치고 나서야 "원이 아니라 꽃"으로 읽혔다
+> — PNG로 직접 보지 않았으면 리플렉션만으로는 절대 못 잡았을 버그다.
+
+**`GoStopWindParticles.cs` — ParticleEffectForUGUI(UIParticle) 기반 실제
+파티클 2계통.** `GoStopFX.PlayWinConfetti`가 이미 확립해 둔 원칙(scale3D
+기본값 10이 시뮬레이션 유닛↔캔버스 px 환산 배율, playOnAwake=true라
+설정 전에 반드시 Stop 먼저)을 그대로 따랐다.
+- **ambientPS**(상시 루프) — 화면 맨 위 가장자리에서 낮은 밀도(2.5개/초)로
+  계속 태어나, 아주 약한 중력(0.05~0.12)과 Noise 모듈(바람 결)만으로
+  느긋하게 떨어진다. TextureSheetAnimation을 Grid 모드로 걸어 12칸 중
+  랜덤 한 칸을 매 파티클 스폰 시점에 고르고(`frameOverTime`을 상수 0으로
+  고정해 그 칸에서 안 움직인다) 수명 내내 유지한다. colorOverLifetime으로
+  태어날 때·사라질 때 페이드해서 팝인/팝아웃이 안 보인다.
+- **burstPS**(트리거 전용) — 평소엔 `rateOverTime=0`으로 조용히 있다가
+  `Burst(canvasLocalPos, count)`가 `Emit(EmitParams{position=...}, count)`로
+  수동 발사할 때만 원뿔형으로 확 퍼진다(0.6~1.0초, 빠른 속도).
+- **레이어링** — ambientPS는 ContentArea의 두 번째 자식(첫 자식은 기존
+  BackgroundPattern 격자무늬)으로 붙어서, 그 뒤에 추가되는 실제 게임
+  콘텐츠(필드·손패·획득패 등)가 항상 그 위에 그려진다 — "게임 화면을
+  방해하지 않는 선"을 레이어 순서로 보장한다. UIParticle은 애초에 UGUI
+  레이캐스트 대상이 아니라 클릭을 가로챌 걱정도 없다.
+- **버스트 연동 — 호출부를 하나도 안 고쳤다.** 필드 이펙트 8곳(뻑/쪽/
+  싹쓸이/폭탄/족보완성/광완성/총통/나가리)이 전부 이미
+  `GoStopIcons.SpawnBurst(parent, localPos, color, count)` 하나를
+  공유하고 있어서, 그 함수 맨 앞에 `GoStopWindParticles.Instance?.Burst(localPos)`
+  한 줄만 얹었다 — 8곳 전부 자동으로 "이펙트가 터질 때 파티클도 같이
+  터진다"를 만족한다.
+
+**검증(Play 모드 라이브).** `ambientPS.GetParticles()`로 실측 —
+X좌표가 캔버스 폭 전체(±96 시뮬레이션 유닛 = ±960px)에 고르게 퍼져
+있는 것, Y좌표가 스폰 지점(맨 위, 54)부터 낮은 값까지 다양하게 분포된
+것(=실제로 시간이 지나며 떨어지고 있다는 증거), 3초 뒤 다시 재보니
+새 파티클이 다시 맨 위(54)에 나타나는 것까지 확인했다(연속 스폰 확인).
+`Burst()`를 직접 호출 → `particleCount`가 즉시 늘어나는 것, 실제
+`GoStopIcons.SpawnBurst(canvasRoot, ...)` 경로로도 동일하게 트리거되는
+것(테스트 스크립트에서 처음엔 `GoStopWindParticles` 자신의
+`transform.parent`—원래 null이라 SpawnBurst의 null 가드에 걸려 아무
+일도 안 일어난 것뿐이었다—를 잘못 parent로 넘겨 "안 터진다"고 착각할
+뻔했다, 실제 `ui.ContentArea.parent.parent` 캔버스로 정정하니 정상
+확인됨), `FireAchievement`(고도리 완성) 실제 호출 체인 전체(벡터 카드
+슬램+아이콘 버스트+바람 파티클 버스트가 한 번에)가 예외 없이 도는
+것까지 확인했다. 콘솔 에러 0건(무관한 CLI 자체 타임아웃/경고 몇 개뿐).
+
+**아직 눈으로 직접 확인 못한 것.** 아틀라스 자체는 PNG로 저장해서 실제로
+봤지만(위 검증 항목 참고), **파티클로 화면에 흩뿌려진 결과물의 최종
+비주얼**(밀도가 적당한지, 너무 튀거나 안 보이는지, 바람 결 느낌이 실제로
+"여유롭다"고 느껴지는지)은 이 환경에서 Game 뷰 스크린샷이 신뢰할 수
+없어 확인하지 못했다 — 사용자가 직접 플레이하며 밀도(`emission.rateOverTime`
+=2.5)·알파(colorOverLifetime 최대 0.5)·낙하 속도(`gravityModifier`=
+0.05~0.12) 등을 보고 조정 요청하면 바로 반영할 것.
+
+### PiWeightFiller를 줄의 오른쪽 끝에 모아 배치 (2026-09-03)
+
+"PiWeightFiller는 항상 줄의 우측 끝에 오게 할 수 있어?" — 원래는 쌍피
+카드를 만든 바로 다음 sibling으로 필러를 끼워 넣었는데(카드 순회하며
+그때그때 하나씩 그리는 구조), 그러면 필러가 카드들 "사이"에 끼어
+보인다(예: `[쌍피,필러,홑피,홑피,홑피]` — 필러가 맨 앞쪽 카드 바로 뒤).
+
+`FillCapZone`을 카드 하나씩 즉시 그리는 방식에서, **먼저 한 줄(피 값
+합 5) 분량의 카드를 모았다가 줄이 다 차면(`FlushRow`) 그 줄의 실제
+카드를 전부 그린 다음에 그 줄이 필요로 하는 필러 개수만큼 이어서
+그리는** 2단계 방식으로 바꿨다 — 실제 카드가 항상 먼저, 필러는 항상
+그 줄의 마지막에 오도록 순서 자체를 보장한다. `weighted=false`(광/끗/띠)
+경로는 안 건드렸다(그대로 카드 하나씩 즉시 생성).
+
+**검증(Play 모드 라이브, 이전 세션과 같은 시나리오 재사용).** 피
+7장(쌍피1+홑피3, 쌍피2+홑피1)을 강제로 채우고 `RebuildUI()` 호출 →
+피 존 자식 순서가 정확히 `[카드,카드,카드,카드,FILLER, 카드,카드,카드,
+FILLER,FILLER]`로 나와, 두 줄 다 필러가 실제 카드 뒤 오른쪽 끝에 몰려
+있는 것을 확인했다. 콘솔 에러 0건(무관한 CLI 타임아웃 1건뿐).
+
+> **함정 재확인 — `HwatuUI.ClearChildren`의 `Destroy()`가 프레임 끝까지
+> 지연된다는 이 프로젝트의 기존 함정을 이번에도 그대로 겪었다.** 카드를
+> 강제로 채우고 `RebuildUI()`를 부른 뒤 **같은 exec 호출 안에서** 곧바로
+> `childCount`를 쟀더니 20개(이전 상태 10개 + 새로 그린 10개)가 잡혔다 —
+> 별도의 후속 exec 호출로 다시 재니 정확히 10개로 나왔다. 실제 버그가
+> 아니라 측정 타이밍 문제였다(이 프로젝트에 이미 여러 번 기록된 패턴).
+
+### 줄이 어중간하게 남는 경우 재배치 — "홑피 4장+쌍피 1장"이 두 줄로
+갈라지던 문제 (2026-09-03)
+
+"일반피 4개+쌍피 1개면 `피/피피피쌍피`(2줄, 아래 줄 꽉 참)로 나와야
+하는데 지금은 `쌍피/피피피피`(홑피 4장이 통짜 줄, 쌍피 혼자 남는 줄)로
+나와서 점수 계산에 헷갈릴 요지가 있다"는 신고. 원인은 바로 전 항목의
+row-packing이 순수 그리디(줄이 5를 넘기기 **직전**에서만 끊음)였던 것 —
+홑피 4장(weight4)까지 채운 뒤 쌍피(weight2)가 들어오면 4+2=6이라 넘쳐서
+그냥 새 줄을 시작해버렸다. 이 게임의 피 값이 1(홑피)·2(쌍피)뿐이라
+**이 오버플로는 수학적으로 항상 "줄이 정확히 4, 새 카드가 쌍피"인
+경우뿐**이다(0~3에 1이나 2를 더하면 항상 5 이하라 절대 안 넘친다) —
+그래서 그 줄의 **마지막 카드가 홑피(weight1)일 때만** 그 한 장을 빼고
+쌍피를 대신 넣으면 정확히 5가 된다. 뺀 홑피는 다음 줄 맨 앞으로
+넘어간다(순서 보존 — "먼저 가져온 순으로 배치"를 최대한 지키면서 딱
+한 장만 밀려난다). 마지막 카드가 쌍피라 뺄 수 없으면(빼도 2가 남아
+정확히 안 맞음 — 홀수 weight를 짝수 카드로는 못 채운다, 수학적으로
+더 나은 방법이 없다) 줄을 있는 그대로 닫는다.
+
+또한 "줄이 정확히 5를 채운 순간(홑피만으로 자연스럽게 5가 되는 경우
+등) 바로 그 줄을 확정 지어야" 다음 카드가 그 위에 잘못 얹히지 않는다
+— `rowWeight==5`가 되는 매 시점(정상 추가든 스왑 후든)마다 즉시
+`FlushRow()`하도록 정리했다. `rowFillers`를 매 add/remove마다 손으로
+갱신하던 카운터는 버그 소지가 있어서 없앴다 — `FlushRow()` 안에서
+그 순간의 `rowCards`를 `Count(c => c.EffectivePiValue == 2)`로 다시
+세는 방식으로 바꿔 상태 불일치 위험을 없앴다.
+
+**검증(Play 모드 라이브, 사용자가 제시한 4가지 케이스 전부).**
+- **3홑피+1쌍피**(순서 홑,홑,홑,쌍피) → `[홑,홑,홑,쌍피,FILLER]` 1줄 —
+  "피피피쌍피" 그대로(회귀 없음).
+- **4홑피+1쌍피**(순서 홑,홑,홑,홑,쌍피, 신고된 버그 케이스) →
+  `[홑1,홑2,홑3,쌍피,FILLER | 홑4]` — 요청하신 `피/피피피쌍피`와
+  정확히 일치(마지막 홑피가 다음 줄로 밀려남).
+- **5홑피+1쌍피, 쌍피가 맨 뒤**(순서 홑×5,쌍피) →
+  `[홑1..홑5 | 쌍피,FILLER]` — "쌍피/피피피피피"(허용된 두 배치 중
+  하나) 확인.
+- **5홑피+1쌍피, 쌍피가 중간**(순서 홑,홑,홑,쌍피,홑,홑) →
+  `[홑1,홑2,홑3,쌍피,FILLER | 홑5,홑6]` — "피피/피피피쌍피"(허용된
+  나머지 배치) 확인.
+
+4가지 전부 정확히 사용자가 명시한 기대 배치와 일치했다. 콘솔 에러
+0건(무관한 CLI 타임아웃 1건뿐).
+
+## 고스톱 — 카드 "놓임" 그림자를 애니메이션 완료 시점에만 켜기 (2026-09-03)
+
+"FrontCard에 Art부분에 UIEffect를 넣어놨는데 이 컴퍼넌트는 필드나, cap에
+있는 패들 애니메이팅이 끝나면 켜줄래? 그림자를 넣어서 놓여져있다는
+표현을 하고싶어서 넣어놓은거야." — 사용자가 직접 `CardFront.prefab`의
+`Art` 자식에 `Coffee.UIEffects.UIEffect`(그림자 모드, 기본 비활성)를
+미리 심어뒀다. 날아다니는 도중이 아니라 **착지가 끝난 뒤**에만 켜는
+것이 목적이라, "이번 리빌드에서 안 움직이는 정적 카드는 즉시, 움직이는
+카드는 도착한 순간" 두 갈래로 나눠 처리했다.
+
+`GoStopFX.SetArtShadow(GameObject cardGo, bool on)` 헬퍼를 새로 추가 —
+`cardGo.transform.Find("Art").GetComponent<UIEffect>().enabled = on;`
+한 줄. 호출 지점 3곳:
+- `DrawField()` — `flyFrom`에 등록이 없는(이번 리빌드에서 안 움직이는)
+  카드는 만든 즉시 켠다. `flyFrom`이 있지만 거리 체크(`sqrMagnitude ≤ 1f`,
+  버그 3에서 만든 "사실상 제자리라 애니메이션 생략" 분기)로 SlamIn을
+  건너뛰는 경우도 즉시 켠다 — 이 경우도 화면상 이동이 없으므로 정적
+  카드와 동일하게 취급.
+- `FillCapZone`의 `MakeOne` — 마찬가지로 `flyFrom` 없는 정적 카드는
+  즉시 켠다. `flyFrom`이 있는 카드는 `pending`에 담겨 나중에
+  `FlushPendingCapAnimations`가 `SlamIn`/`SlamInViaField`를 돌리므로,
+  이 함수 자체에서는 아직 켜지 않는다.
+- **`FlyAndPunch`(양쪽 오버로드 — Vector3 목적지/RectTransform 목적지)**
+  가 실제 "움직이는 카드"를 담당하는 유일한 코루틴이다(`SlamIn`/
+  `SlamInViaField` 둘 다 이걸 공유한다) — 펀치 스케일이 끝나고
+  `rt.localScale = baseScale;`을 대입하는 바로 그 지점(코루틴이
+  정상 종료하는 지점)에서 `GoStopFX.SetArtShadow(rt.gameObject, true)`를
+  같이 부른다. **`SlamDown`(고스트 카드 전용, 착지 후 곧바로 파괴되는
+  임시 오브젝트)의 두 오버로드는 의도적으로 안 건드렸다** — 고스트는
+  실제 게임 콘텐츠가 아니라 파괴 예정인 연출용 사본이라 그림자를 켤
+  이유가 없다.
+
+**검증(Play 모드 라이브, 리플렉션).** 딜링 코루틴이 (원인 불명으로)
+멈춘 세션이라 손패/필드/더미를 직접 스플라이스해 우회 진입 —
+`RebuildUI()` 직후 필드 카드 6장 전부 `enabled=True`(정적 카드 즉시
+켜짐) 확인. 매칭 안 되는 손패(1월 광)를 실제로 `OnPlayerPlay`로 냈다가
+그 직후 상태를 보니 — 방금 낸 카드는 이미 도착해 `enabled=True`,
+동시에 진행 중이던 덱뒤집기 고스트(9월 피)는 `enabled=False`(의도대로
+그림자 없음)로 셋이 한 화면에 공존하는 것까지 확인했다. 9월이 필드에
+Tane+Tanzaku 둘 다 있어 필드선택 팝업이 뜬 것을 `pendingFieldChoice`로
+응답해 진행시키자, 캡처된 두 장(9월 띠+피)이 내 획득패 안에서
+`SlamInViaField`로 날아든 뒤 정확히 `enabled=True`로 켜지는 것까지
+확인 — 정적/필드 착지/Cap 착지/고스트 4가지 경로 전부 의도대로
+갈렸다. 콘솔은 CLI 자체의 5초 타임아웃 2건(이 프로젝트에 이미 기록된
+환경 특성)만 있었을 뿐 게임 코드발 예외는 0건.
+
+> **함정 — 리플렉션으로 스플라이스한 게임 상태가 자연 진행 도중
+> `hand`가 전 좌석 `null`로 보이는 이상 상태를 만들었다.** 검증 후반부
+> AI 턴이 몇 차례 더 자연 진행된 뒤 `hand` 배열을 다시 보니 4좌석 전부
+> `null`이었다 — 그런데 그 시점 전후로 콘솔에 예외가 전혀 없었고, 곧이어
+> Play 모드 자체가 (내가 멈추라고 하지도 않았는데) 스스로 Edit 모드로
+> 돌아가 있었다. 원본 딜 자체가 이미 자연스러운 `NewGameSeq()`가 아니라
+> 손으로 끼워 넣은 것이었으므로, 그 뒤 어느 시점에 `NewGame()`이 다시
+> 자동으로 걸렸거나 새로운 조작 불가능한 팝업에 걸렸을 가능성이 높다 —
+> 이 프로젝트가 이미 여러 번 문서화한 "리플렉션 스플라이스는 실제
+> 게임에서 절대 안 나오는 상태를 만들 수 있다"는 함정과 같은 계열로
+> 판단했다(예외 없이 조용히 이상해졌다는 점에서 코드 버그로 볼 근거가
+> 없었다). 핵심 검증(그림자 on/off 네 가지 경로)은 이미 그 이전에
+> 전부 예외 없이 확인이 끝난 뒤였으므로 추가 조사 없이 넘어갔다.
+
+## 고스톱 — 게스트 전용 필드 슬롯 누수 (fieldSlotAssign, 네트워크) (2026-09-03)
+
+"pos 빈자리 pos 1부터 12까지 순서대로 찾는거 맞아? pos4가 비는데 pos7부터
+차는데" — 2026-09-02에 이미 고친 "pos1이 비어있는데 다른 슬롯부터 찬다"
+버그(`fieldSlotAssign`이 판을 거듭해도 안 지워지던 것, `NewGameSeq`에
+`.Clear()` 추가로 해결)와 정확히 같은 증상군의 재발 신고. `AssignFieldSlot`
+(`GoStop3PGame.UI.cs`)/`SyncFieldSlotAssignments`/모든 `field.Remove(...)`
+호출부(2인·3~4인·`GoStopRules.cs` 전부)를 서브에이전트로 전수 감사했지만
+**호스트·단일 클라이언트 경로 자체는 이미 완전히 무결했다** — 모든 카드
+제거가 예외 없이 어느 좌석의 `captured[]`로 이어졌다.
+
+**진짜 원인은 네트워크 게스트 쪽에만 있었다.** `ApplyNetworkSnapshot`
+(호스트 스냅샷을 받을 때마다 실행 — 사실상 매 `RebuildUI`)이
+`field = GoStopStateSnapshot.Dec(snap.field);`로 매번 `field`를 통째로
+새 리스트로 갈아치우는데, `Dec`(`GoStopDeck.Decode`)는 스냅샷이 올 때마다
+`HwatuCard`를 전부 `new(...)`로 새로 만든다 — 그런데 `HwatuCard`는 이
+프로젝트가 이미 여러 번 명시한 설계대로 **값 동등성이 아니라 참조
+동일성**으로 다뤄진다(`Equals`/`GetHashCode` 오버라이드 없음, 모든
+`List.Contains`/`Remove`가 참조 기준). 그래서 `fieldSlotAssign`
+(`Dictionary<HwatuCard,int>`)에 남아있던 **지난 스냅샷의 카드 키들은
+새 스냅샷의 `field`/`captured` 어디에도 참조가 안 맞아 절대 못 걸린다**
+— `SyncFieldSlotAssignments`의 반납 조건("field에 없고 captured에
+있다")이 게스트에서는 구조적으로 영원히 성립할 수 없어, 죽은 키가
+세션 내내(판이 몇 번을 넘어가도) 계속 쌓였다. 호스트 전용인
+`NewGameSeq`의 `.Clear()`는 게스트가 `NewGame()`을 직접 호출하는 경로
+자체가 없어서(`SetNewGameAction(isNetworkGuest ? null : NewGame)`)
+전혀 도움이 안 됐다 — 정확히 같은 증상이 왜 "고쳤는데도" 재발했는지의
+답이었다.
+
+`ApplyNetworkSnapshot`의 `field` 재할당 직후 `fieldSlotAssign.Clear();`
+한 줄을 추가했다 — 카드 인스턴스 자체가 스냅샷마다 통째로 갈리는 이상
+이전 배정을 유지할 근거 자체가 없으므로, 게스트는 매 스냅샷마다
+`AssignFieldSlot`이 새로 (하지만 그 판 안에서는 일관되게) 재배정하게
+했다. `HwatuCard`에 값 동등성을 넣거나 `fieldSlotAssign`을 `spriteName`
+기준으로 다시 키잉하는 대안도 있었지만, 참조 동일성은 이 프로젝트
+전역에 걸쳐 이미 확정된 설계라(다른 수십 곳의 `Remove`/`Contains`가
+그 전제로 짜여 있다) 건드리지 않고 가장 좁은 지점만 고쳤다.
+
+**검증(Play 모드 라이브, 리플렉션).** 호스트 상태를 직접 스플라이스해
+필드 6장을 채운 뒤 `BuildSnapshot()`으로 실제 스냅샷을 뽑고, 적용
+*전* `fieldSlotAssign`의 키(호스트 카드 인스턴스) 6개를 미리 기억해
+둔 채 `ApplyNetworkSnapshot(snap)`을 직접 호출 — 적용 후
+`fieldSlotAssign.Count=6`(정상, field와 정확히 일치)이면서 옛 호스트
+인스턴스 키는 **0개**만 남는 것을 확인했다(수정 전이었다면 이 6개가
+전부 죽은 채로 남아있었을 것 — `field.Contains`/`captured.Contains`
+둘 다 새 인스턴스 기준이라 옛 키를 절대 못 잡기 때문). 같은 스냅샷을
+8번 연속 재적용해도 매번 정확히 6으로 고정되는 것(누적 없음)까지
+확인했다. 콘솔은 CLI 자체의 5초 타임아웃 1건(무관한 환경 특성)만
+있었고 게임 코드발 예외는 0건.
+
+## 고스톱 — 필드 착지 파티클을 카드 월별 모티프로 (2026-09-03)
+
+"필드에 패나올때 나오는 파티클 해당 패에 매칭되는 파티클로 설정해줄수있나
+예를들어 1월 패가 필드에 나올땐 1월에 해당하는 소나무 파티클" —
+`GoStopWindParticles`의 기존 배경 파티클은 전부 "12개 모티프 중 아무거나
+랜덤"이 목적이라(상시 루프·이벤트 버스트 둘 다) 특정 카드의 월과 정확히
+맞출 방법이 없었다. 카드가 필드에 착지하는 순간(뻑/쪽 등 이벤트가 아니라
+매 턴 카드를 낼 때마다)에 그 카드의 달과 정확히 일치하는 모티프를 새로
+붙였다.
+
+**Grid 모드 프레임 순서를 추측하지 않고 `Sprite.Create(Rect)`로 우회했다.**
+`GoStopMotifAtlas.Build()`의 기존 주석이 이미 경고해 둔 문제 — 텍스처는
+`SetPixels32` 좌표계(좌하단 원점)로 그려지는데 ParticleSystem의 Grid
+텍스처시트 모드는 프레임 번호를 왼쪽위부터 행 우선으로 센다. 랜덤으로
+아무거나 고르는 기존 파티클은 이 어긋남이 상관없었지만, 이번엔 "정확히
+그 달"이 요구사항이라 Unity 내부 규칙을 추측하는 건 위험했다(맞았는지
+틀렸는지 확인할 스크린샷도 이 환경에서 못 믿는다). `Sprite.Create(texture,
+rect, pivot)`은 `SetPixels32`와 완전히 같은 텍스처 픽셀 좌표(좌하단
+원점)를 그대로 받는 잘 정의된 API라 방향을 추측할 필요 자체가 없다 —
+`GoStopMotifAtlas.ForMonth(month)`가 `Build()`의 `Cell(col,row)` 배치와
+정확히 같은 인덱스 공식(idx=month-1, col=idx%4, row=idx/4)으로 12장을
+미리 잘라 캐싱해 둔다.
+
+**`GoStopWindParticles`에 전용 `cardPS`를 새로 하나 더 뒀다** — 기존
+`burstPS`(이벤트용, Grid 모드, 랜덤 프레임)를 재사용해 프레임만 강제로
+덮어쓰는 방법도 가능했지만, "랜덤"이라는 그 시스템의 설계 의도와 부딪힐
+여지가 있어 아예 분리했다. `cardPS`는 `TextureSheetAnimationMode.Sprites`
+(Grid 아님)로 설정하고, `BurstCardMotif(canvasLocalPos, month, count)`가
+매 호출마다 `tsa.SetSprite(0, GoStopMotifAtlas.ForMonth(month))`로 슬롯
+하나를 그 달의 스프라이트로 갈아끼운 뒤 곧바로 `Emit()`한다 — `Emit`은
+동기 호출이라 그 프레임 안에서 만들어지는 파티클은 그 시점의 설정을
+그대로 반영하므로, 같은 프레임에 다른 달의 카드가 연달아 착지해도 서로
+안 섞인다.
+
+**착지 시점 훅 — `SlamDown`(RectTransform target 오버로드)에 `cardMonth`
+파라미터를 추가.** 필드에 카드가 착지하는 5개 지점(`PlaySeq` 안 —
+①폭탄 3장 반복, ①일반 손패, ②조커, ②뻑 형성, ②일반 뒷패)이 전부 이
+오버로드 하나를 공유하고 있어서, 기존 `SpawnImpactFlash(rt)` 바로
+다음에 `if (cardMonth >= 1 && cardMonth <= 12) SpawnCardMotifBurst(rt,
+cardMonth);` 한 줄만 끼워 넣었다. 5개 호출부 전부에 `cardMonth:
+hc.month`/`card.month`/`drawn.month`를 넘기도록 인자만 추가했다 —
+조커(month=0)는 이 카드 자체 필드가 원래 0이라 자연스럽게 걸러진다(별도
+분기 불필요). `SpawnCardMotifBurst`는 `SpawnImpactFlash`가 이미 확립한
+"ContentArea가 아니라 Canvas 레벨(`ContentArea.parent.parent`)로 좌표를
+변환해야 `GoStopWindParticles.Burst`류 API의 문서화된 계약과 맞는다"는
+원칙(`ShowActionPopup`의 기존 경고와 동일 — HUD가 켜지면 ContentArea가
+Canvas와 어긋날 수 있다)을 그대로 따랐다.
+
+**검증(Play 모드 라이브, 리플렉션).** ①`GoStopMotifAtlas.ForMonth`를
+직접 호출해 1월→rect(0,0,48,48), 8월→rect(144,48,48,48)로 `Cell()`
+배치와 정확히 일치하는 것, month=0/99 같은 범위 밖 값이 1/12로 정확히
+클램프되는 것(참조 동일성으로 확인) 확인. ②`BurstCardMotif`를 직접 두 번
+연달아 다른 달로 호출해 `tsa.GetSprite(0)`이 매번 정확히 그 달의
+스프라이트로 갈리는 것(이전 달과 참조가 다름을 확인해 "안 갈리고
+그대로 남는" 실패 모드도 배제) 확인. ③실제 게임 플레이(매칭 안 되는
+1월 광을 `OnPlayerPlay`로 실제로 냄) — 손패 랜딩(1월) 버스트가 발사된
+뒤, 자동으로 이어진 덱뒤집기(9월) 랜딩 버스트가 슬롯을 9월로 다시
+갈아끼운 것까지 `field`/`fieldChoicePopup` 상태와 교차 확인해(9월
+카드가 필드에 이미 있던 9월 페어와 매칭돼 필드선택 팝업이 뜬 것 — 정확히
+"뒷패가 9월이었다"는 방증) 실제 플레이 경로에서도 카드마다 서로 다른
+달의 모티프가 순서대로 정확히 걸리는 것을 간접 확인했다. 콘솔 예외 0건
+(CLI 자체의 5초 타임아웃 몇 건만, 무관한 환경 특성).
+
+## 고스톱 — 필드→획득패 캡처 크기 팝(pop) 제거 + 관련 끊김 전수 점검 (2026-09-04)
+
+"패가 캡으로 들어갈때 필드에있는게 뿅사라지고 캡에 들어갈 사이즈로
+뿅변하는게 이상해 사이즈도 tween으로 부드럽게 움직이게 해줘 모든연출이
+전부다 끊기는 듯한 연출이 있는거같은데 그런부분들 다 체크해서 고스트와
+실제 오브젝트가 이어지게끔 만들어주면 좋을것같아." — 사용자가 직접
+`CAP_W/CAP_H`(30×49→44×73)와 그리드 spacing을 손으로 키운 직후("layoutgroup
+관련 수정했으니 참고") 나온 요청. 서브에이전트로 이 프로젝트의 모든
+카드 크기 상수(`FIELD_W/H`=120×196, `HAND_W/H`=128×210, `CAP_W/H`=44×73,
+`BACK_W/H`=46×75, `PILE_W/H`=120×196)와 모든 고스트↔실제오브젝트
+핸드오프 지점을 전수 조사해 실제 팝 발생 지점을 확정했다.
+
+**실제 팝은 필드→Cap 캡처 한 곳뿐이었다.** 손패→필드(둘 다 FIELD_W/H로
+동일), 딜링 애니메이션(고스트가 `localScale=0`으로 사라진 뒤에야 실제
+카드가 생겨서 애초에 크기 다른 프레임이 안 보임)은 이미 무해했다. 반면
+필드→Cap은 `FillCapZone`의 `MakeOne`이 `HwatuUI.MakeCard(c, zone,
+Vector2.zero, CAP_W, CAP_H, ...)`로 **처음부터 CAP_W/H로 실제 오브젝트를
+만들고**, `FlushPendingCapAnimations`가 `LayoutRebuilder.
+ForceRebuildLayoutImmediate`로 그 즉시 GridLayoutGroup이 위치·크기를
+확정시킨 **뒤에야** `SlamIn`(위치만 보간)을 시작한다 — 크기는 애니메이션
+시작 전에 이미 스냅돼 있었다. `SlamIn`/`SlamInViaField`/`FlyAndPunch`
+전부 `sizeDelta`를 만지는 코드가 아예 없다는 것도 확인했다(`localScale`
+펀치 바운스만 있음).
+
+**"직접 sizeDelta를 튠하면 된다"가 안 통하는 이유 — GridLayoutGroup이
+자식의 sizeDelta/위치를 매 레이아웃 패스마다 강제로 되돌린다.** Cap 존은
+`EnsureCapLayoutHierarchy`가 만든 `GridLayoutGroup`(`cellSize=CAP_W/H`)의
+자식이다 — 자식 RectTransform의 sizeDelta가 바뀌면 Unity가 그 즉시 부모
+레이아웃 그룹을 dirty 표시해 다음 캔버스 업데이트에서 다시 강제로
+`cellSize`로 되돌린다. 즉 레이아웃 그룹 자식인 채로는 크기를 절대
+직접 튠할 수 없다 — 손패→필드 착지 때 이미 쓰던 "고스트가 날아다니고
+실제 오브젝트는 이미 제자리에 완성돼 있다가 마지막에 넘겨받는다" 패턴을
+그대로 가져와야 했다.
+
+**구조 — `SlamToCap` + `FlyAndPunchGhost`(신규, `GoStop3PGame.UI.cs`).**
+`MakeOne`이 실제 Cap 오브젝트를 만들고 나면(그리드가 이미 CAP_W/H·최종
+위치로 확정) `CanvasGroup.alpha=0`으로 완전히 숨긴다 — 슬롯 자체는
+그리드에 여전히 카운트되므로(`SetActive`로 끄면 그리드가 슬롯을 아예
+없는 걸로 치고 나머지 카드가 당겨져 밀린다 — alpha만 낮추는 이유) 다른
+카드 배치는 전혀 안 흔들린다. 동시에 `ui.ContentArea`(레이아웃 그룹
+바깥, 안 지워지는 안정된 부모)에 **원래 있던 크기**(`fromSize` — 필드면
+FIELD_W/H, 손패에서 곧장 낸 조커면 HAND_W/H 등)로 고스트를 하나 만들어
+`from`(원래 위치) → 실제 오브젝트의 이미 확정된 최종 위치까지, 위치와
+크기(sizeDelta)를 **같은 루프 안에서 동시에** 보간한다(`FlyAndPunchGhost`
+— 기존 `FlyAndPunch`와 이동+임팩트+펀치 로직은 동일하되 sizeDelta 보간이
+추가됨, 펀치 배율 1.28도 통일). 도착하면 고스트를 지우고 실제 오브젝트를
+그 순간 드러낸다(alpha=1) — 이미 정확히 같은 자리·같은 크기라 이어붙는
+지점이 안 보인다. 필드에서 짝을 실제로 친 자리를 거쳐 가는 2단 경유
+(`hit` 있는 경우, 예전 `SlamInViaField`와 같은 상황)도 지원한다 — 1구간
+(필드 안에서의 이동)은 둘 다 필드 크기라 사이즈가 그대로, 2구간에서만
+Cap 크기로 줄어든다.
+
+**원본 크기를 정확히 알아야 했다 — `flyFromSize` 신설.** 기존 `flyFrom`
+(위치만 기억)은 카드가 그 순간 몇 픽셀이었는지 몰랐다. `flyFrom[X]=Y`로
+등록되는 지점이 15곳쯤 있는데, 서브에이전트로 하나하나 추적한 결과
+**12곳은 전부 필드/더미에서 온 것**(FIELD_W/H와 PILE_W/H가 숫자까지
+같은 120×196이라 전부 동일 취급 가능)이었고, 예외는 딱 둘뿐이었다:
+- `RegisterPiFly`(피뺏기) — 다른 좌석의 Cap에서 옴, CAP_W/H(=목적지와
+  같아서 애초에 크기 변화가 없다).
+- `PlayJokerFromHandSeq`(손패 조커를 곧장 냄, 필드를 안 거침) — 내
+  좌석이면 HAND_W/H, 옆좌석 뒷면 더미면 BACK_W/H, 그 외(상단 등 뒷면
+  표시가 없는 자리)는 FIELD_W/H로 근사.
+
+이 분포 덕에 `flyFromSize`를 모든 등록 지점에 일일이 채우는 대신, **기본값을
+FIELD_W/H로 두고 위 두 예외 지점에서만** 명시적으로 다른 값을 넣는 구조로
+끝났다(`FillCapZone`의 `MakeOne`이 `flyFromSize.TryGetValue(c, out var sz) ?
+sz : new Vector2(FIELD_W, FIELD_H)`) — 12곳을 건드릴 필요가 없었다.
+`flyFromSize`도 `flyFrom`/`flyViaField`와 같은 생명주기(매 `RebuildUI`
+끝에서 Clear, `NewGameSeq`에서도 Clear)로 맞췄다.
+
+**덤으로 발견한 진짜 버그 — 피뺏기 애니메이션이 이 세션 내내(아마 그
+이전부터) 한 번도 안 걸리고 있었다.** `RegisterPiFly`가 `area.Find(card.
+spriteName)`로 카드를 찾는데, `area`(Cap 컨테이너) 밑에 카드는 실제로
+2단 깊이(`컨테이너→광/끗띠→끗/끗띠→띠/피→카드`)에 있다 — `Transform.
+Find`는 슬래시 없는 plain name으로는 1단 깊이만 본다. 즉 이 Find는
+**항상 null**을 돌려주고 있었고, `flyFrom[card]`가 결국 한 번도 안
+채워져서 피뺏기로 이동하는 카드는 그냥 팝업하듯 나타났다(뻑/폭탄/쪽 등
+다른 캡처 경로는 전부 `FieldSlotTransform(card).Find(...)`처럼 2단
+깊이를 직접 찾는 방식으로 이미 고쳐져 있었는데 이 함수만 놓쳐 있었다).
+`area.Find("광/"+spriteName) ?? area.Find("끗띠/끗/"+spriteName) ?? ...`
+로 4개 리프 존 경로를 직접 시도하도록 고쳤다 — `EnsureCapLayoutHierarchy`
+가 만드는 정확히 그 4개 이름이라 재사용성 걱정 없이 확정된 경로다.
+
+**검증(Play 모드 라이브, 리플렉션).** ①`StartCoroutine`이 첫 yield까지
+동기 실행한다는 이 프로젝트의 기존 트릭으로 `SlamToCap` 착수 직후
+상태를 잡음 — 실제 Cap 오브젝트는 `alpha=0, sizeDelta=(44,73)`(이미
+숨겨진 채 최종 크기로 그리드에 고정), 동시에 생성된 고스트는
+`sizeDelta≈(118,193)`(FIELD_W/H에서 막 보간을 시작한 값, 아직 온전히
+120×196은 아님 — 첫 프레임 한 틱만큼 이미 진행됐다는 뜻) — 두 오브젝트가
+동시에 존재하며 각자 의도한 시작 상태인 것을 확인. ②1초 뒤 재확인 —
+실제 오브젝트 `alpha=1, sizeDelta=(44,73)`(정확한 최종값), 고스트는
+완전히 파괴됨(ContentArea에 잔여물 0). ③`RegisterPiFly`를 직접 호출해
+`flyFrom`/`flyFromSize`가 **이제는** 정상적으로 채워지는 것(수정 전이면
+영원히 비어 있었을 것) 확인, 크기도 정확히 (44,73) 확인. ④폭탄(4장 동시
+캡처, 3월 광+띠+피2장)을 실제로 재현 — 4장 전부 `captured[0]`에 정확히
+들어가고 전부 44×73으로 정착, ContentArea에 고스트 잔여물 0. ⑤25턴
+자연 진행 스트레스 테스트(참가선언·필드선택·9월열끗 팝업 자동 응답 포함)
+— 콘솔 에러·예외 0건.
+
+## 고스톱 — 광박/피박/멍박 배지를 CalcScore 기준으로 재구현 (2026-09-04)
+
+이전 세션에서 "광박 대상이아닌데 광박 아이콘에 불이들어오네"를 조사했지만
+**재현에 실패했었다**(순수 로직 3케이스·30턴 라이브 차등 테스트·배지
+레이아웃 겹침까지 확인했는데도 불일치 0건 — 자세한 조사 과정은 이 절
+아래 남긴 기록 대신 git 히스토리 참고). 사용자가 이어서 정확한 의도를
+정리해줬다: **"광박/피박/멍박 뱁지는 해당하는 조건으로 1점 이상 낸
+상대가 있을 때만 활성화되어야 한다"** — 즉 단순 카드 개수가 아니라
+"그 상대가 실제로 그 항목에서 점수를 냈는가"가 기준이어야 한다.
+
+**검증해보니 광/피 임계값 자체는 이미 수학적으로 "1점 이상"과 동치였다.**
+`CalcScore`의 실제 채점식(`s.gwang`은 3장부터 2~3점, `s.pi`는
+`piTotal>=10`부터 1점)과 대조한 결과:
+- 광: `others.Any(count(Gwang)>=3)` — 3장이면 항상 최소 2점(비삼광)
+  이상이라 "count>=3"과 "gwang score>0"은 완전히 같은 조건.
+- 피: `others.Any(piSum>=10)` — 마찬가지로 완전히 같은 조건.
+
+**하지만 멍박은 진짜 구멍이 있었다.** 예전 구현은 "열끗(Yeolkkeut) 5장
+이상"(`CalcScore`의 `s.yeolkkeut = yeolCount>=5 ? yeolCount-4 : 0`과
+동치)만 봤는데, 이 프로젝트엔 **고도리(3점 → 아니 5점, 특정 3장의
+동물그림 열끗)라는 별개의 열끗 채점 항목이 있다** — 고도리 3장만 딱
+모으고 나머지 열끗은 없는(총 열끗 3장 < 5) 드문 경우, 실제로는 5점을
+내고 있는데도 예전 로직은 이걸 완전히 놓쳤다(카운트가 5 미만이라
+`false`). "멍" 자체가 "동물 그림 열끗"을 가리키는 표현이라는 걸
+감안하면, 고도리야말로 이 배지가 원래 잡아야 했던 핵심 케이스였다.
+
+**고침 — 세 함수 전부 `GoStopRules.CalcScore`를 직접 물어보도록
+재작성**(`GoStopRules.cs`):
+```csharp
+// 광/피 — "others 쪽만" CalcScore(o,0).gwang/pi > 0로 교체(mine 쪽은
+// 원래 규칙대로 "개수 0 여부" 그대로 유지 — 실제 광박/피박 규칙 자체가
+// "상대가 그 카드를 아예 하나도 못 모았다"는 개수 기준이라 점수 기준과
+// 다르다).
+others.Any(o => CalcScore(o, 0).gwang > 0)
+others.Any(o => CalcScore(o, 0).pi > 0)
+// 멍 — 열끗 5장 채점과 고도리 채점 둘 중 하나라도 나면 위험(OR로 묶음).
+others.Any(o => { var s = CalcScore(o, 0); return s.yeolkkeut > 0 || s.godori > 0; })
+```
+`MEONG_BAK_THRESHOLD` 상수는 이제 안 쓰여서 삭제(다른 참조 없음 확인).
+`CalcScore`를 직접 물어보게 바꾼 덕에, 앞으로 채점 공식이 바뀌어도
+이 배지들이 자동으로 같이 맞는다 — 임계값을 두 곳(채점 로직과 배지
+로직)에서 따로 관리하다 어긋날 걱정이 구조적으로 없어졌다.
+
+**검증(Play 모드 라이브, 리플렉션).** 기존 회귀 케이스 4개(광 위험/
+안전, 피 위험, 멍 열끗 무점수→false) 전부 그대로 통과 확인 + **신규
+케이스**(상대가 고도리 3장만 보유, 총 열끗 3장<5) — 예전 로직이면
+`False`였을 상황이 수정 후 정확히 `True`로 잡히는 것 확인. 콘솔
+에러·예외 0건.
+
+## 고스톱 — 흔들기/폭탄 SVG 카드 이펙트 (2026-09-04)
+
+"흔들기 이펙트를 추가해줘 마찬가지로 svg로 흔드는 패 3장이 화면전면에
+크게 나오고 페이드 되는형식으로. 흔들기 이펙트는 유저가 패를 흔들거나
+폭탄 사용시 나오게 해줘." — 기존 족보 완성 이펙트(`GoStopVectorEffect`,
+UI Toolkit+SVG, 카드 여러 장을 화면 전체에 슬램인→홀드→페이드아웃)를
+그대로 재사용했다. 새 프리팹/컴포넌트 없이 호출 2곳만 추가.
+
+**두 트리거는 서로 배타적이라 중복 발동 걱정이 없다.** `OnPlayerPlay`가
+이미 `bombEligible = field.Count(달)==1`이면 흔들기 팝업 자체를 안
+띄우도록 막아 둬서(폭탄 조건이면 `declareShake`가 애초에 `false`),
+`PlaySeq` 안의 두 지점 — ①`declareShake==true`(흔들기 선언, 라인
+~2198) ②`bomb==true`(폭탄 확정, 라인 ~2266) — 은 같은 플레이에서 함께
+발동할 수 없다(이전에 흔들기를 선언해 둔 달이 나중에 폭탄이 되는
+드문 경우도, 그 폭탄 플레이 자체는 `declareShake=false`로 들어와서
+①은 안 걸리고 ②만 걸린다).
+
+- **흔들기(①)**: `h`(손패)에서 `card`가 아직 안 빠진 시점이라
+  `h.Where(c => c.month == card.month)`로 정확히 3장을 그대로 잡을 수
+  있다 — `GoStopRules.ResolveWithBomb`가 이 블록 **다음**에 호출돼서
+  카드를 빼가므로, 여기서 안 잡으면 이미 늦다. 색은 `HwatuTheme.Gold`
+  (기존 흔들기/뻑 카운트 배지와 같은 톤).
+- **폭탄(②)**: 이 지점은 `ResolveWithBomb` **이후**라 `h`에서 이미
+  3장이 빠진 뒤다 — 대신 `r1.captured`(캡처 결과, "[card, partner1,
+  partner2, fieldMatch]" 순서로 채워지는 게 이미 확립된 구성)의
+  `.Take(3)`으로 손패 쪽 3장만 정확히 골라낸다. 색은 기존
+  `BurstColorForLabel`의 폭탄 색(`(1.0, 0.35, 0.15)`, 주황빨강)과
+  통일.
+- 좌석 무관(플레이어든 AI든) 발동 — 기존 족보 완성 이펙트와 같은
+  범위 원칙(누구 차례든 극적인 순간은 다 같이 보여준다).
+- 타이틀 문구는 기존 족보 완성 이펙트와 같은 템플릿
+  (`"{SeatName(seat)}이(가) {...}!"`)을 그대로 따랐다 — 참고로 이
+  템플릿은 내(`PLAYER_SEAT`)가 주체일 때 "나이(가) ...!"로 나와
+  "나이"(연령)로 오독될 여지가 있는데, 이건 이번에 새로 생긴 문제가
+  아니라 족보 완성 이펙트에도 이미 있던 것과 동일한 기존 패턴이라
+  일관성을 위해 그대로 따랐다 — 문구 자체를 바꾸고 싶으면 두 이펙트
+  다 같이 고칠 것.
+
+**검증(Play 모드 라이브, 리플렉션).** ①손패 3장(같은 달, 필드에 매칭
+없음) 세팅 → `OnPlayerPlay` → 흔들기 팝업 뜸 확인 → `OnShakeChoice(true)`
+→ `GoStopVectorEffect.Instance.cardRow.childCount=3`, 타이틀
+"나이(가) 5월 흔들기!", 타이틀 색이 정확히 `HwatuTheme.Gold`(RGB
+0.835/0.643/0.227, `#D5A43A`와 정확히 일치)인 것 확인. ②손패 3장+필드
+1장 매칭(폭탄 조건) 세팅 → `OnPlayerPlay` → 팝업 없이 곧장 폭탄 확정 →
+`cardRow.childCount=3`, 타이틀 "나이(가) 3월 폭탄!", 색이 정확히
+`(1.0, 0.35, 0.15)`인 것 확인. 콘솔 에러·예외 0건.
+
+## 고스톱 — 흔들기 SVG 이펙트에서 3장 중 1장만 보이던 버그 (2026-09-04)
+
+바로 위 흔들기/폭탄 이펙트를 붙이자마자 "흔들때 전면 svg이펙트 중
+3장중 패가 하나만 나오는 이슈 발생" 재신고. 원인은 이펙트 로직이 아니라
+**SVG 리소스 자체가 부족했다** — `Assets/Resources/Hwatu_SVG/`는 예전
+족보 완성 이펙트(고도리/홍단/초단/청단/광, 항상 고정된 특정 카드들만
+등장)를 만들 때 그 카드들만 딱 맞춰 넣어둔 **17장짜리 부분집합**이었다
+(5광 + 고도리 열끗 3장 + 홍단/초단/청단 띠 9장). 흔들기/폭탄은 **어느
+달이든** 발생할 수 있어서, 나머지 31장(전체 48장 표준 덱 기준)의 카드는
+`Resources.Load<VectorImage>`가 `null`을 돌려줬다 — `GoStopVectorEffect`는
+그 null을 조용히 빈 자리로 그렸을 뿐이라 예외도 없이 "1장만 보인다"는
+증상으로만 드러났다.
+
+**고침 — `Assets/Art/hwatu_svg/`(전체 48장 원본, 파일명 규칙만 다름:
+`"Hwatu {월} {종류}[ N].svg"` 공백 구분)에서 빠진 31장을 찾아
+`Assets/Resources/Hwatu_SVG/`의 명명 규칙(`HwatuCard.spriteName`과
+정확히 일치, `"{월}_{종류}[_N].svg"` 언더스코어 구분)으로 복사했다.**
+`GoStopDeck.cs`의 딜링 헬퍼로 확인한 월별 정확한 구성(8월=광+열끗만
+띠 없음, 11월=광+피3장만 열끗·띠 없음, 12월=광+열끗+띠+피1장만 — 이
+프로젝트가 이미 여러 번 문서화한 "8월·11월엔 띠가 없다" 사실이 이번
+복사 매핑에서도 그대로 적용됐다)을 그대로 따라 매핑했다. 셸 파라미터
+치환(`${var//_/ }`)이 heredoc 안에서 "bad substitution"으로 실패해서
+`tr '_' ' '`로 바꾼 스크립트 파일(`/tmp/copy_svgs.sh`)을 직접 실행하는
+방식으로 우회했다.
+
+`AssetDatabase.Refresh()`(CLAUDE.md에 문서화된 `unity command editor
+refresh --force --compile`는 이 세션의 Pipeline 서버 커맨드 목록에
+실제로는 없었다 — `eval`로 `UnityEditor.AssetDatabase.Refresh()`를 직접
+호출해 임포트했다)로 새 SVG 31장을 임포트한 뒤, **48장 전수 로드
+스윕**(`Resources.Load<VectorImage>("Hwatu_SVG/" + spriteName)`을 표준
+덱 48장 전부에 대해 호출)으로 `ok=48, fail=0`을 확인했다 — 이제 17장이
+아니라 전체 덱이 커버된다.
+
+**검증(Play 모드 라이브).** 신고를 정확히 재현했던 시나리오(원래 17장
+안에 하나도 없던 달, 6월 — Tane/Kasu_1/Kasu_2 3장)로 흔들기를 다시
+실행 — `cardRow`의 3개 자식 전부 `hasVectorImage=True`(수정 전이었다면
+2/3이 빈 자리)로 확인. 콘솔 에러 0건.
+
+## 고스톱 — 착지 애니메이션에 "완급"(쪼는 맛/호쾌한 맛/힘없는 맛) 추가 (2026-09-04)
+
+"이제 애니메이팅 연출은 끊김없이 자연스러운데 좀 심심하다, 완급이 없다 —
+쪼는 맛/호쾌한 맛/힘없이 실망한 느낌이 패를 낼 때마다·뒷패를 깔 때마다
+들어가면 재밌겠다"는 요청. 이미 폭탄("쎄게")·뻑 형성("힘없이") 두 특수
+케이스만 전용 프리셋(`dropHeight`/`dropDur`/`punchDur`/`punchScale`)을
+직접 부르고 있었고, 그 외 **모든** 착지(①손패 슬램·②뒷패 슬램·덱만
+넘기는 턴)는 전부 같은 기본값 하나로 뭉뚱그려져 있었다 — 정확히
+"심심하다"는 지적의 원인이었다.
+
+**`LandingMood(bool willCapture, bool bigCapture)` — 결과 기반 완급
+프리셋 헬퍼(`GoStop3PGame.UI.cs`).** 폭탄/뻑 형성이 쓰는 전용 프리셋은
+그대로 두고, 나머지 모든 착지가 이 함수 하나로 통일된다:
+- 못 먹음(`willCapture=false`) → **힘없이**: dropHeight 95·dropDur
+  0.13·punchDur 0.09·punchScale 1.08(거의 안 튕김).
+- 먹음(`willCapture=true`) → **호쾌**: dropHeight 190·dropDur 0.085·
+  punchDur 0.13·punchScale 1.30.
+- 이미 3장 쌓인 자리를 마저 먹음(`bigCapture`, 뻑 먹기 등 4장 통짜
+  회수) → **더 호쾌**: dropHeight 220·dropDur 0.07·punchDur 0.14·
+  punchScale 1.38(폭탄의 1.4에 근접).
+
+**①손패 슬램**은 이미 `r1`이 계산돼 있어 결과를 정확히 아는 착지다 —
+`matchedFieldCard != null`이 `willCapture`, `matchedSlot.childCount>=3`
+(고스트를 붙이기 **전**에 잰 값)이 `bigCapture`.
+
+**②뒷패 슬램(일반 분기, 조커·뻑형성 제외)**은 아직 `GoStopRules.Resolve`를
+안 부른 시점이라 결과가 코드상 확정 전인데, `field`가 이미 r1이 갱신해
+둔 상태라(그 사이 field를 건드리는 코드가 없다) `FieldSlotTransform(drawn)
+.childCount > 0`을 미리 훑어보면 `Resolve`가 나중에 낼 답과 정확히
+일치한다 — 이 값으로 같은 `LandingMood`를 그대로 쓴다.
+
+**`suspensePulses`(신규, `SlamDown(RectTransform, RectTransform, ...)`
+전용) — "쪼는 맛"은 뒷패 전용.** 낙하 시작 전 위쪽에 뜬 채로 N회
+sine 파형(±6% 스케일, 회당 0.11초)으로 살짝 부풀었다 줄어드는 걸
+반복한다 — "카드 정체는 봤지만 아직 결과는 모른다"는 짧은 긴장 비트.
+손패(이미 뭘 내는지 아는 착지)에는 안 걸고, **뒷패를 까는 모든 지점**
+(조커/뻑형성/일반 3곳 + `DeckOnlySeq`)에 `suspensePulses: 2`(=0.22초)를
+공통으로 건다 — 결과와 무관하게 "뭐가 나올지" 자체가 매번 진짜
+서스펜스이기 때문. 뻑 형성 분기는 특히 이 조합이 잘 맞는다 — 펄스로
+잠깐 불안하게 만든 뒤 힘없이 떨어뜨려 "어? 뻑이잖아..."라는 확인의
+순간을 준다.
+
+**`DeckOnlySeq`(손패 없이 덱만 넘기는 턴)도 같은 체계로 승격.** 예전엔
+이 경로만 `flyFrom` 등록 후 `SlamIn`(수평 이동)으로 조용히 흘러들어
+왔다 — "뒷패를 깔 때마다"라는 요청 문구가 이 경로도 명시적으로
+포함하므로, PlaySeq의 ②와 완전히 같은 고스트+SlamDown(펄스+무드) 패턴을
+새로 얹었다. 고스트 파괴 타이밍도 PlaySeq의 r2 처리와 같은 이유로
+"결과가 확정된 뒤(선택 팝업 대기 끝난 뒤), RebuildUI 직전"으로 맞췄다
+(2026-09-02에 잡은 "슬램다운 끝나고 필드패 나올 때까지 텀이 있어서
+카드가 깜빡거림" 버그의 재발 방지 — 동일 원칙을 새 경로에도 그대로
+적용).
+
+**검증(Play 모드 라이브, 컴파일 클린 확인 후 실제 게임 완주).** 4인
+게임을 새로 시작해 리플렉션으로 딜러뽑기 픽·참가선언·필드선택·9월열끗·
+카드플레이·고스톱선택 전부를 자동 응답하며 처음부터 GameOver까지
+완주시켰다(약 37스텝, 손패 소진·덱 소진·자연스러운 고/스톱 판정까지
+전부 거침). 콘솔은 이 플레이 세션 동안(00:36~00:38) 전부 기존에 이미
+있던 환경 노이즈뿐(exec 5초 타임아웃, "자동화 모드 아님" 경고, `—`
+글리프 폰트 폴백 경고 — 전부 이 프로젝트에 이미 문서화된 무관한
+잡음)이고, `NullReferenceException`을 포함한 실제 코드발 예외는 **0건**.
+
+> **함정 — `unity command eval`의 Roslyn 스크립팅 컨텍스트에서
+> `System.Func<string,object> gf = n => t.GetField(n, bf).GetValue(go);`
+> 같은 람다 클로저가 `t`/`bf`/`go`를 캡처하면 원인 불명으로 나중 호출이
+> `NullReferenceException`을 던지는 경우가 있었다.** 개별 필드 접근은
+> 전부 정상 동작했는데, 람다로 감싸서 여러 필드를 한 번에 읽으려 하면
+> 간헐적으로 깨졌다 — 원인을 못 밝혔지만(이 세션의 exec 관련 환경
+> 불안정과 같은 계열일 가능성), 람다 없이 `t.GetField(...).GetValue(go)`를
+> 매번 직접 풀어서 쓰는 것으로 완전히 우회됐다. **여러 필드를 한 번에
+> 읽는 리플렉션 스크립트를 짤 때 원인 불명의 NRE가 나면, 먼저 람다
+> 헬퍼를 걷어내고 직접 호출로 바꿔볼 것.**
+>
+> **함정(진짜 원인 아니었던 것) — `hand[]`가 전부 null인 상태를 "게임이
+> 깨졌다"로 오판할 뻔했다.** `BeginWithSeatCount(4)` 호출 뒤 `state`
+> 필드를 읽었더니 `Turn`이 나와서 "정상 진행 중"이라고 판단했는데, 이건
+> `enum State { Turn, GoStopChoice, GameOver }`에서 `Turn`이 마침
+> 기본값(0)이라 **아직 `NewGameSeq()`가 딜을 시작하기 전 시점**에도
+> 우연히 같은 값으로 읽힌 것이었다 — 실제로는 선 뽑기 연출
+> (`DetermineDealerSeq`)이 내 카드 선택을 기다리며 멈춰 있었다(`dealerDrawPopup.
+> dim.gameObject.activeSelf=True`). **`state`만 보고 "게임이 정상
+> 진행 중"이라 판단하지 말 것** — `Turn`은 초기화 이전에도 나올 수 있는
+> 값이라, `dealerDetermined`/각 팝업의 `dim.activeSelf`까지 같이 확인해야
+> "진짜로 시작됐는지"를 알 수 있다.
+
+## 고스톱 — 착지 애니메이션 스핀/플립 되돌림 (2026-09-04)
+
+바로 위 "회전·뒤집힘(스핀/플립) 추가"를 실제로 보고 "너무 심하고
+경박한 느낌, skew 없이 로테이션만 도니까 이상하다"는 피드백을 받아
+전체 되돌렸다(`git revert 886e351`) — `DynamismFor`/스핀·플립 코드
+전부 제거, `SlamDown`/`FlyAndPunch`/`FlyAndPunchGhost`/딜링 연출
+(`GoStopDealingCard`)은 바로 전 커밋(`f92283c`, 완급 시스템)의
+상태로 완전히 복귀했다. **완급(쪼는 맛/호쾌한 맛/힘없는 맛) 시스템은
+그대로 유지** — 사용자가 문제 삼은 건 회전/찌그러짐 추가분이지 그
+전에 확인받은 dropHeight/dropDur/punchScale 기반 완급이 아니다.
+
+**진짜 셰어(skew) 없이 z축 회전만으로는 "휘어 보이는" 느낌이 안
+난다**는 게 이번에 확인된 핵심 — 회전은 카드 전체가 평면인 채로
+빙글빙글 도는 것처럼만 보이고, 실제 카드가 종이처럼 휘거나 뒤집히는
+입체감은 안 준다(찌그러짐을 같이 섞어도 마찬가지). 진짜 셰어를 내려면
+커스텀 셰이더나 버텍스 모디파이어가 필요한데, 이번엔 그 정도 스코프로
+가지 않고 롤백을 택했다 — 다음에 다시 시도한다면 회전 기반이 아니라
+커스텀 셰어 구현부터 검토할 것.
+
+## 고스톱 — 뒷패 뒤집기 연출 강화 (`FlipRevealBack`) (2026-09-04)
+
+바로 위 스핀/플립 롤백 직후, "뒷패가 까질 때 DrawPile 뭉치에서
+cardback 하나가 뒤집어져서 나오는 느낌만 강화해줄래? '뒤집어서 나온
+패'라는 인지가 좀 약해서"라는 좁혀진 요청. 이번엔 전역 회전이 아니라
+**딱 이 한 순간(덱카드 슬램)에만** 정확히 필요한 것만 넣었다.
+
+**`FlipRevealBack(RectTransform rt)`** — 새 코루틴(`GoStop3PGame.UI.cs`).
+`rt`(이미 앞면으로 렌더링된 고스트, hover 자리에 정지해 있다) 바로 위에
+`HwatuUI.MakeCardBack`으로 뒷면 이미지를 겹쳐 놓고(같은 부모·같은
+anchoredPosition·같은 크기라 정확히 rt를 덮는다), 짧게(0.05초) 그대로
+보여준 뒤 가로 폭(localScale.x)만 0으로 줄여(0.12초) 사라지게 한다 —
+뒷면이 접히듯 얇아지며 사라지면 그 밑의 앞면(rt)이 "방금 뒤집혀서
+드러난" 것처럼 보인다. rt 자신의 스프라이트는 안 건드린다(교체하면
+착지 로직이 어떤 게 진짜 카드인지 헷갈릴 위험이 있어서) — 덧대는
+방식이 더 안전했다.
+
+**호출 지점 — `SlamDown(RectTransform, RectTransform, ...)`의
+`suspensePulses>0` 블록 맨 앞** 한 곳뿐이다. `suspensePulses`는
+이미 "이건 뒷패(결과를 모르고 지켜보는 덱카드) 슬램"이라는 신호로
+쓰이고 있어서(손패 슬램은 항상 `suspensePulses:0`) — 새 파라미터
+없이 기존 신호에 얹었다. 이 덕에 **손패 슬램·Cap 캡처 비행 등 다른
+어떤 애니메이션도 전혀 안 건드렸다** — 바로 전 스핀/플립 시도가
+"전역에 다 발라서 경박해졌다"는 지적을 받은 것과 반대로, 이번엔
+정확히 문제였던 그 한 순간에만 좁혀서 넣었다.
+
+**검증(Play 모드 라이브).** 컴파일 클린 확인 후 4인 게임을 시작해
+딜러뽑기 → 참가선언 → 13장 이상의 손패 플레이(각각 최소 1회의 뒷패
+슬램을 동반)를 거쳐 GameOver까지 완주. 콘솔은 exec 타임아웃 노이즈
+1건 말고 에러·예외 0건. 게임 종료 후 필드의 pos 슬롯 12개를 전부
+훑어 이름이 "Back"인 잔여 오버레이 오브젝트가 있는지 확인 —
+**leakedBackObjects=0**(생성한 오버레이가 전부 정상적으로 자기 자신을
+정리하고 사라졌다는 뜻, 좀비 오브젝트가 화면에 계속 겹쳐 보이는
+회귀가 없음을 확인).
+
+## 고스톱 — 뒷패 뒤집기 연출 2차 수정 (상하 접힘 + DrawPile에서 뒤집기) (2026-09-04)
+
+바로 위 `FlipRevealBack`을 실제로 보고 두 가지 추가 요청. 둘 다 원인이
+명확해서 바로 반영했다.
+
+**1) "좌우로 뒷면이미지랑 겹치는데 상하로 애니메이팅 수정요청"** —
+`FlipRevealBack`이 뒷면 오버레이의 `localScale.x`를 줄이는 좌우 접힘
+방식이었는데, 상하 접힘으로 교체했다(`localScale.y`만 줄이고 x는
+그대로 둔다) — 한 줄만 바뀐 작은 수정.
+
+**2) "매칭되는 패 있을 땐 필드에 해당 패 위로 가서, 없으면 빈곳에서
+애니메이팅되기 때문에 뭐가 나오는지 뻔하게 노출됨. DrawPile 위에서
+해당 애니메이션 후 pos 위치로 이동시키는 방향으로 수정요청."** — 정확한
+지적이었다. 예전엔 `FlipRevealBack`이 **낙하 시작점(target 바로 위,
+매칭 슬롯이면 그 카드 위·빈 슬롯이면 빈 자리)**에서 그대로 뒤집혔다 —
+뒤집히기도 전에 카드가 뜬 **위치** 자체가 이미 "이 카드가 매칭될지"를
+알려주고 있었다(위치 정보 유출).
+
+**고침 — `SlamDown(RectTransform, RectTransform, ...)`의 뒷패 전용
+분기를 재구성.** 예전엔 hover 위치로 곧장 점프한 뒤 그 자리에서
+`FlipRevealBack`을 걸었는데, 이제 순서를 다음과 같이 바꿨다:
+1. `rt.position = drawPileArea.position;` — 더미 위로 이동(어느 슬롯에
+   착지할지와 무관한 중립 위치).
+2. `FlipRevealBack(rt)` — 더미 위에서 뒷면→앞면 공개.
+3. 공개된 카드를 더미 위치에서 hover 위치(target 바로 위)까지 ease-out
+   으로 짧게(0.16초) 날린다 — **이 시점엔 이미 카드 얼굴을 봤으므로
+   도착지가 매칭 슬롯이든 빈 슬롯이든 스포일러가 안 된다.**
+4. 기존 흔들림 펄스(사용자가 문제 삼지 않은 부분) → 낙하 → 충격
+   이펙트 → 펀치 스케일은 전혀 안 건드리고 그대로 이어진다.
+
+손패 슬램(`suspensePulses=0`)은 `else` 분기로 분리해 예전과 완전히
+동일하게(hover 위치로 즉시 점프) 유지했다 — 이번 수정은 뒷패 전용
+경로에만 영향을 준다.
+
+**검증(Play 모드 라이브).** 컴파일 클린 확인 후 4인 게임을 새로 시작해
+딜러뽑기 → 참가선언 → 20장 이상 손패 플레이(흔들기 선언 1회, 9월열끗
+선택 1회 포함, 손패 완전 소진까지) → GameOver까지 완주. 신규 에디터
+세션(콘솔 seq가 낮은 번호로 리셋된 것으로 확인) 전체에서 에러·예외
+**0건**(경고 12건만, 전부 무관한 환경 노이즈). 게임 종료 후 12개 pos
+슬롯 전수 검사로 잔여 "Back" 오버레이 오브젝트 **0개** 확인(정리 로직
+정상).
+
+## 고스톱 — ChatPanel 씬 재사용 + 접힘 애니메이션 3차 감속 (2026-09-04)
+
+"나가기 버튼은 좌상단 채팅패널은 우상단에 위치하게 해줘. 씬에 나가기버튼,
+채팅패널(오브젝트추가해서) 위치 조정해놨어" — 조사해보니 `ExitBtn`은
+이미 씬 재사용 패턴("씬에 있으면 재사용, 없으면 생성")이 적용돼 있어
+사용자가 옮긴 위치(top-left)가 그대로 반영되고 있었다. 하지만
+`BuildChatUI`는 이 패턴이 없어서 **매번 프리팹을 새로 인스턴스화**했다 —
+사용자가 씬에 `ChatPanel` 인스턴스를 추가해(`GameUI/SafeArea/ChatPanel`
+경로, `ContentArea`가 아니라 `SafeArea` 바로 밑에 놓았다) 위치를 만져둬도
+런타임엔 무시되고 있었다.
+
+**고침 — `BuildChatUI`에 `ExitBtn`과 같은 재사용 로직 추가.**
+`canvasRoot.Find("SafeArea/ChatPanel")`로 찾아서 있으면
+`GoStopChatView` 컴포넌트를 그대로 재사용, 없으면 기존처럼
+`HwatuUI.InstantiateUIPrefab`로 생성한다 — `ChatPanel`은
+`Canvas.overrideSorting=true`(sortingOrder 500)를 쓰므로 계층
+어디에 있든 항상 최상단에 그려져, `ContentArea`가 아니라 `SafeArea`
+밑에 있어도 렌더 순서엔 문제가 없다.
+
+**"우상단"이었다가 "우하단으로, 잘못 말했다"고 정정받아** 최종적으로
+`ChatPanel`을 원래 있던 bottom-right 앵커(1,0)/(1,0), anchoredPosition
+(-15,15)로 되돌렸다(에디터 라이브 세션에 직접 `eval`로
+anchorMin/Max/pivot/anchoredPosition을 설정하고
+`EditorSceneManager.SaveScene`로 저장) — 처음 top-right로 옮겨봤을 때
+`GetWorldCorners()`로 RightSeat 컨테이너와 약 500×114px 겹치는 걸
+확인했었는데, bottom-right로 되돌리며 그 문제도 자연히 해소됐다
+(겹침 0 확인).
+
+**접힘 애니메이션 3차 감속(사용자 확인 — "너무 빠르게 애니메이팅돼서
+그냥 패만 끊겨 보인다, 속도를 줄이거나 빼는 게 좋을듯").** 지난 2차
+수정의 `flipDur=0.12f`(선형 보간)를 `flipDur=0.24f` + smoothstep
+곡선(`p*p*(3-2p)`)으로 바꿨다 — 선형 등속은 짧은 시간 안에선 여전히
+"뚝뚝 끊기는" 것처럼 보이는데, smoothstep은 시작·끝이 느려서 실제로
+접히는 움직임 자체가 눈에 들어온다. hold 시간도 0.05→0.08초로 살짝
+늘렸다.
+
+**검증(Play 모드 라이브).** 컴파일 클린 확인 후 4인 게임 완주(필드
+2장 선택 팝업·9월열끗 선택 포함) — 콘솔 에러·예외 0건. `chatView`
+필드가 씬의 `ChatPanel` 오브젝트와 참조 동일성으로 일치(중복 생성
+없음, `chatPanelCount=1`) 확인. `ExitBtn` 클릭 → 나가기 확인 팝업이
+정상적으로 뜨는 것도 재확인.
+
+## 고스톱 — 점당 배율 표시(Info 라벨) 실시간 갱신 (2026-09-04)
+
+"우측상단에 현재 점당 얼마짜리 게임인지 표시 추가했어. 나가리 등으로
+점당 배율이 변경되면 UI쪽에 텍스트도 같이 변경해줘." 씬을 살펴보니
+`ContentArea/Info`(배경 Image + "점당"/숫자/"원" 3개 라벨, top-right
+앵커)가 이미 추가돼 있었다 — 숫자 칸만(자동 생성 이름이라 `Label (1)`)
+캐싱해서 실제 값을 채우면 됐다.
+
+**`UpdatePointPriceLabel()`** — 새 헬퍼(`GoStop3PGame.UI.cs`). `pointPriceText`
+(씬의 `Info/Label (1)`, `BuildStaticUI`에서 `root.Find`로 재사용 —
+ExitBtn과 같은 원칙)에 `WON_PER_POINT * stakeMultiplier`를 채운다.
+
+**호출 지점 3곳.** RebuildUI마다(매 턴 자동 갱신) 부르는 것만으로는
+부족했다 — 나가리로 판이 끝나는 `EndGame`의 승부-없음 분기는 게임판
+자체가 멈추고 오버레이만 뜰 뿐 `RebuildUI()`를 안 부르기 때문에,
+`stakeMultiplier *= 2;` 직후에도 명시적으로 호출해야 그 즉시 반영된다.
+같은 이유로 결판이 나서 `stakeMultiplier = 1;`로 복귀하는 지점에도
+호출을 추가했다. `BuildStaticUI`에서 라벨을 처음 찾은 직후에도 한 번
+불러서, 판이 시작되기도 전인 초기 화면부터 기본값(100)이 바로 보이게
+했다.
+
+**검증(Play 모드 라이브).** 컴파일 클린 확인 후 라벨이 씬에서 정상
+발견되는 것(`initialText=100`) 확인. `EndGame(-1, ...)`(나가리)을
+리플렉션으로 직접 호출해 `stakeMultiplier`가 1→2로 오르는 것과
+동시에 라벨이 곧바로 `"200"`으로 바뀌는 것 확인(RebuildUI를 거치지
+않고도 갱신됨 — 이게 이번 수정의 핵심). `stakeMultiplier`를 다시
+1로 되돌리고 `UpdatePointPriceLabel()`을 직접 호출해 `"100"`으로
+복귀하는 것도 확인. 4인 게임을 딜러뽑기부터 GameOver까지 완주 —
+콘솔 에러·예외 0건.
+
+> 처음 테스트에서 `RebuildUI()`를 게임 시작 직후(딜러뽑기 팝업이
+> 아직 응답을 기다리는 시점)에 강제로 호출했다가 `UpdatePileVisual`
+> (내가 안 건드린 기존 코드)에서 NullReferenceException이 났다 —
+> `drawPile`이 아직 딜링 전이라 null인, 정상 게임 흐름에서는 절대
+> 도달하지 않는 시점을 리플렉션으로 억지로 짚은 것이었다(이 프로젝트가
+> 이미 여러 번 겪은 "리플렉션 강제 호출이 실제 게임에선 절대 안 나오는
+> 상태를 만든다"는 함정과 같은 계열). 딜러뽑기를 마저 진행시켜 정상
+> `Turn` 상태에 도달한 뒤 재시도하니 문제없이 통과했다 — 실제 버그가
+> 아니었다.
+
+## 고스톱 — 인게임 도움말 화면, 맞고 손패 오버플로 버그, 네트워크 입력
+타임아웃(10초) (2026-09-05)
+
+"나가기 버튼 우측에 도움말버튼을 추가하고 인게임 규칙/도움말 화면 만들어줘",
+"네트워크 대전이라하면 입력 대기가 무한정일 수 없으니 5초 조용히 기다리다
+5초간 경고, 총 10초 무응답이면 강제로 선택하게" 요청 — 세 가지를 한
+세션에서 처리했다(세 번째는 도중에 "맞고에서 손패 10장이 Hand영역을
+넘어간다"는 신고가 끼어들어 같이 고쳤다).
+
+### 도움말 화면
+
+`GoStopUIManager.cs`(GoStop 전용 UI 매니저, 2026-08-22에 이미
+`SetHelp`/`ShowHelp`/`HideHelp`/`SetHelpButtonVisible` 인프라를 갖춰
+뒀었다 — BrickBreaker3D의 `SetHelp(...)` 사용 패턴과 같은 API)를 그대로
+재사용했다. `BuildStaticUI()`(`GoStop3PGame.UI.cs`)에서 기존 `ExitBtn`
+재사용-또는-생성 패턴을 그대로 복제해 `HelpBtn`을 만들고, 위치는
+`ExitBtn`의 **실제 라이브 RectTransform**(하드코딩 좌표가 아니라)을
+기준으로 오른쪽에 10px 간격으로 배치했다 — 사용자가 씬에서 `ExitBtn`을
+옮겨도 자동으로 따라간다. 규칙 요약 본문(`GoStopHelpBodyText` 상수,
+`GoStopRules.cs`와 수동으로 동기화 유지해야 함)을 새로 작성해
+`ui?.SetHelp("고스톱 규칙", GoStopHelpBodyText, "확인")`으로 연결했다.
+
+**긴 텍스트가 고정 크기 박스를 넘치는 문제** — `helpBody`는
+`overflowMode=Overflow`라 넘치면 그대로 `CloseBtn`과 겹친다. 프리팹에
+ScrollRect를 새로 넣는 대신(더 안전한 저위험 방법을 택함) TMP
+`enableAutoSizing=true` + `fontSizeMin=14`로 자동 축소되게 했다 —
+`GoStopUIManager`만 손댔으므로 다른 7개 게임(`GameUIManager`)의 고정
+크기 동작에는 영향 없다.
+
+> **함정 — `GameObject.Find("GameUI/HelpPanel")`가 "없다"고 나와서 잠깐
+> 진짜 버그로 착각했다.** `GameObject.Find()`(경로 포함 버전도 마찬가지)는
+> **비활성 오브젝트를 검색 대상에서 아예 제외**한다 — `HelpPanel`은
+> `Awake()`의 `HideHelp()`로 기본 비활성이라 이 방식으로는 절대 못
+> 찾는다. `GameObject.Find("GameUI")` + `Transform` 직접 순회(비활성
+> 자식도 포함)로 바꾸니 정상적으로 찾아졌다. **`Find`류 API가 "없다"고
+> 답하면 진짜 없는 건지 비활성이라 안 잡히는 건지부터 구분할 것.**
+
+검증(Play 모드 라이브): 4인 게임 시작 후 `helpButton`이 존재하고
+`helpPanel`이 기본 비활성인 것, `SetHelp` 호출 후 `title`/`body`
+텍스트·`enableAutoSizing`·`fontSizeMin/Max`가 정확한 것, 버튼 클릭으로
+패널이 열리고(`activeSelf=True`) 닫기 버튼으로 다시 닫히는 것(`False`),
+`ExitBtn`/`HelpBtn`의 실측 좌표가 겹치지 않고 10px 간격을 두는 것까지
+확인했다.
+
+### 맞고(2인) 손패가 Hand 영역을 넘치던 버그
+
+`DrawPlayerHand()`가 3~4인 고스톱(손패 7장) 기준으로 고정 간격
+(`HAND_W+6`)만 쓰고 있어서, 맞고(손패 10장)에서는 `handArea` 폭을
+그대로 넘쳤다. 상대 뒷면 카드(`backArea`) 렌더링에 이미 있던 원칙
+("넉넉하면 원래 간격, 부족하면 최소한으로만 좁힌다")을 손패에도
+적용했다 — 카드 자체 크기(`HAND_W`)는 그대로 두고 카드 사이 간격만
+동적으로 좁힌다.
+
+```csharp
+float pitch = HAND_W + 6f;
+if (n > 1) pitch = Mathf.Min(pitch, Mathf.Max((handArea.rect.width - HAND_W) / (n - 1), 1f));
+```
+
+> **함정 — 처음엔 `handArea.rect.width` 대신 `handArea.sizeDelta.x`를
+> 썼다가 완전히 다른 버그를 만들 뻔했다.** `handArea`는 좌우 스트레치
+> 앵커(부모 폭에 맞춰 늘어나는 방식)라 `sizeDelta.x`는 실제 폭이 아니라
+> **음수(-910)** 같은 무의미한 오프셋 값을 돌려준다 — 이 값을 그대로
+> 간격 계산에 썼더니 10장 카드가 전부 1px 간격으로 거의 겹쳐서 찍혔다
+> (라이브로 실측: 카드 중심 X좌표가 -4.5~4.5, 총 span 9px뿐). **좌우
+> 스트레치 앵커를 가진 RectTransform의 실제 렌더 폭은 항상
+> `rect.width`로 읽을 것** — `sizeDelta`는 앵커가 둘 다 고정점(0.5,0.5
+> 등)일 때만 실제 크기와 같다는 걸 이번에 다시 확인했다.
+
+검증(Play 모드 라이브): 맞고(2인, 10장) — 수정 전엔 카드 span이 9px로
+뭉개짐, 수정 후엔 span이 `handArea.rect.width`(1083px)와 정확히
+일치(꽉 채워 들어감, 넘치지 않음). 3~4인 고스톱(7장) — pitch가 그대로
+134(`HAND_W+6`)로 유지돼 회귀 없음을 확인했다.
+
+### 네트워크 입력 타임아웃 — 5초 조용히 + 5초 경고 + 강제 기본값
+
+design.md §50.1의 "가능한 것 중 자동 선택" 원칙을 실제로 구현했다. 기존
+`REMOTE_INPUT_TIMEOUT_SECONDS`(호스트가 **원격** 좌석의 응답을 기다리는
+시간, 25초)를 10초로 낮춰 새 정책과 총 시간을 맞췄다.
+
+**공용 코루틴 — `RunLocalInputTimeout`.** "내 화면에서 내가 결정해야
+하는" 모든 지점(참가 선언·필드 2장 선택·9월 열끗·선 뽑기 카드 고르기·
+흔들기 확인·고/스톱)에 공통으로 쓰는 헬퍼:
+
+```csharp
+IEnumerator RunLocalInputTimeout(System.Func<bool> hasAnswered, System.Action<string> setText,
+    string baseMessage, System.Action onTimeout)
+{
+    const float quiet = 5f, warn = 5f;
+    // quiet 5초 조용히 대기 → warn 5초 동안 매초 "{baseMessage}\n(N초 후 자동 선택)"
+    // → 10초 안에 답 없으면 onTimeout() 강제 실행. 언제든 hasAnswered()가
+    // true가 되면 그 즉시 멈춘다.
+}
+```
+
+`setText`를 `TextMeshProUGUI` 직접 참조가 아니라 `Action<string>`
+델리게이트로 받는다 — 팝업(`ModalTwoButtonPopup.messageText`)뿐 아니라
+고/스톱 오버레이(`GoStopUIManager.SetOverlaySub`, 텍스트 필드가 직접
+노출 안 됨)까지 같은 코루틴 하나로 처리하기 위해서다. **오프라인(vs AI)
+판에서는 절대 걸면 안 된다** — 모든 호출부가 `isNetworkHost ||
+isNetworkGuest`(또는 그 함수가 원래 호스트 전용/게스트 전용이면 그
+쪽만)로 감싸서만 부른다.
+
+적용한 6개 지점과 각각의 강제 기본값(전부 design.md 기존 원격-좌석
+분기의 기본값과 동일하게 맞춤 — 로컬/원격이 같은 상황에서 다른 결과를
+내면 안 되므로):
+
+| 지점 | 함수 | 기본값 |
+|---|---|---|
+| 참가 선언 | `AskParticipation` | 불참(죽기) |
+| 필드 2장 선택 | `ContinueChoice` | `GoStopAI.ChooseFieldMatch(...)`가 고를 것과 동일 |
+| 9월 열끗 쌍피 여부 | `PromptDualPiChoice` | 쌍피 처리 |
+| 선 뽑기 카드 고르기 | `DetermineDealerSeq` | 아직 안 뽑힌 카드 중 무작위(원격 좌석 기본값과 동일 로직 재사용) |
+| 흔들기 확인 | `OnPlayerPlay`(`shakePopup`) | 흔들기 포기 |
+| 고/스톱(호스트 자신) | `ShowGoStopPrompt` | 스톱 처리 |
+| 고/스톱(게스트 자신) | `ApplyNetworkSnapshot`의 게스트 오버레이 분기 | 스톱 처리 |
+
+`GoStopUIManager.cs`에 `SetOverlaySub(string)`를 새로 추가했다 —
+`ShowOverlay`는 버튼 리스너까지 통째로 다시 붙는 무거운 호출이라 매초
+부르기엔 낭비라서, 서브 텍스트 한 줄만 바꾸는 가벼운 메서드를 따로
+뒀다.
+
+**고/스톱 타임아웃이 호스트/게스트 양쪽에 다 필요했던 이유** —
+`ShowGoStopPrompt`(호스트 자신의 결정, `AfterAction`에서만 불림)와
+`ApplyNetworkSnapshot`의 게스트 오버레이 분기(호스트가 보낸 스냅샷의
+`state==GoStopChoice && currentSeat==PLAYER_SEAT`만 보고 게스트가
+스스로 오버레이를 띄우는 별개 경로)가 완전히 분리돼 있다 — 호스트
+쪽만 고치면 게스트는 여전히 무한 대기한다. 두 경로 모두
+`OnPlayerGo`/`OnPlayerStop`을 공유 버튼 콜백으로 쓰지만, "답했는지"를
+판정하는 방법이 달라야 했다: 호스트는 `state != State.GoStopChoice`
+(자기 상태가 실제로 `AdvanceTurn`/`EndGame`으로 바뀌었는지)로 판정 가능,
+게스트는 로컬 `state`가 클릭 즉시 안 바뀌므로(호스트 응답을 기다려야
+바뀐다) 새 플래그 `goStopGuestResponded`(`OnPlayerGo`/`OnPlayerStop`
+양쪽이 무조건 true로 세움)로 별도 판정한다.
+
+**검증(Play 모드 라이브, `isNetworkHost=true`로 리플렉션 시뮬레이션 —
+실기기 2대 네트워크 테스트는 이 환경의 구조적 한계로 여전히 불가능).**
+세 가지 서로 다른 코드 패턴을 각각 대표 지점 하나씩 골라 실제로
+끝까지(10초 경과) 돌려 확인했다:
+- **이벤트/버튼 콜백형(흔들기)** — 손패 3장(같은 달, 필드 매칭 없음)을
+  강제로 세팅하고 카드를 클릭 → 팝업이 뜨고 메시지가 "(N초 후 자동
+  선택)"으로 매초 갱신되는 것 확인 → 10초 뒤 팝업이 스스로 닫히고
+  손패가 3→2장(흔들기 포기하고 그냥 낸 것)으로 정상 진행되는 것 확인.
+- **오버레이형(고/스톱, 호스트 자신)** — `ShowGoStopPrompt(3)` 직접 호출
+  → `overlaySub`가 카운트다운으로 갱신되는 것 확인 → 10초 뒤
+  `state=GameOver`(강제 스톱→`EndGame` 진입)로 정상 종료되는 것 확인.
+- **WaitUntil 코루틴형(참가 선언)** — `AskParticipation(0, ...)` 코루틴을
+  직접 실행 → 팝업 메시지가 카운트다운으로 갱신되는 것 확인 → 10초 뒤
+  `pendingDeclareChoice=False`(불참 기본값)로 정상 처리되는 것 확인.
+
+나머지 3개 지점(필드 선택·9월 열끗·선 뽑기 카드)은 위 세 패턴과 코드
+구조가 동일한 반복이라 코드 리뷰 수준으로 확인했다 — 컴파일 클린은
+전부 확인.
+
+> **테스트 중 발견한 NRE는 실제 버그가 아니라 테스트 하네스의 부작용
+> 이었다.** 흔들기 테스트 직후 `AdvanceTurn`이 다음 좌석으로 넘어가며
+> `NullReferenceException`(`WaitForRemoteMessage`의
+> `GoStopNetLobby.Instance.OnGameMessage += ...`)이 콘솔에 찍혔다 —
+> 원인은 `isNetworkHost=true`를 리플렉션으로 **가짜로** 세팅만 하고
+> 실제 `GoStopNetLobby` 싱글톤(타이틀→로비 UI를 거쳐야 생성됨)은 전혀
+> 없었기 때문이다. `IsRemoteSeat`가 "네트워크 호스트니까 다른 좌석은
+> 원격"이라고 잘못 판단해 존재하지 않는 로비 인스턴스를 건드린 것 —
+> 이 프로젝트가 여러 번 문서화한 "리플렉션으로 실제 게임에서 안 나오는
+> 상태를 만들 수 있다"는 함정의 또 다른 사례다. 실제 네트워크 플레이
+> (로비 UI를 거쳐 `GoStopNetLobby.Instance`가 정상 생성된 경우)에서는
+> 재현되지 않는다 — 코드 수정 없이 원인만 확정하고 넘어갔다.
+
+### 남은 것
+
+- **무료 서버 호스팅**(사용자 질문 — 같은 와이파이가 아닌 원거리
+  대전) — 텍스트 답변만 제공, 구현은 미착수. 권장 방향: 기존
+  호스트-권위 프로토콜은 그대로 두고, Oracle Cloud Always Free 티어에
+  얇은 TCP 릴레이(방 코드로 두 outbound 연결을 짝지어 바이트만 중계,
+  게임 판정은 여전히 호스트가 전담)를 얹는 것 — 전면 서버 재작성보다
+  훨씬 작은 변경.
+- 실기기 2대 네트워크 테스트는 여전히 이 환경의 구조적 한계로 불가능 —
+  다음에 사용자가 직접 두 기기로 확인 필요.
+
+## 고스톱 — 네트워크 닉네임·머니 영구 저장, 손패 턴 타임아웃, 자동 재시작
+(2026-09-05)
+
+"일단 로컬 네트워크부터 완벽하게" — 상시 서버(DuckDNS/포트포워딩)는 다음으로
+미루고, 이번엔 네트워크 대전 자체의 완성도를 올렸다. 사용자 요청 4가지:
+①맨 처음 네트워크 쓸 때 닉네임을 정하게 하고 앱에 영구 저장, ②그 닉네임에
+보유머니가 계속 이어지게, ③닉네임이 다른 유저에게 보임, ④지난 세션에 만든
+타임아웃을 손패 내는 것까지 전부 커버, ⑤네트워크 대전은 "다시 시작" 버튼 대신
+3초 후 자동 재시작(타이머 포함).
+
+### 닉네임 — 최초 1회만, 이후 영구 저장
+
+`GoStopNetLobbyUI`에 `Screen.NicknameSetup`을 추가했다 — `Open()`이
+`PlayerPrefs.GetString(GoStopNetLobby.NicknameKey)`가 비어 있으면(최초 실행)
+이 화면부터 보여주고, 있으면 곧장 Home으로 건너뛴다. 이 프로젝트에 두 번째로
+만드는 `TMP_InputField`(첫 번째는 `GoStopChatView.prefab`에 에디터로 미리
+구운 것 — 이번엔 화면 자체가 매 `Redraw()`마다 코드로 새로 그려지는 구조라
+프리팹으로 뺄 수 없어서 런타임에 직접 조립했다: Viewport(RectMask2D)+
+Placeholder+Text 세 조각을 `TMP_InputField`가 요구하는 최소 구성 그대로
+만드는 `MakeInputField` 헬퍼). 확인을 누르면 12자로 잘라 저장하고 Home으로
+넘어간다 — 빈 값이면 자동 추천값(기기 이름 기반)으로 대체해 재입력을
+강요하지 않는다.
+
+### 닉네임별 보유머니 — 서버가 없으니 "내 돈은 내 기기에만" 원칙
+
+호스트 권위 P2P 구조라 "이 닉네임의 돈"을 보관할 중앙 서버가 없다 — 그래서
+**각자 자기 기기에만** 자기 닉네임의 잔액을 저장하고, 접속할 때마다 스스로
+보고한다:
+- `GoStopNetLobby.LoadNetworkMoney(nickname)`/`SaveNetworkMoney(nickname, amount)`
+  — `PlayerPrefs` 키 `"GoStopNet_Money_" + nickname`(기본값 10만원,
+  `GoStop3PGame.STARTING_MONEY`와 반드시 같은 값으로 유지해야 하는데 그쪽은
+  private const라 직접 참조는 못 하고 숫자를 그대로 복제해뒀다 — 나중에
+  `STARTING_MONEY`를 바꾸면 이 상수도 같이 바꿔야 한다는 뜻).
+- `GoStopNetMessage.Hello`에 `int money` 필드를 추가했다 — 게스트가
+  접속 직후(`GuestOnConnected`) 자기 닉네임의 저장된 잔액을 실어 보낸다.
+  호스트는 `HostOnMessage`의 Hello 분기에서 이 값을 `GuestReportedMoney[seat]`
+  (신규 배열)에 기록해 둔다.
+- `GoStop3PGame.Awake()`의 네트워크 분기(`isNetworkHost`)가 자기 좌석(0번)은
+  `LoadNetworkMoney(내 닉네임)`으로, 나머지 좌석은 `GuestReportedMoney[s]`
+  (0이면 아직 안 왔다는 뜻이라 `STARTING_MONEY`로 폴백)로 시작 잔액을
+  seed한다. 게스트 쪽은 이 시점에 아무것도 안 한다 — 곧 오는 첫 StateSync가
+  호스트가 이미 정한 실제 값으로 덮어쓴다.
+- 저장 시점은 판이 끝나는 순간(호스트: `EndGame`의 나가리/정상 정산 두
+  탈출구 모두, 게스트: `ShowGuestGameOverOverlay`) — 각자 자기 좌석 몫만
+  자기 닉네임으로 저장한다. 세션이 완전히 끝나는 파산 케이스도 리셋된
+  `STARTING_MONEY` 그대로 저장해서 다음 접속 때 0원에 영구히 막히지 않는다.
+
+**닉네임 노출**은 이미 되고 있었다 — `Hello`의 `text` 필드(닉네임)가
+`PlayerNames[seat]`로 들어가 좌석 로우/`FillSlot`에 그대로 표시되는 기존
+경로를 그대로 탄다. 새로 만들 게 없었다.
+
+### 손패 턴 타임아웃 — 지난 세션에 빠져 있던 마지막 구멍
+
+지난 세션에 참가 선언·필드 선택·9월 열끗·선 뽑기·흔들기·고/스톱까지 6개
+"특정 결정 팝업"에 5초 조용히+5초 경고+10초 강제 기본값 타임아웃을
+걸었는데, 정작 "내 턴이라 아무 카드나 하나 내야 하는" 가장 기본적인
+대기에는 시간 제한이 없었다 — 사용자가 정확히 이 구멍을 지적했다.
+
+`TurnPlayTimeoutSeq()` — `AdvanceTurn()`과 `NewGameSeq()`(게임 첫 턴) 양쪽의
+"내 차례가 됐다" 지점에서 `isNetworkHost || isNetworkGuest`일 때만 시작한다.
+5초 뒤부터 5초간 매초 하단 토스트(`ShowTimedToast` — 사운드·채팅로그 부작용이
+있는 `Toast(seat,label)`이 아니라 순수 표시 전용 프리미티브를 재사용)로
+남은 시간을 보여주다가, 10초 안에 카드를 안 내면 `GoStopAI.ChooseCard(hand,
+field)`로 원격 좌석 타임아웃 때와 완전히 같은 기준으로 자동으로 낸다.
+손패가 비어 있고 폭탄 크레딧만 남은 특수 상태면 대신 `OnPlayerBombSkip()`을
+누른다. `hasAnswered`는 `actionBusy || state != Turn || currentSeat !=
+PLAYER_SEAT`로 판정 — 카드를 실제로 낸 순간(`actionBusy=true`) 즉시
+멈춘다.
+
+### 네트워크 대전 — "다시 시작" 버튼 폐지, 3초 자동 재시작
+
+`EndGame`의 호스트 자신 몫(나가리 조기 리턴 + `networkDowngrade`/정상 승리
+두 분기 — `downgrade`는 `CanDowngrade`가 `!isNetworkHost`를 요구해서 애초에
+네트워크에선 안 뜬다)에서, `isNetworkHost`면 "다시 시작" 버튼 자체를 안
+보여주고 `HostAutoRestartSeq()`를 띄운다 — 3초 동안 매초
+`GoStopUIManager.SetOverlaySub`(신규 — 이미 떠 있는 오버레이의 서브 텍스트만
+바꾼다, `ShowOverlay`를 다시 부르면 버튼 리스너까지 매초 다시 붙어야 해서
+낭비다)로 카운트다운을 보여준 뒤 `NewGame()`을 직접 호출한다. 게스트는
+실제 재시작을 트리거하지 않는다(호스트만 `NewGame()`을 부를 수 있다) —
+`ShowGuestGameOverOverlay`에서 같은 문구로 `GuestAutoRestartCountdownSeq()`가
+순수 연출용 카운트다운만 보여주고, 진짜 재시작은 다음 StateSync로 자연히
+온다. 세션이 완전히 끝나는 경우(`gameOverRefilledSeats.Length>0` — 파산
+세션종료·방폭파)는 애초에 호스트도 재시작을 안 하므로 게스트 카운트다운도
+안 띄운다.
+
+### 검증
+
+**Play 모드 라이브 검증**(스크린샷 대신 리플렉션 — 이 프로젝트 확립된 방식):
+- 닉네임: 최초 실행 시 NicknameSetup 화면이 뜨고 입력창에 기본 추천값이
+  채워지는 것, 확인 시 PlayerPrefs에 저장되고 Home으로 전환되는 것, 재진입
+  시(Close→Open) 바로 Home으로 건너뛰는 것, 화면 레이아웃(3개 요소, 겹침
+  없음) 전부 확인.
+- 손패 턴 타임아웃: 4인 게임에서 5~7초 시점에 토스트에 "N초 안에..." 카운트
+  다운이 뜨는 것, 10초 뒤 손패가 실제로 줄어들고(`GoStopAI.ChooseCard`가
+  고른 카드가 자동으로 나감) `actionBusy=False`(안 멈춤)로 게임이 계속
+  정상 진행되는 것 확인.
+- 자동 재시작: `EndGame(0)`을 호스트로 직접 호출 → 오버레이의 primary
+  버튼이 "다시 시작"이 아니라 "타이틀"인 것(다시 시작 버튼 완전히 제거됨
+  확인), tertiary 버튼 없음(2버튼: 타이틀+점수상세), `overlaySub`가 매초
+  카운트다운으로 갱신되는 것, 3초 뒤 `state`가 `GameOver`에서 `Turn`으로
+  자동 복귀(`NewGame()`이 실제로 호출됨)하고 `dealerSeat`가 승자로 정확히
+  넘어간 것까지 확인.
+- 오프라인(vs AI) 회귀 확인: `isNetworkHost/isNetworkGuest` 둘 다 false인
+  진짜 오프라인 4인 게임에서 `money`가 전부 기존 방식대로 10만원으로
+  seed되는 것(네트워크 전용 분기가 전혀 안 타는 것) 확인.
+
+> **함정 — `TcpClient.BeginConnect`+`AsyncWaitHandle.WaitOne`이 이
+> 환경에서 백그라운드 Thread 안에서는 영원히 안 풀린다.** 애초에 사용자가
+> "무료 포트포워딩+DuckDNS로 상시 서버 구성" 방향을 논의하다가(이후 로컬
+> 네트워크 우선으로 방향 전환됨) `TcpGoStopClientTransport.Connect`에
+> 원격 접속용 10초 타임아웃을 추가하려고 동기 `Connect()`를 비동기
+> `BeginConnect`+`WaitOne(timeout)`+`EndConnect`로 바꿨는데, 실제 루프백
+> 소켓으로 검증하다가 **연결 자체가 절대 성립하지 않는** 것을 발견했다.
+> 완전히 같은 코드를 리플렉션으로 **메인 스레드에서 직접(백그라운드
+> Thread 없이)** 실행하면 즉시(elapsedMs=0) 정상 연결됐다 — 즉 .NET 비동기
+> 소켓 API 자체는 멀쩡한데, 이 프로젝트가 수동으로 만드는
+> `System.Threading.Thread`(스레드풀이 아니다) 안에서는 그 비동기 완료
+> 신호가 영원히 안 온다는 뜻이다. 원인은 못 밝혔지만(이 특정 Editor/
+> 샌드박스 조합의 특성으로 추정), **동기 `Connect()` 자체는 이 프로젝트가
+> 처음부터 백그라운드 스레드에서 문제없이 써 온 방식**이라 이번엔 반대
+> 방향으로 고쳤다 — 동기 `Connect()`는 그대로 유지하고, 별도의 **메인
+> 스레드 워치독 코루틴**이 시간 초과 시 그 소켓을 강제로 `Close()`해서
+> 블로킹 중인 `Connect()`를 예외로 깨우는 방식(`ConnectTimeoutWatchdog`)
+> 으로 구현했다 — 이 방식은 실제 루프백 테스트에서 즉시(첫 시도부터)
+> 정상 연결되는 것으로 재확인했다. **이 환경에서 소켓 관련 코드를 짤 때는
+> 비동기 `Begin*/End*` API를 수동 스레드 안에서 쓰는 걸 피하고, 필요하면
+> 항상 검증된 동기 API + 메인 스레드 워치독 조합을 쓸 것.**
+>
+> **교훈 — 리플렉션으로 `isNetworkHost=true`를 흉내 낼 때마다
+> `WaitForRemoteMessage`(`GoStopNetLobby.Instance.OnGameMessage += ...`)가
+> null 참조 예외를 던지는 게 이번에도 여러 번 재현됐다** — 진짜
+> `GoStopNetLobby.Instance` 없이 이 플래그만 켜면 `AdvanceTurn`이 다른
+> 좌석을 "원격"으로 오인해 존재하지 않는 로비를 건드린다. 이전 세션에
+> 이미 기록된 것과 같은 함정이다 — 새로 만든 기능(`TurnPlayTimeoutSeq`/
+> `HostAutoRestartSeq`) 자체의 스택 트레이스엔 단 한 번도 안 나타났고
+> 전부 이 기존 경로에서만 발생해서, 실제 버그가 아니라 테스트 하네스의
+> 한계로 확정했다.
+
+### 남은 것
+
+- 상시 서버(포트포워딩+DuckDNS) 작업은 사용자 요청으로 이번 세션엔 보류 —
+  `JoinRoom(string ip, int port, string displayName)` 오버로드와 connect
+  타임아웃/워치독은 이미 만들어 뒀으니 나중에 이어서 로비 UI에 "직접
+  접속" 화면만 얹으면 된다.
+- "닉네임 변경" UI는 안 만들었다(요청에 없었음) — 필요하면
+  `ShowNicknameSetup()`을 재사용해 Home에 작은 링크 하나만 추가하면 된다.
+- 실기기 2대 네트워크 테스트는 여전히 이 환경의 구조적 한계로 불가능.
+
+## 고스톱 — 비상/실패/완성/뻑·뻑먹기·쪽·따닥·쓸 이펙트 대량 추가 (2026-09-05)
+
+사용자가 8가지 이펙트를 한 번에 요청하고 외출했다 — "혹시 까먹은거 있으면
+리스팅해달라"는 요청대로, 아래에 실제로 구현한 것·의도적으로 단순화한
+것·그대로 못 한 것을 전부 정리한다.
+
+### 웹 SVG 대신 절차적 드로잉을 쓴 이유
+
+요청은 "웹에서 SVG를 찾아서"였지만, 이 프로젝트는 처음부터 커스텀 아트
+(동전 아이콘·카드 뒷면 무늬·화투 파티클 모티프 등)를 전부 코드로 직접
+그려왔다 — 이 샌드박스가 임의 URL을 신뢰성 있게 받아올 방법이 없고,
+받아온다 해도 출처·라이선스를 확인할 길이 없어서(화투 카드조차 CC
+BY-SA 원본을 신중히 골라 쓴 전례가 있다) 같은 원칙을 지켰다. 새 파일
+`GoStopComboIcons.cs`에 `GoStopMotifAtlas`(화투 파티클 모티프)와 같은
+SDF(signed-distance function) 페인팅 기법으로 poop·두루마리 화장지·
+입술·핑거스냅(스파크)·빗자루 5개 아이콘을 직접 그렸다 — 정교한 사실화가
+아니라 이 프로젝트 전역의 "단순 실루엣" 톤에 맞춘 것이다.
+
+> **버그 — 불투명 도형을 불투명 도형 위에 겹쳐 그리면 나중 도형이 조용히
+> 무시됐다.** `GoStopMotifAtlas.Set()`을 그대로 복사해 온 `Set(px,x,y,c,a)`
+> 가 `if (newA <= existing.a/255f) return;`(더 진하거나 같은 알파가 이미
+> 있으면 무시)로 짜여 있었다 — `GoStopMotifAtlas`는 겹치지 않는 불투명
+> 꽃잎들만 그려서 이 규칙이 안전했지만, 이 파일은 "흰 몸통 위에 진한
+> 튜브 구멍을 나중에 그린다"처럼 **의도적으로 겹치는 불투명 전경
+> 디테일**이 많다 — 두 도형이 같은 픽셀에서 둘 다 알파 1.0으로 끝나면
+> `Clamp01`이 정확히 같은 `1.0f`를 돌려줘서 "<="에 걸려 나중 도형이
+> 통째로 사라졌다(휴지 튜브 구멍·입술 라인/광택·스냅 중심 하이라이트·
+> 똥 이모지의 눈이 전부 안 보이는 걸 PNG로 저장해 직접 보고 나서야
+> 발견했다 — 이 환경은 Game 뷰 스크린샷을 못 믿으므로 항상 그래왔듯
+> `ImageConversion.EncodeToPNG`로 저장해 Read로 확인했다). `<`로 좁혀서
+> 알파가 같을 땐 나중 그림이 이기게(의도한 레이어 순서) 고쳤다 — 알파가
+> 실제로 더 낮을 때만(안티에일리어싱 경계) 기존 걸 지킨다. 수정 전/후
+> PNG를 나란히 비교해 5개 아이콘 전부(특히 눈·구멍·라인·하이라이트)
+> 의도대로 보이는 것을 확인했다.
+
+### 비상(Emergency) 재설계 — 화면 최상단, 필드 안 가림
+
+`GoStopVectorEffect`(완성 이펙트가 쓰던 UI Toolkit 벡터 카드 렌더러)에
+`PlayEmergency`를 새로 추가했다 — 예전엔 `GoStopEffectPopup`(래스터, 필드
+중앙에 작은 텍스트)이었는데, 완성 이펙트와 같은 벡터 카드 자산을 재사용해
+"이 카드들이 위험하다"를 훨씬 분명하게 보여준다. 요청대로 화면 최상단
+전용 트리(`altRow`, 완성 이펙트의 화면 중앙 `cardRow`와 완전히 별개)에만
+그려서 필드(게임판)를 절대 안 가리고(전체 화면 dim도 안 씀 — 다른
+플레이어가 계속 필드를 봐야 한다), 카드가 위→아래로 슬라이드해 등장한
+뒤 3회 붉게 블링크(`Image.tintColor`를 흰색↔빨강으로 토글, UI Toolkit
+벡터 이미지도 tintColor가 먹힌다)하고 그 위 텍스트("[좌석] [족보] 비상!")
+가 페이드인, 짧은 홀드 후 전체 페이드아웃 — 총 ~1.6~1.9초(요청한 "2초
+내외"). 사운드는 기존 `Bonus()`(반짝임) 대신 새 `Siren()`(주파수를 사인
+LFO로 오르내리게 변조한 진짜 "삐용삐용" 사이렌 파형, `GoStopAudio.Siren`
+합성 함수 신규)으로 바꿨다.
+
+### 실패(Blocked) — 완전히 새로운 개념, 근사 구현
+
+"족보 완성 실패"는 이 프로젝트에 없던 개념이었다 — `GoStopRules.SetState.
+Blocked`는 이미 있었지만(배지 텍스트로만 "막힘" 표시) 전용 이펙트가 없었다.
+
+**발동 조건을 사용자에게 확인 안 받고 직접 판단해 좁혔다** — "비상까지
+갔던(2/3, `emergencyFired`) 세트가 완성 못 하고 막힐 때만" 발동하게
+했다. 아무 세트나 막힐 때마다(예: 게임 시작 직후 상대가 우연히 1장만
+가져가도 이론상 Blocked가 성립하는 경우가 흔하다) 화면 전체 이펙트를
+쏘면 스팸이 되기 때문 — "비상! → 결국 실패..."라는 극적인 흐름만
+큰 연출로 보여주는 쪽을 택했다. **이건 사용자에게 확인 안 받은 임의
+판단이니, 원하는 기준이 다르면 알려줄 것.**
+
+**"후르츠닌자처럼 잘리는 느낌"은 정확히 구현하지 못했다** — UI Toolkit엔
+메시를 실제로 두 조각으로 갈라 물리적으로 떨어뜨릴 지오메트리/셰이더
+도구가 없다. `GoStopVectorEffect.PlayBlocked`는 근사로 구현했다: 카드가
+완성 이펙트와 같은 방식으로 슬램인 → 좌상단에서 우하단으로 대각선
+흰 슬래시(38도로 기울인 얇은 띠)가 화면을 훑고 지나감(`StyleRotate`) →
+카드가 붉게 물들며 살짝 아래로 처짐(중력에 끊긴 느낌의 근사) → 그 위에
+"[좌석] [족보] 실패" 텍스트 → 페이드아웃. **진짜 절단 연출을 원하면
+커스텀 셰이더나 스프라이트를 물리적으로 두 장으로 나누는 별도 작업이
+필요하다 — 이번 범위 밖으로 남겼다.** 사운드는 새 `Slice()`(빠른 고→저
+주파수 스윕+노이즈, "스윽" 자르는 느낌).
+
+### 완성(Achievement) — 사운드만 교체
+
+기존 `GoStopVectorEffect.Play`(카드 슬램인+타이틀+페이드) 구조는 그대로
+두고, 사운드만 기존 `Win()`(실제 게임 승리와 같은 소리라 구분이 안 됨)
+에서 새 `Fanfare()`(3옥타브를 훑는 더 길고 웅장한 상승 사인 스윕,
+`Tone("gs_fanfare", 392, 1568, 0.85, ...)`)로 바꿨다. `FireAchievement`/
+`FireGwangAchievement` 둘 다 교체 — 실제 게임 승리(`EndGame`의
+`GoStopAudio.Instance?.Win()`)는 안 건드렸다(족보 완성과 게임 승리가
+같은 소리면 안 헷갈리므로 의도적으로 갈랐다).
+
+### 뻑/뻑먹기/쪽/따닥/쓸 — 기존 이펙트에 "추가"(대체 아님)
+
+`ShowActionPopup`(뻑/쪽/싹쓸이 등 기존 텍스트 팝업+파티클 버스트를 담당)
+끝에 `SpawnComboIconFor`를 새로 붙였다 — 기존 문구/색 연출은 그대로 두고
+그 위에 겹쳐 화면 중앙에 절차적 아이콘을 짧게(1초 내외) 추가로 띄운다
+(사용자가 "기존 이펙트 외 추가로"라고 명시했다). `SpawnComboIcon`이
+DOTween으로 종류별 다른 모션을 준다:
+
+| 라벨 | 아이콘 | 모션 | 사운드 |
+|---|---|---|---|
+| 뻑/첫뻑/연뻑 | 똥(눈 2개) | 위에서 뚝 떨어짐 + 펀치스케일(불길함) | `Danger()`(낮고 텁텁한 트라이앵글 웨이브) |
+| 자뻑/뻑 먹기 | 두루마리 화장지 | 통통 튀며 위로 떠오름(상쾌함) | `Refresh()`(맑게 올라가는 사인) |
+| 쪽(모든 "쪽" 포함 라벨) | 입술(키스마크) | 짧게 통통 튀는 뽀뽁 펄스 | `Smooch()`(하강+노이즈 섞인 "쪽") |
+| 따닥/첫따닥 | 핑거스냅(6방향 스파크) | 빠르게 튕기는 스냅(오버슈트) | `Snap()`(초단시간 고→저 스퀘어파, 타격감) |
+| 싹쓸이 | 빗자루 | 좌우로 흔들리는 빗질(회전) | `Swish()`(노이즈 섞인 "스윽" 스윕) |
+
+"뻑"과 "뻑 먹기/자뻑"을 서로 다른 아이콘/사운드로 갈랐다 — 문자열
+매칭 순서가 중요해서(`label=="자뻑"`/`"뻑 먹기"`를 먼저 확인하고,
+나머지 `label.Contains("뻑")`으로 첫뻑/연뻑을 잡는다) 기존
+`ShowActionPopup`의 prefabName 분기와 동일한 순서 원칙을 그대로 따랐다.
+
+### 검증
+
+Play 모드 라이브(스크린샷 대신 리플렉션 + PNG 저장 확인, 이 프로젝트
+확립된 방식):
+- 아이콘 5종 전부 PNG로 저장해 직접 보고 확인(위 버그 발견·수정 포함).
+- 새 사운드 8종(`Siren/Slice/Fanfare/Danger/Refresh/Smooch/Snap/Swish`)
+  전부 예외 없이 재생 확인.
+- `Toast(0, label)`로 뻑/뻑먹기/자뻑/쪽/따닥/싹쓸이 6개 라벨을 전부
+  실행해 예외 없음 확인, "따닥" 라벨이 실제로 Snap 텍스처를 참조(텍스처
+  참조 동일성 비교)하는 것까지 확인 — 나머지 라벨도 같은 switch 구조라
+  개별 재확인은 생략.
+- 비상: 캡처 더미에 홍단 2장(2/3)을 강제로 채우고 `CheckEmergencies()`
+  직접 호출 → `emergencyFired`에 정확히 기록, `GoStopVectorEffect`의
+  `altTitleLabel.text`가 정확히 "나 홍단 비상!"으로 설정된 것 확인.
+- 실패: 위 상태에서 상대 좌석에게 3월 홍단을 쥐어줘(막힘 성립)
+  `CheckEmergencies()`를 다시 호출 → `blockedFired`에 정확히 기록,
+  `altTitleLabel.text="나 홍단 실패"`, 코루틴이 실제로 도는 것
+  (`playingAlt != null`)까지 확인 — "비상 안 갔던 세트는 막혀도 이펙트
+  없음" 설계가 실제로 그렇게 동작하는지는(막힘 단독 케이스) 별도로
+  재확인하지 않았다.
+- 이 전체 테스트 세션 동안 콘솔 에러·예외 0건.
+
+### 리스팅 — 확인 없이 임의로 정한 것 / 못 한 것
+
+1. **실패 이펙트 발동 조건**("비상 갔던 세트만")은 사용자가 명시하지
+   않은 임의 판단 — 원하는 기준이 다르면 조정 필요.
+2. **"후르츠닌자처럼 잘리는" 연출은 근사(슬래시+색변화+처짐)일 뿐 실제
+   메시 절단이 아니다** — UI Toolkit 한계, 진짜 절단은 별도 작업.
+3. **비상/실패 이펙트는 이번에도 네트워크 동기화를 안 걸었다** — 예전
+   비상 이펙트와 같은 이유(검증 안 된 경로에 새 메시지 형식 추가 리스크
+   회피)로, 호스트 화면에서만 보인다.
+4. **완성 텍스트 형식이 비상/실패와 살짝 다르다** — 완성은
+   `"{좌석}이(가) {족보} 완성!"`(예전부터 있던 조사 처리), 비상/실패는
+   이번에 새로 `"{좌석} {족보} 비상!"`/`"{좌석} {족보} 실패"`로 만들어
+   조사가 없다(간단하게 처리했다) — 다듬고 싶으면 알려줄 것.
+5. **아이콘 디자인은 이 프로젝트의 "단순 실루엣" 톤에 맞춘 것**이라
+   정교한 일러스트가 아니다 — 특히 핑거스냅은 실제 손가락 대신 스파크
+   별 모양으로 단순화했다(손 실루엣을 SDF로 그리기엔 해부학적 디테일이
+   과함).
+6. 광 계열(3광/비삼광/4광/5광)의 "실패"는 지금 구조상 자동으로 커버된다
+   (`GwangEmergencyIdx`도 같은 `blockedFired` 로직을 탄다) — 별도로
+   실제 라이브 테스트는 안 했다(홍단으로만 검증).
+
+## 고스톱 — 손패 즉시 숨김 연출 + 초기딜 3장뻑 피뺏기 버그 수정 (2026-09-06)
+
+사용자가 잠들기 전 남긴 두 건의 버그 신고를 처리했다.
+
+**1) "손패에서 필드로 나갈때 핸드에 있는 패가 없어지지않고 필드에
+생겨서 어색해".** 원인은 `PlaySeq`의 렌더링 타이밍 — 필드 쪽 고스트
+(`SpawnGhostCard`)는 손패 클릭 즉시 그 자리에서 생기는데, 손패 쪽
+`RebuildUI()`는 한참 뒤("④ 캡 배치" 단계)에야 다시 돈다. 그 사이
+(카드가 필드로 슬램다운하는 애니메이션 전체 구간) 손에는 옛 프레임의
+카드가 그대로 남아있고 필드엔 새 고스트가 이미 등장해 있어서, 같은
+카드가 두 곳에 동시에 있는 것처럼 보였다.
+
+`HideHandCardVisual(int seat, HwatuCard c)`를 새로 추가 —
+`handArea.Find(c.spriteName)`로 손패 GameObject를 찾아 그 자리에서
+`SetActive(false)`만 한다(파괴는 안 함 — 나중에 `RebuildUI()`가 정식으로
+정리한다). `PlaySeq`의 고스트 생성 지점 2곳(폭탄 3장 루프, 일반 1장
+분기)에서 고스트를 만들기 직전에 호출한다. `PLAYER_SEAT`가 아니면
+즉시 반환 — 상대 손패는 뒷면 뭉치라 "그 카드 한 장"을 화면에서 특정할
+방법 자체가 없다.
+
+**2) "뻑난거이외에 처음 패돌릴때 3장겹쳐있는걸 먹을때도 피를
+뺃어와야되는데 안뺃어오네".** `ApplyMatchBonus`의 `matchCount==3`
+분기가 `ppeokCauser.TryGetValue(month, out int causer)`가 성공할
+때만 피를 뺏었다 — 그런데 `ppeokCauser`는 딱 한 곳(`PlaySeq`의 "뻑
+형성" 라이브 이벤트)에서만 채워진다. 초기 딜링이 우연히 같은 달 3장을
+필드에 몰아준 경우(뻑 형성 이벤트를 한 번도 거친 적 없는 "원래부터
+3장 깔린" 상태)는 causer 항목 자체가 없어서 `if`가 통째로 스킵되고
+피를 하나도 안 뺏어왔다.
+
+`else` 분기를 추가 — causer가 없으면(진짜 "누가 만들었는지" 알 방법이
+없는 상황) 자뻑 배수(2배)를 적용할 근거가 없으므로 일반 뻑 먹기와
+같은 배수(각 상대에게서 1장씩)로 `StealPiFromEachOther(seat, 1)`을
+그대로 호출한다.
+
+**검증.** 두 기존 시도가 실제 라이브 플레이+수 초 간격의 리플렉션
+체크로 진행됐는데, 그 사이 이번 세션에서 새로 만든 10초 자동턴
+타임아웃(`TurnPlayTimeoutSeq`)과 자연 진행 중인 AI 턴들이 끼어들어
+결과가 뒤섞였다(`cap0Count=0` 같은 앞뒤 안 맞는 관측) — 이 프로젝트가
+이미 여러 번 겪은 "리플렉션 스플라이스/멀티스텝 체크가 실시간 타이머와
+경합한다"는 함정의 재발이었다. 순수 함수를 직접 호출하는 방식으로
+바꿔 문제를 없앴다:
+- **손패 숨김**: `editor_stop`→`editor_play`로 완전히 새 세션을 연 뒤,
+  `dealerDetermined=true`/`dealerSeat=0`을 미리 세팅해 선 뽑기 연출을
+  건너뛰고 4인 게임을 새로 딜링. 손패에서 필드와 정확히 1:1로 매칭되는
+  카드(July_Tane, 필드에 July_Kasu_2 단독)를 골라 `OnPlayerPlay`를
+  직접 호출한 **바로 그 동기 호출 안에서**(코루틴 첫 yield 이전) 손패
+  GameObject의 `activeSelf`를 확인 — `True→False`로 즉시 전환되는 것을
+  확인했다.
+- **피 뺏기**: `ApplyMatchBonus`를 리플렉션으로 직접 호출 — 상대 좌석
+  둘(seat1/seat2)에게 각각 피 카드를 하나씩 쥐어주고, `ppeokCauser`에
+  해당 월 항목이 없는 것을 확인한 뒤, `matchCount=3`짜리 합성
+  `CaptureResult`로 `ApplyMatchBonus(0, r, false, true, false)`를 직접
+  호출 — `did=True`, 두 상대 각각에게서 정확히 1장씩(합계 2장) 내
+  획득패로 이동하는 것을 확인했다(4인 게임이라 "각 상대에게서 1장씩"
+  규칙대로 상대가 여럿이면 그만큼 더 가져온다 — 처음엔 "왜 2장이나
+  가져오지"로 잠깐 헷갈렸는데, 이건 버그가 아니라 이 프로젝트가 이미
+  확정해 둔 다자간 분배 규칙(위 "고스톱 (3인) — v1" 섹션의 "피 뺏기"
+  항목)이 정확히 동작한 것이었다).
+
+> **교훈 재확인 — 리플렉션 체크 사이에 실제 시간(수 초)이 흐르면, 그
+> 사이에 자기가 직접 만든 타이머 시스템(이번엔 10초 자동턴 타임아웃)
+> 이나 자연 AI 턴 진행이 검증 대상 상태를 덮어쓸 수 있다.** 이번엔
+> 순수 함수(`ApplyMatchBonus`)를 격리 호출하거나, 확인이 필요한 순간을
+> 코루틴의 "첫 yield 이전 동기 구간"으로 좁혀서 이 경합을 완전히
+> 피했다 — 여러 초에 걸친 라이브 플레이 관찰이 필요한 검증은 이제부터
+> 가능하면 이 두 방식 중 하나로 대체할 것.
+
+## 고스톱 — 비상/실패 이펙트 레이아웃 재구성 + 프리팹/UXML 전환 (2026-09-06)
+
+사용자가 잠들기 전 남긴 마지막 요청 4가지를 처리했다: (1) 비상/실패
+카드를 화면 최상단에 붙이고, (2) 텍스트를 그 이미지 앞(z방향)으로
+겹쳐서 렌더, (3) 텍스트 색 legibility 개선, (4) `GoStopVectorEffect`를
+프리팹+UXML로 전환해 사용자가 UI Builder로 직접 후반작업할 수 있게.
+
+**1)+2) 레이아웃 — `altRow`/`altTitleLabel`을 같은 영역에 완전히
+겹치도록.** 예전엔 `altRow`(카드)가 `top:70~290`, `altTitleLabel`(제목)이
+`top:10~70`으로 **서로 다른 세로 밴드**를 썼다 — 카드 위에 별도 공간을
+띄워 제목을 얹는 구조였다. 이제 둘 다 `top:0, height:220`으로 완전히
+같은 영역을 쓴다 — 카드는 화면 최상단(top:0)에 고정되고, 제목은 그
+카드들과 정확히 같은 자리에 겹쳐서 뜬다. z-order는 별도 조치 없이
+이미 맞았다 — UI Toolkit도 UGUI와 같은 규칙(나중에 추가된 형제가 위에
+그려짐)이라 `altTitleLabel`이 트리 순서상 `altRow`보다 뒤에 있어서
+저절로 카드 앞에 렌더된다(실측: `altRow` sibling index 3, `altTitleLabel`
+sibling index 4). `sliceLine`(실패 전용 대각선 슬래시)도 같은 영역
+기준으로 좌표를 다시 잡았다(`top:70`→`top:0`, 중앙 통과 지점도
+165→95로 재계산).
+
+**3) 텍스트 legibility.** 카드 이미지 위에 직접 겹치게 되면서 배경색이
+카드마다 제각각(밝은 광 카드부터 어두운 카드까지)이라, 흰 글자 단독으로는
+대비가 들쭉날쭉했다. UXML에 `-unity-text-outline-width`(3~3.5)와
+`-unity-text-outline-color`(짙은 남색 계열, `rgba(20,14,4,0.85~0.9)`)를
+구워서 어떤 배경 위에서도 최소한의 대비를 보장했다. 채우기 색은
+"기존 UI와 어우러지되"라는 요청에 맞춰 — 비상은 danger 톤
+(`RGB(1, 0.42, 0.30)`, 이미 있던 붉은 블링크와 같은 계열)으로, 실패는
+이 프로젝트의 유일한 강조색 `HwatuTheme.Gold`(`#D5A43A`, "현재 턴/선택/
+보상"에 이미 쓰이는 색)로 나눠서 두 이펙트가 서로 구분되면서도 기존
+팔레트에 자연스럽게 녹아들게 했다.
+
+**4) 프리팹+UXML 전환.** 예전엔 `Ensure()`가 `new GameObject(...)` +
+`AddComponent<UIDocument>()`로 매번 빈 오브젝트를 만들고,
+`BuildTree()`가 6개 요소(Dim/CardRow/TitleLabel/AltRow/AltTitleLabel/
+SliceLine)를 전부 코드로 `new VisualElement()`/`new Label()`로 지었다 —
+사용자가 손댈 자산 자체가 없었다.
+- `Assets/Resources/Prefabs/GoStop/Effects/GoStopVectorEffect.uxml`(신규) —
+  6개 요소를 이름 붙여 선언한 정적 트리. **UI Builder(Window > UI
+  Toolkit > UI Builder)로 직접 열어 위치·크기·색·폰트를 편집할 수 있다**
+  — 단 이름(`name="..."`)은 유지해야 코드의 `Q<T>("이름")` 조회가 안
+  깨진다. 매 판마다 장수가 달라지는 카드 자체(Image)는 UXML로 옮길 수
+  없는 동적 데이터라 여전히 코드가 런타임에 CardRow/AltRow 안에 채워
+  넣는다 — UXML은 그 컨테이너까지만 정의한다.
+- `Assets/Resources/Prefabs/GoStop/Effects/GoStopVectorEffect.prefab`(신규) —
+  `UIDocument` 컴포넌트가 위 UXML(`visualTreeAsset`)과 기존
+  `GoStopVectorEffectPanel`(`panelSettings`)을 이미 다 물고 있는 GameObject.
+  `Ensure()`는 이제 `Resources.Load<GameObject>(...)` + `Instantiate(...)`
+  로 이 프리팹을 인스턴스화하고, `BuildTree()`는 `new`로 짓는 대신
+  `root.Q<T>("이름")`으로 참조만 잡는다. 예전에 있던 "GameObject를
+  비활성으로 만들어 두고 설정을 다 채운 뒤에야 활성화한다"는 OnEnable
+  순서 방어 코드(panelSettings 미설정 상태로 OnEnable이 먼저 도는 걸
+  막던 것)는 필요 없어졌다 — 프리팹이 이미 완전히 구성된 채로
+  Instantiate되므로 OnEnable이 한 번에 정상 초기화된다.
+
+**함정 — `Q<T>()`는 `VisualElement`의 인스턴스 메서드가 아니라
+`UnityEngine.UIElements.UQueryExtensions`의 확장 메서드다.** `unity-cli
+eval` 스크립트에서 `testRoot.Q<VisualElement>("Dim")` 형태로 바로
+호출하면 "does not contain a definition for 'Q'"로 컴파일이 실패했다
+— 이 프로젝트가 지켜온 "eval에서는 모든 타입을 완전히 정규화해서 쓴다"
+원칙이 확장 메서드 문법(`instance.Method()`)에는 안 통한다는 걸 이번에
+확인했다 — 리시버 타입을 아무리 fully-qualify해도, 확장 메서드를
+선언한 정적 클래스가 `using`으로 스코프에 안 들어와 있으면 컴파일러가
+못 찾는다. 리플렉션으로 `UnityEngine.UIElements.VisualElement`의
+Assembly를 훑어 실제 선언 클래스(`UQueryExtensions`)를 찾은 뒤
+`UQueryExtensions.Q<T>(instance, name, ...)` 정적 호출 문법으로 우회해서
+검증했다 — 실제 `.cs` 파일에는 이미 `using UnityEngine.UIElements;`가
+있어서 이 문제가 없다(eval 검증 스크립트에서만 겪은 문제).
+
+**검증(Play 모드 라이브).** 프리팹에서 로드한 `VisualTreeAsset`을
+`CloneTree`로 직접 펼쳐 6개 이름 전부가 정확한 타입으로 조회되는 것부터
+확인한 뒤, 실제 `Ensure()`로 프리팹을 인스턴스화해: `altRow.top=0`,
+`altTitleLabel.top=0`(둘 다 `height≈220`으로 완전히 겹침), 아웃라인 폭
+3.5, 형제 순서상 `altTitleLabel`이 `altRow`보다 나중(=z-order 앞)인
+것까지 확인. `PlayEmergency`/`PlayBlocked`/`Play`(기존 완성 이펙트) 셋
+다 실제 카드 데이터로 트리거해 — 카드가 정확한 개수로 채워지고, 제목
+색이 각각 `RGBA(1,0.42,0.30,1)`/`RGBA(0.835,0.643,0.227,1)`(Gold와
+정확히 일치)/캡처 시 넘긴 accent로 정확히 나오는 것, 재생이 끝난 뒤
+카드 컨테이너가 다시 0개로 깨끗이 정리되는 것까지 확인했다. 이
+테스트 세션(컴파일+Play 모드) 전체에서 콘솔 에러·예외 0건(경고 23건은
+전부 무관한 기존 노이즈 — 파이프라인 서버 알림, obsolete API 경고,
+em-dash 폰트 폴백).
+
+**아직 손 안 댄 것.** `CardRow`/`TitleLabel`(완성 이펙트용)은 이번
+요청 범위 밖이라 레이아웃·색을 그대로 뒀다 — 필요하면 같은 방식으로
+UXML만 더 손보면 된다. 실제 게임 내 자연 발생(합성 카드가 아니라
+실제 플레이로 비상/실패를 트리거)으로는 이번에도 확인 못 했다 — 이
+효과들은 원래도 매 세션 합성 카드로만 검증돼 왔다(이전 세션들과 동일한
+한계).
+
+## 고스톱 — 고/스톱 이펙트 화면 중앙 대형화 + 결과화면 지연 + 카드 아이콘
+2배 확대 (2026-09-06)
+
+바로 위 1~8고/스톱 텍스트 이펙트를 실제로 보고 나온 후속 피드백 4가지 —
+"실패 이펙트는 마음에 든다"(승인, 손 안 댐)를 빼면 전부 조정 요청.
+
+**고/스톱 이펙트를 카드 포지션 방식(comboEffectWorldPos)에서 화면
+정중앙·대형으로 전환.** `GoEffectSeq`/`StopEffectSeq`가 기존엔 다른
+콤보 아이콘처럼 `ShowActionPopup`의 카드-위치 타겟팅 경로를 안 쓰고
+있었지만(원래도 좌표 인자를 안 받았다), 크기가 작아서(1200×500) "화면이
+꽉 찰 만큼 커야 한다"는 요청에 못 미쳤다. `GoStopCanvasRoot()` 헬퍼
+(`fieldArea.parent.parent.parent.parent as RectTransform` — 아래 카드
+아이콘 4-hop 수정과 동일한 체인)로 캔버스 루트만 구하고, 앵커/피벗/
+`anchoredPosition`을 전부 `(0.5,0.5)`/`Vector2.zero`로 고정해 **화면
+정중앙에 절대 좌표로 고정**했다.
+- `GoEffectSeq`: 박스 1800×700(기존 1200×500), 기본 폰트 110(기존 72).
+  링 이펙트(`MakeExpandingRing`) 기본 크기 260(기존 140), 확대 목표
+  스케일 4.5(기존 2.4)로 같이 키워 화면을 꽉 채운다.
+- `StopEffectSeq`: 박스 1500×700, 손 모양 아이콘(`GoStopComboIcons.
+  StopHand`) 260×260로 확대.
+
+**결과 화면을 스톱 이펙트가 끝난 뒤로 지연.** `FireStopEffect`의 반환
+타입을 `void`→`Coroutine`으로 바꾸고, 새 `EndGameAfterStop(int seat)`
+코루틴(`yield return FireStopEffect(seat); EndGame(seat);`)을 만들어
+스톱을 부르는 3개 지점(내 스톱 버튼, AI 자동 스톱, 원격 좌석 스톱) 전부
+`FireStopEffect(seat); EndGame(seat);`(동시 실행) 대신
+`StartCoroutine(EndGameAfterStop(seat));`(순차 실행)로 바꿨다 — 이제
+스톱 텍스트+파티클 연출(약 0.95초)이 다 끝난 뒤에야 승패 오버레이가
+뜬다.
+
+**카드 위치 콤보 아이콘(쪽/뻑/따닥/자뻑/싹쓸이)을 2배로.**
+`SpawnComboIcon`의 `sizeDelta`를 150×150→300×300으로, 크기에 비례하던
+애니메이션 오프셋 두 곳(똥 아이콘 낙하 시작 오프셋 90→140, 화장지
+아이콘 부유 거리 26→40)도 같이 스케일했다.
+
+**고/스톱 재질문(gate) 버그 — 재조사, 재현 실패, 진단 로그만 추가.**
+"3점 도달 → 고 → 다음 턴 뻑으로 아무것도 못 먹음 → 그런데도 고/스톱을
+다시 묻는다"는 재신고에, 사용자가 "이전 고 시점의 점수는 고 보너스(+1점)를
+뺀 원점수를 말한 것"이라고 재확인해줬다 — 이미 `lastGoScore[seat] =
+pendingGoRawScore`(고 배수 적용 전 원점수)로 정확히 이 정의를 쓰고
+있다는 걸 재확인했고, `GoStopRules.CalcScore`가 `goCount`를 아예 참조조차
+안 한다는 것도 소스를 다시 읽어 재확인했다. 격리된 `AfterAction` 직접
+호출(합성 12피 캡처)과, 실제 `PlaySeq`를 태운 뻑 형성 재현(덱을 한 장씩
+통제해 셔플 오염을 피함) 둘 다 시도했지만 **게이트는 매번 정확하게
+동작했다**(캡처가 안 늘면 재질문 안 함) — 재현에 실패했다. 사용자가
+"지금 정상 동작한다는 뜻이냐"며 명확히 납득을 거부했으므로, 코드가
+맞다고 결론짓는 대신 `AfterAction`의 게이트 체크 직전에 영구 진단
+로그를 추가했다:
+```csharp
+if (seat == PLAYER_SEAT)
+    Debug.Log($"[GoStopGate] seat={seat} rawScore={rawScore} lastGoScore={lastGoScore[seat]} " +
+        $"willPrompt={rawScore >= CaptureLine && rawScore > lastGoScore[seat]} " +
+        $"capturedCount={captured[seat].Count} goCount={goCount[seat]} captureLine={CaptureLine}");
+```
+라이브로 정상 호출 시 로그가 정확한 값으로 찍히는 것까지 확인했다
+(`rawScore=1 lastGoScore=-1 willPrompt=False ...`). **이 버그는 여전히
+미해결이다** — 다음에 사용자가 실제 플레이 중 재현하면 이 로그
+(`[GoStopGate]` 태그)로 정확한 순간의 `rawScore`/`lastGoScore`/
+`capturedCount`를 확보해 원인을 좁힐 것.
+
+검증(Play 모드 라이브, 리플렉션): `SpawnComboIcon`의 `sizeDelta=(300,300)`
+확인, `GoEffectSeq`의 `sizeDelta=(1800,700)`·`anchoredPosition=(0,0)`·
+1고 기준 `fontSize=110` 확인. `OnPlayerStop()` 호출 직후엔 `state=Turn`
+(아직 안 끝남)+스톱 이펙트 오브젝트 존재, ~1.6초 뒤엔 `state=GameOver`+
+이펙트 오브젝트 소멸까지 확인해 지연 순서가 실제로 동작함을 확인했다.
+콘솔 에러·예외 0건.
+
+## 고스톱 — 흔들기/폭탄 이펙트를 발동 좌석 상태박스 자리로 축소 (2026-09-06)
+
+"흔듬 이펙트 화면 정중앙에 대문짝만하게 나오는게 좀 부담스럽고 게임화면을
+가려서 발동시킨 유저의 스테이터스박스 사이즈로 그 박스 꽉차게 표시되게,
+카드는 아래 앵커 두고 좌우로 부채처럼 펼쳐지면서 앞쪽에 텍스트로 '흔듬',
+연출시간은 3초 정도로 넉넉하게" 요청. 흔들기/폭탄은 그동안 족보 완성과
+같은 `GoStopVectorEffect.Play`(화면 정중앙 대문짝)를 그대로 재사용하고
+있었는데("폭탄도 흔들기의 즉시실행 버전이라 같은 이펙트를 띄운다"), 이걸
+이 이벤트 전용의 훨씬 작고 좁은 자리로 뗐다.
+
+**`GoStopVectorEffect.PlayShake(RectTransform anchorBox, IEnumerable<HwatuCard>
+cards)` — 신규.** UXML에 `ShakeRow`/`ShakeLabel` 요소를 추가하고(비상/실패의
+`AltRow`/`AltTitleLabel`과 같은 "정적 뼈대만 UXML, 좌표는 매번 코드가 덮어씀"
+패턴), `GoStop3PGame`의 흔들기 선언·폭탄 확정 두 호출부가 각각
+`statusBoxRefs[SlotOf(seat)]`(발동한 좌석의 실제 상태박스 RectTransform)를
+넘긴다.
+
+**UGUI 좌표 → UI Toolkit 패널 좌표 변환.** `GoStopVectorEffect`는 UGUI
+Canvas가 아니라 별도의 UI Toolkit 패널(`UIDocument`)이라, "이 UGUI
+RectTransform이 화면에서 차지하는 자리"를 그 패널의 좌표계로 옮겨야 했다 —
+`anchorBox.GetWorldCorners()` → `RectTransformUtility.WorldToScreenPoint(null,
+...)`(Screen Space Overlay라 카메라 null) → `RuntimePanelUtils.ScreenToPanel(panel,
+screenPos)`(UGUI 화면 좌표를 UI Toolkit 패널 좌표로 변환하는 표준 API) 순으로
+두 모서리(TL·BR)를 변환한 뒤, `ShakeRow`/`ShakeLabel`의 `left/top/width/height`를
+그 값으로 직접 덮어쓴다.
+
+> **함정 — 두 좌표계의 Y축 방향 관계를 가정했다가 박스 높이가 음수로
+> 나왔다.** "UGUI 화면 좌표(Y-up, 좌하단 원점) → UI Toolkit 패널 좌표
+> (Y-down, 좌상단 원점)로 뒤집힐 것"이라고 가정하고 TL 모서리는 항상 더
+> 작은 패널 Y, BR 모서리는 더 큰 패널 Y가 되리라 예상했는데, 실측해보니
+> (`h=-165`) 이 프로젝트/Unity 6.3 조합에서는 반대로 나왔다. 축 방향을
+> 가정하는 대신 **변환된 두 좌표 중 실제 최소/최대값으로 좌상단·우하단을
+> 다시 계산**(`Mathf.Min/Max`)하도록 고쳐서, 어느 쪽으로 뒤집히든 항상
+> 올바른 양수 width/height가 나오게 만들었다 — 축 방향을 문서·API
+> 설명만으로 추측하지 말고 실측해서 검증할 것.
+
+**부채 펼침 — 카드 전부를 절대 위치로 겹쳐 놓고 바닥 중앙 피벗으로만
+회전.** 3장(또는 n장)을 `flex` 정렬이 아니라 `Position.Absolute`로 컨테이너
+바닥 중앙에 전부 같은 자리에 겹쳐 놓고, `transformOrigin`을 카드 바닥
+중앙(`Length.Percent(50), Length.Percent(100)`)으로 고정한 뒤 카드마다
+다른 각도(±18°씩)로만 회전시킨다 — 회전 하나만으로 "한 지점에서 부챗살처럼
+펼쳐지는" 손패 모양이 자연히 나온다(따로 가로 이동을 더할 필요가 없었다).
+"흔듬" 텍스트(`ShakeLabel`)는 `ShakeRow`보다 나중 sibling이라 z-order상
+항상 카드 위(앞쪽)에 겹쳐 뜬다 — 비상/실패의 `AltTitleLabel`과 같은 원칙.
+
+**타이밍 — 접힌 부채(회전 0, 완전히 겹침) → 펼쳐짐(0.35s ease-out) →
+텍스트 페이드인(0.15s) → 홀드(2.1s) → 페이드아웃(0.4s), 총 3초.**
+
+**폭탄도 같은 함수로 통일.** 흔들기와 폭탄은 이미 "같은 사건의 즉시실행
+버전"이라는 게 확정 규칙이라(위 여러 섹션 참고), 화면 정중앙 텍스트("OO월
+폭탄!")도 걷어내고 똑같이 `PlayShake`(상태박스 자리, "흔듬" 텍스트)로
+통일했다 — 두 이벤트가 서로 다른 크기/위치로 나오면 오히려 일관성이
+깨진다고 판단했다.
+
+**검증(Play 모드 라이브, 리플렉션).** 4인 게임을 새로 시작해 seat0(하단
+좌석) 손패에 8월 카드 3장(필드에 매칭 없음)을 강제로 세팅 → 카드 재생 →
+흔들기 팝업 응답(흔들기 선언) → `PlayShake` 발동 직후(동기 구간) 상태
+확인: `childCount=3`(카드 3장), `label="흔듬"`, `left=30, top=170, w=400,
+h=165`(사용자가 지목한 상태박스 크기와 정확히 일치 — Y축 버그 수정 전엔
+`h=-165`로 나왔던 것을 이 값으로 재확인). 이후 충분한 시간이 지난 뒤
+재확인 → `childCount=0`, `label opacity=0`(전체 시퀀스가 예외 없이 끝까지
+돌고 스스로 정리됨). 이 테스트 세션 전체(설정·발동·완료 확인) 콘솔
+에러·예외 0건.
+
+## 고스톱 — 콤보 아이콘을 절차적 드로잉에서 실제 SVG(Twemoji) 참조로 교체
+(2026-09-06)
+
+"절차적 코드로 그리지 말고 SVG를 참조하게 바꿔라, 내가 웹에서 찾으라고
+했지 만들라고 하지 않았다"는 명확한 정정 — 뻑/뻑먹기/쪽/따닥/쓸/스톱
+아이콘(`GoStopComboIcons.cs`)이 원래 SDF 절차적 드로잉으로 만들어져
+있었는데(2026-09-05, "웹에서 SVG를 찾아 쓰라"는 요청을 "이 샌드박스는
+URL을 못 받아온다"고 잘못 판단해 직접 그리는 쪽으로 대체했던 것 — 실제로는
+`curl`로 외부 URL을 정상적으로 받아올 수 있었다), 이번에 실제 SVG를
+가져와 참조하는 방식으로 전면 교체했다.
+
+**출처 — Twitter/X의 오픈소스 이모지 세트 Twemoji(CC BY 4.0).** 화투 카드
+SVG(Wikimedia Commons, CC BY-SA)·Kenney UI(CC0)와 같은 "출처가 분명하고
+라이선스가 확인된 무료 에셋을 찾아 쓴다"는 이 프로젝트의 기존 원칙을 그대로
+따랐다. `github.com/twitter/twemoji`의 raw SVG(`assets/svg/{코드포인트}.svg`)를
+`curl`로 직접 받아왔다 — 6개 콘셉트에 정확히 맞는 이모지가 이미 있었다:
+
+| 역할 | 이모지 | 코드포인트 |
+|---|---|---|
+| 뻑 | 💩 | 1f4a9 |
+| 뻑먹기/자뻑 | 🧻 | 1f9fb |
+| 쪽 | 💋 | 1f48b |
+| 따닥 | 🫰(핑거스냅) | 1faf0 |
+| 쓸 | 🧹 | 1f9f9 |
+| 스톱 | ✋ | 270b |
+
+**파일 배치 — 기존 화투 SVG와 같은 "원본은 Art, 실제 쓰는 것만 Resources"
+원칙.** 원본은 `Assets/Art/Twemoji/{코드포인트}.svg`로, 실제 게임이 참조하는
+6장만 `Assets/Resources/ComboIcons_SVG/{역할이름}.svg`로 복사했다.
+
+**임포터 설정 — `svgType`을 VectorImage에서 VectorSprite로 바꿔야
+`Sprite`가 나온다.** 이 프로젝트에 새 `.svg`를 추가하면 기본값이
+`svgType=VectorImage`(UI Toolkit `VectorImage` 타입 전용, 족보 완성
+이펙트의 화투 카드 SVG가 쓰는 방식)로 임포트된다 — 그런데 콤보 아이콘은
+UGUI `Image.sprite`에 꽂아야 해서 `Sprite`가 나오는 `VectorSprite`
+모드(`Unity.VectorGraphics.Editor.SVGType.VectorSprite = 0`)로 바꿔야
+했다. `SerializedObject`로 임포터 설정을 직접 고쳐 저장했다.
+
+> **함정 — `SerializedProperty.enumValueIndex`로 이 enum 필드를 쓰면
+> 조용히 아무 효과가 없다.** `so.FindProperty("m_SvgType").enumValueIndex
+> = 0`으로 설정하고 `ApplyModifiedProperties()`+`SaveAndReimport()`까지
+> 다 했는데도 재확인해보면 `m_SvgType`이 여전히 원래 값(VectorImage)
+> 그대로였다 — 예외도 없이 조용히 실패했다. 원인은 `enumValueIndex`가
+> "선언 순서의 enum 값"이 아니라 **Unity가 내부적으로 구성한 enum 이름
+> 배열의 인덱스**를 가리키는 값이라(`System.Enum.GetNames()`가 주는
+> 순서와 항상 일치한다는 보장이 없다), 이 SVGType 열거형에서는 실제
+> 원시 정수값(raw field 확인 시 3=VectorImage)과 `enumValueIndex`(같은
+> 상태에서 4로 읽힘)가 서로 어긋났다. **`prop.intValue`로 원시 정수값을
+> 직접 쓰니 즉시 정상 동작했다** — enum 타입 SerializedProperty를 코드로
+> 조작할 때는 `enumValueIndex`보다 `intValue`가 더 안전하다(적어도 이
+> enum처럼 "이름 배열 순서"가 선언 순서와 다를 수 있는 경우엔 필수).
+
+**`GoStopComboIcons.cs` 전면 재작성.** SDF 드로잉 함수(`DrawPoop` 등)를
+전부 삭제하고, `Resources.Load<Sprite>("ComboIcons_SVG/" + name)`로
+바꿨다 — 공개 API(`Poop`/`Tissue`/`Lips`/`Snap`/`Broom`/`StopHand`,
+전부 `Sprite` 반환)는 그대로 유지해서 호출부(`ShowActionPopup`/
+`StopEffectSeq`) 변경이 전혀 필요 없었다.
+
+**라이선스 표시.** `TitleOptionsUI.cs`의 라이선스 정보 화면(설정→라이선스
+정보)에 Twemoji CC BY 4.0 항목을 추가했다 — 화투 카드 CC BY-SA와 같은
+종류의 저작자 표시 의무.
+
+**검증(Play 모드 라이브).** 6개 스프라이트 전부 `Resources.Load`로 정상
+로드되는 것(`rect=(0,0,36,36)`, Twemoji 원본 viewBox와 일치) 확인. 실제
+게임 이벤트(`Toast(0, "뻑")`)를 트리거해 콘솔 예외 0건으로 실제 UGUI
+`Image` 컴포넌트에 렌더되는 것까지 확인했다.
+
+> **버그(당일 후속) — `svgType=VectorSprite`로는 UGUI에서 아예 안
+> 보인다.** 커밋 직후 "이번에 수정한 SVG가 안 나온다"는 신고를 받고 조사—
+> `VectorSprite` 모드는 `sprite.texture`가 **null인 순수 메시 스프라이트**
+> (정점 색으로 채운 폴리곤, `SpriteRenderer`/월드 스페이스 2D 오브젝트
+> 전용 방식)를 만든다. UGUI `Image`는 `sprite.texture`를 샘플링해서
+> 그리는 텍스처 기반 렌더링이라, 텍스처가 없는 이 스프라이트를 그냥 안
+> 그린다(예외도 안 남기고 조용히 빈 화면). **`svgType`을
+> `TexturedSprite`(값 1)로 바꿔서 고쳤다** — 이 모드는 SVG를 실제
+> `Texture2D`로 래스터화한 뒤 평범한 4-vertex 사각 메시 스프라이트로
+> 감싸서, 일반 PNG 스프라이트와 완전히 동일하게 UGUI `Image`에서
+> 렌더링된다. 벡터 확대 이점은 포기하지만(이제 고정 해상도 래스터,
+> 256px 기준), 이 아이콘들은 화면에서 최대 300px 정도로만 쓰이니
+> 체감 열화가 없다. 6개 파일 전부 `intValue=1`로 재설정 후 재임포트해
+> `sprite.texture != null`(256×256 전후 실제 텍스처)이 되는 것과, 텍스처를
+> PNG로 저장해 직접 열어봐서(이 프로젝트 확립된 검증 방식 — 스크린샷
+> 대신 직접 렌더 결과를 저장해서 눈으로 확인) 뻑(💩)·따닥(🫰)·스톱(✋)
+> 아이콘이 전부 의도한 그림으로 정확히 나오는 것까지 확인했다.
+>
+> **교훈 — Unity Vector Graphics의 `SVGType`은 렌더링 파이프라인별로
+> 완전히 다른 자산을 만든다.** `VectorImage`(UI Toolkit 전용, 족보 완성
+> 이펙트가 쓰는 방식)·`VectorSprite`(메시+정점색, SpriteRenderer용)·
+> `TexturedSprite`(래스터+사각 메시, UGUI Image용) 세 가지가 서로 호환
+> 안 되는 별개 산출물이다 — "SVG를 Sprite로 쓰고 싶다"는 요구 하나에도
+> **어느 렌더링 시스템(UGUI vs UI Toolkit vs SpriteRenderer)에 꽂을
+> 것인지**에 따라 맞는 svgType이 갈린다는 걸 이번에 명확히 확인했다.
+
+## 고스톱 — 비상/실패(Alt) 이펙트 큐가 좌석 교체 이후 영구 정지되는 버그
+(2026-09-06)
+
+"고도리 실패 이펙트가 패 잘리는 연출이 안 나온다"는 신고를 조사하다가
+`GoStopVectorEffect`의 비상/실패 큐 시스템(`EnqueueAlt`/`AltDispatchLoop`,
+2026-09-05 세션에 "다른 유저 이펙트가 끼어들면 이전 큐를 지우고 새 유저
+걸 우선한다"는 요청으로 만든 것) 자체에 **재현 가능한 진짜 버그**를
+발견했다.
+
+**원인.** `AltDispatchLoop(int myGeneration)`이 자기 세대가 낡았는지
+`while (altGeneration == myGeneration && ...)`로 매 반복 확인하는데,
+다른 좌석에 밀려 이 조건이 거짓이 되면 while문이 **그냥 조용히
+끝나버린다** — 그 직후 `if (altGeneration == myGeneration) playingAlt =
+null;`도 같은 이유로 거짓이라 실행이 안 된다. 즉 **밀려난 옛 디스패치
+루프는 다음 틱에 스스로 죽으면서도 `playingAlt`를 절대 못 비운다** —
+`EnqueueAlt`의 `if (playingAlt == null) playingAlt = StartCoroutine(...)`
+가드가 그 뒤로는 영원히 거짓이 되어, **어느 좌석이 다른 좌석에게 한 번이라도
+밀린 그 순간부터 이후 모든 비상/실패 이펙트가 큐에만 쌓이고 다시는 재생되지
+않는다.** 고도리 완성(다른 시스템, `Play()`)과 다른 세트의 비상/실패
+(`EnqueueAlt` 공유)가 같은 `CheckEmergencies()` 호출에서 서로 다른 좌석에
+대해 동시에 발동하는 건 드문 일이 아니라서(한쪽이 완성되는 순간이 정확히
+다른 쪽이 막히는 순간이기도 하다), 세션이 길어질수록 이 상태에 빠질 확률이
+높아진다 — "예전엔 잘 나왔는데 이제 영영 안 나온다"는 정확히 이 버그의
+증상이다.
+
+**고침.** 좌석 교체(`owner != altQueueOwner`) 분기 안에서 `altGeneration`을
+올리는 바로 그 자리에 `playingAlt = null;`을 명시적으로 추가했다 — 옛
+루프가 스스로 못 치우는 걸 여기서 대신 치워서, 바로 다음 줄의
+`if (playingAlt == null)` 가드가 항상 새 디스패치 루프를 정상적으로
+시작하게 만든다. 밀려난 옛 코루틴은 다음 틱에 조용히 자멸할 뿐 이미
+`null`로 밀어둔 `playingAlt`를 다시 건드리지 않는다.
+
+**검증(Play 모드 라이브, 리플렉션).** 수정 전: `owner=0`으로 비상을 띄운
+뒤 `owner=1`로 실패를 띄워 교체를 유발 → 3초를 기다려도 `queueCount=1`
+(영원히 안 빠짐), `altRowChildren=0`(전혀 안 뜸), `playingAlt`는 계속
+non-null(죽은 코루틴을 계속 가리킴) — 신고된 증상을 정확히 재현했다.
+수정 후: 같은 시나리오를 재생 직후(동기 구간) 확인 → `altRowChildren=1`
+(카드가 즉시 채워짐), `label="OwnerB 실패"`(교체해 들어온 좌석의 요청이
+정상 재생 시작) — 1초 뒤 재확인 → `queueCount=0, playingAlt=False`(정상
+완주 후 스스로 정리). 콘솔 에러·예외 0건.
+
+## 고스톱 — 흔들기 이펙트 포지션 오류(재현 실패, 진단 로그만 추가)
+
+"왼쪽 유저가 흔들었는데 내 상태박스 위에 표시됐다"는 신고. `PlayShake`가
+`SlotOf(seat)`로 좌석→슬롯을 구해 `statusBoxRefs[slot]`을 타겟으로 넘기는
+구조 자체는 여러 각도로 재현을 시도했지만 **전부 정상 동작했다** — (1)
+`BeginWithSeatCount(4)` 직후 왼쪽 슬롯(slot1)에 배정된 좌석의 손패를
+같은 동기 구간 안에서 3장으로 세팅해 `PlaySeq`를 직접 호출 → `shakeRow`의
+실제 좌표가 slot1 박스의 좌표와 정확히 일치(mine 박스 좌표와는 다름).
+(2) 현재 씬의 4개 상태박스 실측 좌표도 서로 완전히 분리돼 있고 회전도
+없어(겹침 가능성 배제) 정적 레이아웃 문제도 아니었다. `SlotOf`/
+`statusBoxRefs` 인덱싱 자체(0=하단·1=좌·2=상·3=우)도 `BuildEdgeSeatBlock(1,
+-SIDE_X,...)`/`BuildEdgeSeatBlock(3, SIDE_X,...)` 호출부로 재확인해
+좌우 배정이 맞다는 것도 확인했다.
+
+**결론(당시) — 코드 검토·격리 재현 둘 다 실패, 다음 재현 시 데이터를 모으도록
+진단 로그만 추가했다.**
+
+### 후속 — 사용자가 더 구체적인 증상을 알려줘서 진짜 원인을 잡았다
+(2026-09-06)
+
+"흔듬 이펙트 해당유저 스테이터스 박스 위치가 아니라 한참 밑에서 표시중"
+— "엉뚱한 좌석"이 아니라 "같은 박스인데 한참 아래로 밀려서 보인다"는
+정확한 증상이었다. 이게 결정적 단서였다 — 좌석/슬롯 타겟팅은 이미 여러
+각도로 검증했으니(위 "재현 실패" 문단), 남은 용의자는 좌표 **변환**
+쪽이다.
+
+**진짜 원인 — 검증 자체가 자기 자신과 비교하는 순환 검증이었다.** 이전
+검증은 `PlayShake`가 넘겨받은 박스가 "의도한 박스가 맞는지"만 확인했을
+뿐, `GetWorldCorners → RectTransformUtility.WorldToScreenPoint →
+RuntimePanelUtils.ScreenToPanel`로 이어지는 **좌표 변환 자체가 화면에
+실제로 맞는 위치를 내놓는지는 독립적으로 검증한 적이 없었다** — "정답값"을
+계산할 때도 똑같은 변환 공식을 그대로 재사용해서, 그 공식 자체에 있는
+축척 오차는 애초에 걸러낼 수 없는 검증이었다. 이 프로젝트는 이미
+`Screen.width/height` 기반 픽셀 변환이 여러 차례 이 환경에서 어긋난
+전례가 있다(`ShowActionPopup`/`FireBlocked`의 4-hop 부모 체인 버그 등) —
+이번에도 같은 계열의 문제로 보인다.
+
+**고침 — 픽셀/DPI 변환을 아예 안 거치는 방식으로 재설계했다.** UGUI
+좌표를 화면 픽셀로 투영했다가 다시 UI Toolkit 패널 좌표로 역투영하는
+대신, **"이 박스가 UGUI 캔버스 전체 크기 대비 몇 %를 차지하는가"**만
+계산해서(`GoStop3PGame.NormalizedBoxOf`, 0~1 비율·UI Toolkit과 같은
+top-left/Y-down 방향) 넘기고, 받는 쪽(`GoStopVectorEffect.PlayShakeSeq`)은
+그 비율에 **자기 자신의 실제 패널 크기**(`root.layout`, UI Toolkit이
+스스로 보장하는 값)를 곱하기만 한다 — 두 렌더링 시스템이 각자 자기
+크기만 알면 되고, 그 사이에서 어긋날 수 있는 값(`Screen.width/height`,
+DPI, 카메라 투영 등)을 계산에서 완전히 들어낸다.
+
+**독립 검증(자기 참조 아님) — 두 시스템이 보고하는 크기가 실제로 정확히
+같은지부터 확인했다.** UGUI `canvasRoot.rect`(`GoStopCanvasRoot()`가
+가리키는 실제 Canvas)와 UI Toolkit `root.layout`(패널 자신의 레이아웃)을
+**서로 다른, 각자 독립적인 API로** 읽어 비교 — `width=1993.16`으로
+소수점까지 정확히 일치하는 것을 확인했다. 이 둘이 애초에 같은 값이라는
+사실 자체가 새 방식이 원리적으로 맞다는 증거다(비율 × 같은 크기 = 두
+시스템에서 항상 같은 실제 위치가 나올 수밖에 없다). 이어서 실제
+`PlayShake` 트리거로 좌측 좌석(seat) 흔들기를 재현해 최종 패널 좌표
+(`left=5, top=240, w=400, h=165`)가 `NormalizedBoxOf`가 계산한 비율에
+패널 크기를 곱한 값과 정확히 일치하는 것, 그리고 그 비율 자체(`y=0.22`,
+화면 상단에서 22% 지점)가 "한참 밑"이 아니라 좌측 상태박스가 실제로
+있는 자리(상단 근처)와 합리적으로 일치하는 것까지 확인했다.
+
+> **함정 — Play 모드 진입 직후(같은 프레임)엔 UI Toolkit `VisualElement.
+> layout`이 `NaN`이다.** `GoStopVectorEffect.Ensure()`로 막 만든 직후
+> 곧바로 `root.layout`을 읽으면 `(0,0,NaN,NaN)` — 최소 한 프레임이
+> 지나야 레이아웃 계산이 끝난다. 검증 스크립트를 프레임 하나 사이를 두고
+> 두 번의 별도 `eval` 호출로 나눠서야 정상값을 볼 수 있었다. **이건
+> 검증 스크립트만의 문제가 아니라 실제 게임에서도 재현 가능한 진짜
+> 위험이었다** — 이 싱글턴이 이번 세션에서 한 번도 안 쓰였다가(다른
+> 비상/완성 이펙트가 아직 한 번도 안 뜬 채) 판 첫 턴에 곧바로 흔들기가
+> 나오면(딜 직후 우연히 3장이 모이는 경우), `Ensure()`가 지금 막
+> 인스턴스를 만든 바로 그 프레임에 `PlayShakeSeq`가 `root.layout`을
+> 읽게 되어 NaN 위치로 렌더될 뻔했다. `PlayShakeSeq` 맨 앞에
+> `if (float.IsNaN(root.layout.width)) yield return null;`로 한 프레임
+> 미루는 방어 코드를 추가했다(육안으로 티 안 나는 지연) — 이후 같은
+> 세션의 두 번째 트리거로 레이아웃이 이미 유효할 때는 이 가드가 아예
+> 안 걸려 정상적으로 동기 실행된다.
+
+## 고스톱 — 타짜 캐릭터 이름·난이도·시드머니 + 돈 초기화 버그 수정 (2026-09-06)
+
+"AI-A/B/C 대신 타짜 등장인물 이름으로, 난이도(A=잘함/B=보통/C=호구) 적용,
+게임 시작시 랜덤 입장, 티어별 시드머니(A=100만/B=50만/C=10만), 0원 된
+CPU는 등장 안 함, 내 시드머니 50만원, 게임을 다시하면 돈이 초기화되는
+버그 확인" — 사용자가 지정한 13명(김고니A·정마담B·평경장A·고광렬B·아귀A·
+곽철용B·화란C·짝귀A·호구C·무석B·세란이C·너구리C·교수C)을 전부 반영했다.
+오프라인(vs AI) 전용 — 네트워크 대전은 손 안 댔다(실제 접속자 닉네임을
+그대로 쓰는 기존 방식 유지).
+
+**새 파일 `GoStopCharacters.cs`.** `GoStopTier{A,B,C}` enum +
+`GoStopCharacter{name,tier}` + 13명 고정 로스터. 좌석 **인덱스**가 아니라
+**이름**으로 돈이 영구히 이어진다는 게 핵심 설계 — 매 세션 좌석 배정이
+랜덤이라 같은 사람이 다른 자리에 앉을 수 있으므로, PlayerPrefs 키를
+`"GoStopChar_Money_" + 이름`으로 잡았다(기존 좌석 인덱스 키
+`GoStop4P_Money_s`와는 별개 네임스페이스). **은퇴 판정에 별도 플래그를
+안 두고** "저장된 돈이 있고 그게 0 이하"로만 판단한다(`IsRetired`) —
+키 자체가 없으면 "아직 한 번도 안 나왔다"는 뜻이지 은퇴가 아니다.
+`DrawRandom(count)`가 은퇴 안 한 캐릭터 중 Fisher-Yates로 중복 없이
+뽑는다(전원 파산하는 사실상 불가능한 경우엔 은퇴자로 채워 게임이
+아예 못 열리는 사태만 방지).
+
+**`GoStopAI.cs`에 티어 매개변수 추가(기본값 B=기존 동작 그대로).**
+`ChooseCard`/`ChooseFieldMatch`/`ShouldGo`/`ShouldShake`/`WantsToPlay`/
+`OptimizeDualPi` 전부 `GoStopTier tier = GoStopTier.B` 기본 인자를
+추가했다 — tier를 안 넘기는 기존 호출부(플레이어 자신의 턴-타임아웃
+자동 플레이 등, AI 상대가 아닌 곳)는 코드 변경 없이 예전과 100% 동일.
+B는 그대로 "기준"으로 두고, A는 그보다 낫게(고를 더 적극적으로 밀어
+붙이고 광 없이는 신중하게 참가 결정), C는 그보다 못하게(40% 확률로
+매칭을 놓치고 아무 카드나 냄, 5고까지 무리하게 감, 위험한 손패로도
+거의 항상 참가, 9월 열끗 최적화를 가끔 반대로 함) 갈랐다.
+
+**`GoStop3PGame.cs` — 좌석↔캐릭터 매핑.** `seatCharName[]`/`seatTier[]`
+(SEATS_MAX 크기, PLAYER_SEAT 자리는 안 채움) 배열을 새로 두고 `Start()`의
+오프라인 분기에서 `GoStopCharacters.DrawRandom(SEATS-1)`로 한 번만 뽑는다
+(이후 "다시 시작"으로 여러 판을 이어도 같은 사람들이 계속 앉아있는다 —
+실제 카드 테이블처럼 판마다 안 바뀐다). 각 AI 좌석의 시작 머니는
+`GoStopCharacters.LoadMoney(이름, 티어)`(저장된 돈이 있으면 이어서,
+없으면 티어별 시드머니)로, 플레이어는 여전히 좌석 인덱스 키로
+`PLAYER_STARTING_MONEY`(50만원, 신설 상수)를 기본값으로 로드한다.
+`SeatNameFor`의 오프라인 폴백(예전 `"AI-A"/"AI-B"/"AI-C"` 하드코딩)을
+`seatCharName[seat]`로 교체 — AI 관련 문구(뻑/쪽/고·스톱 토스트, 이펙트
+타이틀, 승리 문구 등)가 전부 이 함수 하나를 거치므로 자동으로 다
+바뀐다. `ApplyDowngrade`(파산 좌석 압축)에 `seatCharName[]`/`seatTier[]`
+압축도 money[]/allInCount[]와 같은 방식으로 추가했다 — 안 하면 압축
+후 새 인덱스가 압축 전 옛 캐릭터를 계속 가리키는 버그가 난다. 실제
+`GoStopAI.*` 호출부(참가 선언·카드 선택·필드 선택·고/스톱·흔들기·
+9월열끗) 전부에 `seatTier[seat]`를 threading — 플레이어 턴-타임아웃
+자동 플레이, 네트워크 좌석 corrupted-message 폴백처럼 "실제 AI 상대의
+결정"이 아닌 곳은 기본값(B) 그대로 뒀다.
+
+### 버그 — "게임을 다시하면 돈이 초기화된다"의 진짜 원인
+
+`SaveMoney()`가 그동안 **파산(세션 종료)/다운그레이드 경로에서만** 불렸다
+— 아무도 안 망한 평범한 승부(제일 흔한 경우)는 `money[]`가 메모리에서만
+바뀌고 PlayerPrefs에 저장된 적이 **한 번도 없었다.** 다음에 씬을 다시
+열면 마지막으로 저장됐던(대개 훨씬 예전, 어쩌면 최초 실행 시점) 낡은
+값을 읽어와서 마치 돈이 초기화된 것처럼 보였다 — 신고 그대로였다.
+`EndGame`의 정산 직후, 분기 타기 전에 `SaveMoney()`(오프라인 전용)를
+무조건 한 번 부르도록 고쳤다 — 이제 모든 라운드가 승부와 무관하게
+끝날 때마다 저장된다.
+
+**부수 효과 — 이 위치가 "0원 된 캐릭터 은퇴"도 공짜로 해결했다.**
+파산으로 세션이 끝나는 분기(`!downgrade && bankruptSeats.Count>0`)는
+예전엔 **전 좌석**을 `STARTING_MONEY`로 리셋했는데, 이건 좌석이 이름
+없는 "AI-A" 같은 익명 슬롯이던 시절에나 맞는 로직이었다 — 이름이
+이어지는 캐릭터 체계에선 파산한 캐릭터가 다음에 또 100% 든 지갑으로
+부활하고, 살아남은 다른 캐릭터가 벌어둔 돈까지 같이 날아가 버린다.
+**파산한 게 나(플레이어)일 때만** `PLAYER_STARTING_MONEY`로 리셋하도록
+좁혔다 — AI는 자기 실제 최종 잔액(생존자는 번 돈 그대로, 파산자는
+0원 이하)을 그대로 두고, 새로 추가한 무조건 `SaveMoney()`가 그 값을
+그대로 저장한다 — 파산한 캐릭터는 `IsRetired`가 자동으로 `true`를
+돌려주게 되어 별도 "은퇴 플래그"코드 없이 요구사항이 해결됐다.
+
+**검증(Play 모드 라이브, 리플렉션).** ①`BeginWithSeatCount(4)` 직후
+`seatCharName`/`seatTier`/`money`가 `["", 호구/C/100000, 짝귀/A/1000000,
+무석/B/500000]`처럼 티어와 정확히 일치하는 시드머니로 채워지는 것,
+`SeatName(1..3)`이 실제로 "호구"/"짝귀"/"무석"을 반환하는 것 확인.
+②`GoStopAI.ShouldGo(rawScore, goCount=3, ...)`를 세 티어로 각각 호출해
+`A=계속감, B=멈춤, C=계속감`(설계와 정확히 일치) 확인. ③`SaveMoney()`를
+직접 호출해 플레이어는 좌석 키로, AI는 캐릭터 이름 키로 각각 정확히
+저장되는 것 확인. ④`GoStopChar_Money_호구=0`으로 강제한 뒤 `DrawRandom`을
+50회 반복 호출 — 단 한 번도 호구가 뽑히지 않는 것으로 은퇴 제외 확인.
+⑤`ApplyDowngrade`를 직접 호출해 파산 좌석을 뺀 나머지의 이름·돈이
+정확한 새 인덱스로 압축되는 것, 압축 후에도 `SeatName`이 올바른
+이름을 반환하는 것 확인. ⑥**실제 자연 진행(리플렉션으로 참가선언·
+필드선택·9월열끗·흔들기 팝업을 자동 응답하며 여러 라운드, 다운그레이드
+1회, GameOver→NewGame 1회 포함)** — 콘솔 에러·예외 **0건**으로 전체
+경로가 실제 플레이에서도 예외 없이 도는 것까지 확인했다.
+
+> **테스트 오염 주의 — 리플렉션으로 `money[]`/`PlayerPrefs`를 직접
+> 조작하는 테스트는 반드시 정리할 것.** 이번 검증에서 `money[0]`을
+> 직접 조작한 값이 세션 내내 살아남아(NewGame이 money를 안 건드리는
+> 게 정상 설계이므로) 그 뒤 자연 진행된 라운드들의 `EndGame`→
+> `SaveMoney()`가 그 오염된 값을 실제 `PlayerPrefs`에 다시 써버렸다 —
+> 최종 정리(플레이어 100000 복원 + 캐릭터 키 전부 삭제)를 두 번에
+> 걸쳐서야 완전히 걷어냈다. **money 관련 리플렉션 테스트 뒤에는 반드시
+> `PlayerPrefs`를 다시 읽어 실제로 깨끗한지 확인할 것** — 세션 종료
+> 시점의 값만 믿으면 그 사이 자연 진행된 라운드가 몰래 다시 오염시킬
+> 수 있다.
+
+### 후속 2 — "svg 이펙트 이미지와 텍스트 겹침" → 정정: 레이아웃 분리 대신
+아웃라인 강화 (같은 날)
+
+1차 시도: 박스가 작다 보니(400×165) 카드와 "흔듬" 텍스트가 같은 영역
+전체를 각자 차지해서 시각적으로 겹쳤다 — 상단 텍스트 띠(24%)+하단 카드
+영역으로 나눠 물리적으로 안 겹치게 했었다.
+
+**사용자 정정 — "겹침 자체가 문제가 아니라 텍스트 시인성이 문제였다,
+아웃라인만 깔아달라."** 레이아웃 분리를 되돌리고(카드 영역을 굳이 줄일
+필요가 없어졌다) 완성/비상 이펙트와 같은 원칙(카드 위에 텍스트가
+z-order 앞으로 그대로 겹치되, 진한 아웃라인으로 어떤 카드 배경 위에서도
+읽히게 함)으로 복귀했다 — `ShakeRow`/`ShakeLabel` 둘 다 다시 박스
+전체를 그대로 쓴다. 아웃라인만 `width 2.5→4, color 거의 검정(0.95
+불투명)`으로 강화하고 폰트도 34로, 정렬도 박스 중앙(middle-center)으로
+맞췄다. 검증(라이브): 같은 세션의 두 번째 트리거(레이아웃 settled 상태)로
+`rowTop=240,rowH=165`와 `labelTop=240,labelH=165`가 완전히 일치(다시
+전체 겹침) + `resolvedStyle.unityTextOutlineWidth=4` 확인.
+
+## 고스톱 — 뻑 이펙트 위치 버그, 실패 마스킹 절단 연출, 이펙트 큐잉,
+1~8고/스톱 텍스트 이펙트 (2026-09-06)
+
+사용자가 실플레이 중 발견한 신고 4건 + 요청 1건을 한 세션에서 처리했다.
+
+### 1) 뻑 이펙트 위치 어긋남 — 진짜 원인은 두 겹의 버그
+
+"뻑 이펙트가 뻑난 카드 위에 나오는게아니라 한칸반정도 어긋나게 출력중"
+— 조사해보니 원인이 두 개 겹쳐 있었다.
+
+**버그 A — 애초에 "어느 위치"를 계산하지 않고 있었다.** `ShowActionPopup`이
+항상 `fieldArea.position`(필드 컨테이너 전체의 고정 기준점, 특정 슬롯이
+아니다)을 이펙트 위치로 썼다 — 뻑/쪽/따닥/폭탄처럼 "필드의 특정 달
+슬롯 하나"에서 일어난 사건인데 그 슬롯 좌표를 전혀 안 쓰고 있었다.
+`Vector3? comboEffectWorldPos` 필드를 새로 추가해 각 이벤트 발생 지점
+(뻑 형성·쪽·따닥·보너스+쪽·`ApplyMatchBonus`의 뻑먹기/자뻑/폭탄)에서
+`FieldSlotTransform(관련카드).position`을 미리 채워두고,
+`ShowActionPopup`이 이 값을 우선 사용(없으면 기존 `fieldArea.position`
+폴백)하도록 고쳤다. 싹쓸이는 필드 전체가 비는 이벤트라 특정 슬롯이
+의미 없어 일부러 값을 안 채운다(자동으로 폴백).
+
+**버그 B — `canvasRoot` 계산이 3단계 위(SafeArea)에서 멈춰 있었다.**
+`ShowActionPopup` 등 9곳이 전부 `fieldArea.parent.parent.parent`로
+Canvas에 닿는다고 가정했는데, 실측으로 체인을 직접 걸어보니
+`FieldCards(=fieldArea) → Field → ContentArea → SafeArea → GameUI(진짜
+Canvas)`로 **4단계**였다 — 필드 카드를 pos1~12 마커에 attach하는
+리팩터 때 `FieldCards`라는 래퍼가 한 단계 더 끼워지면서 이 계산이
+한 칸씩 밀린 것으로 보인다. 9곳 전부 `.parent`를 하나 더 추가해
+`GameUI`(실제 Canvas, `Overlay`와 같은 층)에 정확히 닿게 정정했다.
+
+**검증(Play 모드 라이브).** 처음엔 "뻑"(poop) 라벨로 테스트해서 111.67px
+어긋난 결과를 보고 "여전히 버그"라고 오판할 뻔했다 — 알고 보니 poop
+아이콘 자체가 "위에서 90px 위치에서 시작해 0.16초 동안 떨어지는" **의도된
+드롭인 애니메이션**이라, 애니메이션 시작 직후(코루틴 첫 프레임)에 위치를
+체크한 내 테스트가 틀렸을 뿐이었다. 사전 오프셋이 없는 "따닥"(snap)
+라벨로 재검증하니 `dist=0`(완벽히 일치) — comboEffectWorldPos 타게팅과
+4단계 정정 둘 다 정확함을 확인했다.
+
+### 2) 고/스톱 재질문 버그 — 조사했으나 재현 실패
+
+"피 12개로 3점 달성 → 고 → 한바퀴 돌아 다음턴에 뻑나서 아무패도
+못먹음 → 그런데도 고/스톱 선택 가능"이라는 신고를 받아 `AfterAction`의
+`rawScore > lastGoScore[seat]` 게이트 로직을 정독하고, 격리된
+`AfterAction(0)` 직접 호출 테스트(12피 캡처 유지, lastGoScore=3으로
+세팅 후 재호출)와 실제 `PlaySeq` 뻑-형성 코드 경로를 통한 재현 테스트
+둘 다 시도했지만 **재현되지 않았다** — 게이트 로직 자체는 정확하게
+작동했다(`captured[seat]`가 안 바뀌면 `rawScore`도 안 바뀌어 재질문이
+안 걸린다). 코드 변경 없음 — 다음에 재발하면 정확한 재현 절차(정확히
+어떤 카드로 3점을 채웠는지, 그 사이 다른 좌석이 뭘 했는지)를 받아 다시
+조사할 것.
+
+### 3) 실패(Blocked) 이펙트 — 대각선 슬래시 → 위/아래 마스킹 절단으로 교체
+
+"닌자 후르츠같은 연출을 원했는데 지금은 가운데 선만 나오는듯. 카드를
+겹쳐서 렌더링하다가 상단 마스킹, 하단 마스킹을 별도로 해서 위아래로
+잘리는 연출을 원함" — 예전 구현(대각선 흰 띠가 화면을 스쳐 지나가는
+것)을 완전히 걷어내고 진짜 "위/아래로 쪼개지는" 마스킹 트릭으로
+재구현했다.
+
+**구조 — 이미지를 두 번 그리고 `overflow:Hidden`으로 절반씩 가린다.**
+`MakeHalf(parent, vector, cardW, cardH, top)`가 카드 이미지 전체 크기의
+`Image`를 `overflow:Hidden` 컨테이너(높이=카드 절반) 안에 넣는데,
+top 조각은 이미지를 제자리에, bottom 조각은 이미지를 위로 카드 절반만큼
+올려서(`img.style.top = -cardH*0.5f`) 넣는다 — 컨테이너가 각각 위/아래
+절반만 보여주므로, 두 조각이 원래 위치에 겹쳐 있으면 완전한 카드 한
+장처럼 보인다. UI Toolkit엔 진짜 메시 절단 도구가 없어서 이 마스킹이
+낼 수 있는 가장 근접한 근사다.
+
+**흐름:** 카드 스태거 슬램인(기존 유지) → 흰 플래시(스윕 없이 그
+자리에서 번쩍, `sliceLine` 재사용) → 원본 이미지 숨기고 위/아래 마스크로
+바꿔치기(겹쳐 있어 시각적 끊김 없음) → 위 조각은 위로+반시계 회전,
+아래 조각은 아래로+시계 회전하며 ease-in으로 점점 빠르게 벌어짐(중력에
+끊긴 느낌) + 후반부 페이드아웃.
+
+**검증.** 카드 1장으로 트리거해 컷 순간(트리거 후 0.5초)의 상태를 확인 —
+`child0(원본 Image)=display:None`, `child1(topMask)=display:Flex,
+translateY=-55`, `child2(bottomMask)=display:Flex, translateY=+55` —
+정확히 의도한 대로 위/아래로 갈라지는 것을 확인했다.
+
+### 4) 이펙트 큐잉 — 같은 유저는 순차 재생, 다른 유저는 우선권 탈취
+
+"한 턴에 청단비상+홍단비상이 조건 완료되면 큐에 쌓아 순차 재생하고,
+다음 유저의 이펙트가 등록되면 이전 유저 큐는 지우고 현재 유저 것부터
+우선 재생" — `GoStopVectorEffect`에 비상/실패(alt 채널) 전용 큐 시스템을
+추가했다.
+
+**설계.** `AltEffectRequest{owner, blocked, title, cards}` 구조체 +
+`Queue<AltEffectRequest> altQueue` + `int altQueueOwner`(현재 큐/재생을
+점유한 좌석). `EnqueueAlt(owner, ...)`가 owner가 바뀌면 큐를 통째로
+비우고 `altGeneration`(세대 카운터)을 올린 뒤 화면도 즉시 정리한다 —
+`StopCoroutine`이 `yield return StartCoroutine(inner)`로 중첩된 코루틴
+까지 확실히 멈춰준다는 보장이 이 프로젝트/버전에서 검증되지 않아서,
+코루틴 정지에 기대는 대신 **`PlayEmergencySeq`/`PlayBlockedSeq`의 모든
+루프·대기 지점마다 `if (myGeneration != altGeneration) yield break;`를
+심어 명시적으로 제어**했다 — 오래된 세대는 스스로 알아서 멈춘다.
+`PlayEmergency`/`PlayBlocked`의 공개 시그니처에 `owner`(좌석 번호)
+매개변수를 추가했고, 호출부(`FireEmergency`/`FireBlocked`)는 이미
+`seat`를 갖고 있어 그대로 전달하기만 하면 됐다.
+
+**검증.** seat1이 청단비상+홍단비상을 연달아 등록 → `altQueue.Count=1`
+(첫 건은 즉시 재생 시작, 둘째 건이 대기) 확인. 이어서 seat2가 끼어들자
+→ `altQueue.Count=0`(seat1의 대기 항목 전부 삭제), `altQueueOwner=2`,
+`altGeneration` 증가, 화면 타이틀이 즉시 "seat2 고도리비상"으로 전환 —
+요청한 정확히 그 동작을 확인했다.
+
+### 5) 1~8고 / 스톱 텍스트 이펙트 신규 추가
+
+"고를 외칠 때 1~8고 이펙트, 텍스트가 메인이고 파티클/애니메이션으로
+꾸민다. 1,2고는 담백, 3고부터는 배수 2배 위기감, 4,5고는 화려하게,
+6고부터는 5고 재활용. 스톱은 손모양 SVG"
+
+**고 이펙트 — `FireGoEffect(seat, goNumber)`/`GoEffectSeq`.**
+`tier = Min(goNumber, 5)`로 6~8고를 5고 연출에 자동으로 합류시킨다.
+텍스트("{좌석} N고!")가 메인, DOTween으로 스케일 팝인 + `GoStopIcons.
+SpawnBurst` 파티클(tier가 높을수록 개수 증가: 8→10→14→20→26)로 장식.
+tier≥3(3고부터)은 "지금부터 배수 ×2!" 서브텍스트 + `DOShakePosition`으로
+짧게 흔들리는 위기감을 더하고, tier≥4(4~5고)는 색을 더 진한 주황으로,
+텍스트를 더 키우고, `UISkin.CircleLine`(외곽선 원 스프라이트) 2개를
+`DOScale`로 확장시키며 페이드하는 링 이펙트를 추가해 화려함을 냈다.
+
+**스톱 이펙트 — `FireStopEffect(seat)`/`StopEffectSeq`.** "svg 손으로
+멈추는 모양" 요청은 이 프로젝트의 기존 원칙(웹에서 이미지를 받아오지
+않고 절차적으로 직접 그린다 — `GoStopComboIcons` 클래스 문서 참고)을
+그대로 따라 `GoStopComboIcons.DrawStopHand`(손바닥 박스 + 손가락 4개
+(길이 다른 세로 박스) + 엄지(비스듬한 박스) + 음영선을 SDF로 합성한
+단순 실루엣)를 새로 그렸다. "스톱!" 텍스트 + 이 손 아이콘을 세로로
+배치하고 `DOPunchRotation`으로 살짝 흔든다.
+
+**호출 지점 6곳** — `OnPlayerGo`/`OnPlayerStop`(로컬 플레이어),
+`AfterAction`의 AI go/stop 분기, `RemoteGoStopSeq`의 원격 좌석 go/stop
+분기. 네트워크 게스트 자신의 클릭 경로(`isNetworkGuest`일 때 조기
+`return`하는 지점)는 이펙트 호출 없이 그대로 뒀다 — 기존
+`GoStopAudio.Instance?.Go()/Stop()` 사운드 호출도 같은 이유로 그 경로엔
+없어서(호스트 응답을 기다렸다가 StateSync로 반영하는 구조), 일관성을
+유지했다.
+
+**검증.** `FireGoEffect(seat,4)` → 텍스트 "OO 4고!" + 링 2개 확인.
+`FireGoEffect(seat,3)` → 메인+서브 텍스트 2줄("OO 3고!" / "지금부터
+배수 ×2!") 확인. `FireStopEffect(seat)` → "OO 스톱!" 텍스트 + StopHand
+아이콘(Image 컴포넌트, 유효한 스프라이트) 확인. 이 세션 전체 테스트
+동안 콘솔 에러·예외 0건.
+
+### 아직 손 안 댄 것
+
+- 고/스톱 재질문 버그는 재현 실패로 미해결 — 다음 재발 시 정확한
+  재현 절차 필요.
+- Go/Stop 이펙트의 네트워크 동기화는 이번에도 안 걸었다(호스트/로컬
+  화면에서만 보임) — 비상/실패 이펙트와 같은 이유(검증 안 된 경로에
+  새 메시지 형식을 얹는 리스크 회피)로 일관성 유지.
+- 5고 이후 재활용이 "말 그대로 5고와 완전히 동일한 연출"인지(색·텍스트
+  크기·링 여부 전부 tier=5로 클램프되므로 그렇다) 사용자가 직접 보고
+  확인 필요.
+
+## 고스톱 4인판 — 턴 표시/점당 표시/나가리 강조/딜 전 정보/비상 중복/필드
+겹침 폭 (2026-09-06)
+
+사용자가 한 번에 던진 14개 요청 중 즉시 검증 가능한 6개(나머지는 상금
+연출 강화·결과 후 돈 갱신 지연·겹친 패 툴팁·GoEffect 겹침·GoEffect/
+StopEffect 프리팹화 등 더 큰 별도 작업이라 이번 배치에선 보류)를 반영했다.
+
+**내 턴 강조 — 손패 posY -50/0.** "내 턴이 돌아왔을때 패를 낼 차례라는
+느낌이 약하다" — 내 턴이 아닐 땐 손패 전체를 -50px 내려서 "지금은 못
+낸다"는 느낌을 주고, 내 턴이 되는 순간 원래 자리(0, 낼 수 있는 패는
++34)로 복귀한다. `myTurnNow` 변수로 `playable` 판정과 y오프셋 판정을
+공유해서 두 조건이 어긋날 수 없게 했다.
+
+**점당 가격 표시 복구 — 원인은 "위치 어긋남"이 아니라 "오브젝트 자체가
+사라짐".** 이전 세션(2026-09-04)에 "Info가 MySeat 밑으로 옮겨졌을 뿐"
+이라고 진단해 `root.Find("Info/...") ?? mySeatT.Find("Info/...")`로
+고쳤었는데, 이번에 씬을 다시 훑어보니 그 진단 자체가 틀렸다 — `MySeat/
+Info`는 실존하지만 자식이 `StatusBox0`/`PlayerCap`뿐인 **완전히 다른
+용도의 레이아웃 컨테이너**였다(사용자가 이후 세션에 "Info"라는 이름을
+재사용해 새로 만든 것). 점당-가격 라벨을 담던 원래 오브젝트는 그 과정
+중 사라졌다. 이름 충돌을 피하려 `PointPriceInfo`라는 새 이름으로 찾고,
+없으면 코드로 직접 만든다(배경 패널 + "점당"/숫자/"원" 3라벨,
+`HorizontalLayoutGroup`으로 정렬, 우상단 앵커) — 다른 재사용 UI들과
+같은 "씬에 있으면 재사용, 없으면 생성" 원칙.
+
+**오프라인 판돈 자동 티어링.** 내 보유 머니 구간에 따라
+`WON_PER_POINT`가 자동으로 바뀐다 — 0~99,999원=100원,
+100,000~999,999원=500원, 100만원 이상=1000원(`UpdateOfflinePointPriceTier`).
+세션 첫 진입(`Start`)과 매 라운드 시작(`NewGameSeq`) 두 지점에서 그
+시점의 잔액 기준으로 재계산해서, 판이 끝나 구간을 넘나들면 다음 판부터
+바로 반영된다. 네트워크는 호스트가 로비에서 정한 값을 그대로 쓰므로 이
+함수를 안 부른다.
+
+**나가리 배경 강조.** "나가리판에 대한 인지를 더 강하게" — 나가리로
+끝나면 테이블 배경을 `HwatuTheme.NagariRed`(`#7B060F`, 기존
+`DeepGreen` 옆에 새로 추가)로 바꾼다. 다음 라운드가 시작되면
+(`NewGameSeq` 맨 앞) 다시 `DeepGreen`으로 되돌린다 — "이번 판이
+나가리였다"는 표시일 뿐 다음 판까지 이어지면 안 되므로.
+
+**딜 전 상태박스 더미 정보 표시 버그.** "게임에 입장하고 statusbox
+정보 업데이트를 패나눠주기전에 한번해줘야할듯 더미정보가 출력되서
+버그같음" — `RebuildUI()`(이름·점수·머니·배지를 실제로 채우는 곳)는
+딜링 애니메이션이 끝난 뒤에야 처음 호출되므로, 그 사이(특히 세션 첫
+판)엔 `GoStopStatusBoxView` 프리팹의 기본 placeholder 텍스트가 그대로
+보였다. `RefreshStatusBoxIdentitiesBeforeDeal()`을 새로 만들어
+`RecomputeSeatSlots()` 직후(딜링 시작 전)에 이름·머니만 먼저 채운다 —
+점수·배지는 아직 계산할 캡처 데이터가 없어 비워두고 곧이어 RebuildUI가
+정식으로 채운다.
+
+**비상+완성 동시 발생 시 비상 생략.** "청단패 1장을 손패로, 1장을
+뒷패로 같은 턴에 동시 획득해서 완성되면 비상+완성 이펙트가 같이 뜨는
+게 어색하다 — 이땐 완성만 떠야 한다." 문제는 `RebuildUI()`가 손패
+결과(have==2)와 뒷패 결과(have==3)를 같은 턴 안에서 시차를 두고 따로
+호출한다는 것 — 손패 결과 시점엔 아직 뒷패로 채워질지 알 방법이 없다.
+비상의 실제 화면 표시를 1초 미루는 `FireEmergencyDeferred` 코루틴을
+추가해서, 그 사이 같은 (좌석,세트)가 `achievedFired`로 넘어가면 조용히
+취소한다 — `emergencyFired` 자체는 즉시 기록해서(재검사 방지) 다음
+RebuildUI에서 또 큐잉되지 않게 한다. 1초는 손패 캡처→뒷패 캡처 사이
+실제 애니메이션 시간(PLAY_STEP_DELAY 0.35초 + 슬램/서스펜스 연출)보다
+넉넉하게 잡은 값이다. 고도리/홍단/초단/청단(EmergencySets 루프)과
+3광(GwangEmergencyIdx) 양쪽 다 같은 방식으로 고쳤다.
+
+**필드 겹침 폭 장수별 타이어링.** "FIELD_STACK_OFFSET이 적용될때 2장은
+현재 20인데 30으로, 3장겹칠때는 15로, 4장겹칠때는 10으로" — 고정
+20px였던 걸 `FieldStackStep(countInSlot)`(2→30, 3→15, 4장 이상→10)로
+바꿨다. 예전엔 장수와 무관하게 항상 20이라 4장이 쌓이면 3×20=60px나
+밀려나 옆 슬롯을 침범할 여지가 있었는데, 장수가 늘수록 한 칸씩의
+간격을 좁혀서 전체 퍼짐 폭을 눌러 담았다. `DrawField()`(실제 필드
+렌더)와 `SpawnGhostCard()`(슬램다운 착지 고스트)가 같은 함수를
+공유하므로 두 경로가 어긋날 수 없다.
+
+**검증(Play 모드 라이브, 리플렉션).** `BeginWithSeatCount(4)`로 4인
+게임을 직접 시작해(`dealerDetermined=true` 사전 세팅으로 선 뽑기
+연출 스킵) — 딜 전 상태박스에 실제 캐릭터 이름·머니가 채워지는 것
+(더미 placeholder 아님), `pointPriceText`가 내 머니 구간(117,350원 →
+500원 티어)에 맞게 정확히 표시되는 것, `PointPriceInfo`가 ContentArea
+직계 자식으로 정확히 1개 생성되는 것, 내 턴/남의 턴 전환에 따라
+손패 Y가 0(또는 34)/-50으로 정확히 갈리는 것, `FieldStackStep`이
+1/2/3/4/5장에 대해 20/30/15/10/10을 정확히 돌려주는 것, 청단 2장→3장
+동시 완성 시나리오를 합성 캡처 데이터로 강제 재현해 1초 뒤에도
+`GoStopVectorEffect`의 alt-effect 큐가 전혀 안 건드려진 것
+(`altQueue.Count=0, altQueueOwner=int.MinValue` — 비상 이펙트가 실제로
+억제됨) 전부 확인했다. `EndGame(-1,...)`을 직접 호출해 배경이
+`NagariRed`로, 이어서 `NewGame()`으로 `DeepGreen`으로 정확히 복귀하는
+왕복도 확인했다. 컴파일 클린, 이 세션 전체 테스트 동안 콘솔 에러 0건.
+
+**후속 — 라운드 종료 직후 돈이 안 바뀌는 문제(위 "아직 손 안 댄 것"
+목록에 있던 항목).** "결과가 끝나고 돈이 바로 업데이트 안됨. 패가
+나눠지고 나서야 보유 돈이 업데이트됨." 원인: `EndGame`이 `money[]`를
+직접 mutate하고 승패 오버레이를 띄우기까지 하지만, 그 밑에 깔린
+상태박스의 `moneyText[]` 라벨 자체는 손대지 않는다 — 다음에 이 값이
+갱신되는 시점은 오직 `RebuildUI()`인데, 그건 다음 판 딜링이 끝난
+뒤에야 다시 돈다. `RefreshMoneyLabelsOnly()`(이름·점수·배지는 안
+건드리고 돈 숫자만 갱신)를 새로 만들어 `EndGame`의 모든 분기가
+합류하는 함수 맨 끝(`ApplyDowngrade`로 좌석이 재배치될 수도 있는
+분기들 이후)에 한 번 부른다.
+
+검증(Play 모드 라이브, 리플렉션): 승자 좌석에 오광(5장), 패자 3명에게
+각 1장씩(정산 대상이 되려면 최소 1장 필요 — `FinalScoreMulti`가 "한
+장도 못 먹은 패자는 정산에서 뺀다"는 별도 규칙을 갖고 있어, 처음
+시도에서 패자를 전부 빈 리스트로 뒀다가 payout이 0으로 나와 "고쳤는데도
+안 바뀐다"로 착각할 뻔했다 — 각 패자에게 카드 한 장씩 쥐어주자
++30,000원 payout이 정상적으로 발생)를 강제로 채운 뒤 `EndGame(0)`을
+직접 호출 — `money[0]`이 117,350→147,350으로 바뀌는 것과 **완전히 같은
+호출 안에서** `moneyText[0].text`도 즉시 "147,350원"으로 갱신되는 것을
+확인했다(RebuildUI/딜링을 거치지 않고). **함정 — `EndGame`은 오프라인
+에서도 무조건 `SaveMoney()`를 부르므로, 이 테스트로 만든 가짜
+147,350원이 그대로 `PlayerPrefs["GoStop4P_Money_0"]`에 저장돼
+버렸다** — 테스트 종료 후 원래 값(117,350)으로 직접 되돌리고,
+Play 모드를 나온 뒤에도 그 값이 유지되는 것까지 재확인했다(이 프로젝트가
+누차 겪은 "money 관련 리플렉션 테스트는 끝나고 PlayerPrefs 오염 여부를
+반드시 다시 확인할 것"이라는 교훈을 그대로 따랐다).
+
+**후속 — 돈 변화 연출(`FlyMoneyFX`/`GoStopFX.FlyMoney`)이 잘 안 보이던
+문제.** 진짜 원인은 크기가 아니라 **z-order**였다 — 최종 정산(`EndGame`)에서
+이 함수가 불리는 시점은 그 직후(같은 프레임 안) 승패 오버레이가 뜨는
+바로 그 지점인데, 코인은 `ui.ContentArea`를 부모로 날아가고 있었다 —
+Overlay는 이 프로젝트가 여러 번 확립한 규칙대로 Canvas의 나중 sibling이라
+ContentArea보다 항상 위에 그려지므로, 코인이 뜨자마자 오버레이 뒤로
+가려 안 보였다. `PlayWinConfettiFX`가 이미 쓰던 해법(Canvas 레벨
+`canvasRoot`에 붙여서 Overlay보다도 위에 그리기)을 그대로 적용했다.
+겸사겸사 크기(30→44px)·지속시간(0.55→0.85초)·도착 파티클(6→12개)·
+"+N원" 폰트(24→32)도 키워서 눈에 더 잘 띄게 했다.
+
+검증(Play 모드 라이브): `FlyMoneyFX`를 직접 호출해 생성된 `MoneyFly`
+오브젝트의 부모가 `GameUI`(Canvas 루트, `ContentArea`가 아님)인 것,
+`sizeDelta=(44,44)`인 것, 0.85초 뒤 정상적으로 자기 자신을 정리하는
+것까지 확인했다. **함정 — 확인 스크립트 자체에서 두 번 연속 헛다리를
+짚었다.** `flyObj.transform.parent.parent.name`으로 조부모까지 확인하려
+했는데, `GameUI`는 씬의 최상위 루트라 `parent`가 `null`이라 `.name`
+접근이 `NullReferenceException`을 던졌다 — 게임 코드가 아니라 검증
+스크립트 자체의 버그였다(직전에 우연히 겪은 "No Unity Editor instances
+found" 파이프라인 일시 오류와 겹쳐서 처음엔 진짜 코드 버그로 오인할
+뻔했다). `parent.parent != null`을 먼저 확인하고 나서야 정확한 결과를
+얻었다.
+
+**후속 — GoEffect(고 이펙트) tense 상태 텍스트 겹침.** 원인은 박스
+좌표 계산 실수였다 — 메인 라벨(`"{좌석} N고!"`)이 top-pivot 박스
+(높이 340)를 쓰면서 `TextAlignmentOptions.Center`(박스 세로 중앙 정렬)
+라 실제 글자는 박스 아래쪽 절반 부근(대략 y=[-254,-86], 140pt 폰트
+기준)에 찍혔는데, tense(3고 이상)일 때만 추가되는 서브 라벨("배수
+×N!")이 그 범위 *안쪽*(y=[-240,-150])에 배치돼 있어서 두 텍스트가
+그대로 겹쳤다. 정확한 폰트 메트릭을 계산해 미세 조정하는 대신, 메인
+라벨 박스를 한 줄만 담기게 줄이고(340→220, 가장 큰 170pt 폰트도 한
+줄이면 충분) 서브 라벨을 메인 박스 완전히 바깥(y=[-270,-190], 메인
+박스 하단 -160과 30px 간격)으로 못박았다 — 박스 자체가 안 겹치면
+폰트 메트릭을 정확히 몰라도 글자가 겹칠 수 없다는 원리. 검증: tier=4
+(tense+flashy)로 직접 트리거해 메인 라벨 박스(top=60, bottom=-160)와
+서브 라벨 박스(top=-190, bottom=-270)가 30px 간격을 두고 완전히
+분리된 것을 확인했다.
+
+**후속 — 겹쳐있는 필드 카드 확인용 dim 툴팁(`GoStopStackTooltip.cs`,
+신규).** "겹쳐있는 패는 유저가 눌렀을때 겹친패를 확인할 수 있게, 마우스
+오버나 터치가되면 배경이 dim되있는 툴팁으로 패들이 보이게 해줘. 마우스
+포인터나 터치 위치 상단에 리스팅되어야할듯." — 마우스/터치를 굳이
+구분하지 않고 "누르고 있는 동안만 보인다"(press-to-reveal, release시
+자동 닫힘)로 통일했다. `DrawField()`가 같은 슬롯에 2장 이상 쌓일 때만
+(`FieldStackStep` 참고) 그 슬롯 전체를 덮는 투명 오버레이
+(`StackTooltipTrigger`, `IPointerDownHandler`/`IPointerUpHandler`/
+`IPointerExitHandler`)를 카드들보다 나중 sibling으로 하나 더 얹는다 —
+맨 위 카드가 뭐든 그 슬롯 어디를 눌러도 반응한다. 누르면 화면 전체
+딤 + 그 슬롯 카드 전부를 실물 크기로 나열한 패널이 터치 지점 바로
+위(패널 pivot을 아래쪽 중앙으로 둬서 `anchoredPosition`을 터치 좌표로
+잡으면 자연히 그 위로 솟아오른다)에 뜬다. 다른 GoStop 싱글턴 UI
+(`GoStopVectorEffect`/`GoStopWindParticles`)와 같은 `Ensure()` 패턴.
+
+검증(Play 모드 라이브, 리플렉션) 중 실제 버그 하나를 잡았다 —
+`HorizontalLayoutGroup`은 `childControlWidth=false`일 때 자식 배치만
+계산할 뿐 **부모(panel) 자신의 `sizeDelta`는 절대 안 건드린다**(별도
+`ContentSizeFitter` 없이는) — 그래서 카드 4장을 채워도 패널 폭이
+RectTransform 기본값 100에 그대로 멈춰 있었다(3월이 4장인데
+"3장(광/열끗/피)"로 잘못 가정한 테스트 주석에서 먼저 `panelChildCount=4`
+로 어긋난 걸 보고 발견). 카드 수 기준으로 폭을 직접 계산해서
+(`count*CARD_W + (count-1)*spacing + padding*2`) 해결했다 — 수정 후
+4장 기준 정확히 346px로 계산되는 것, 눌렀을 때 딤+4장 카드(월순 정렬)가
+정확히 표시되고 손을 떼면 닫히는 것, 슬롯의 실제 카드 4장이 오버레이와
+함께 정상적으로 공존하는 것까지 확인했다.
+
+> **함정 — Play 모드 도중 새 스크립트를 작성하고 재컴파일하면 도메인
+> 리로드로 진행 중이던 게임 상태(`hand`/`field`/`captured`/`drawPile`
+> 등 참조 타입 필드)가 전부 `null`로 리셋된다.** 이 툴팁 기능을 만드는
+> 도중 정확히 이 함정에 걸렸다 — `FireGoEffect` 테스트가 성공한 직후
+> `GoStopStackTooltip.cs`를 새로 작성하고 Play 모드인 채로
+> `recompile`을 돌렸더니, 그 다음 `RebuildUI()` 호출이
+> `UpdatePileVisual()`에서 `drawPile.Count`(drawPile이 null) NRE를
+> 던졌다 — 처음엔 방금 짠 새 코드(DrawField에 추가한 오버레이 로직)가
+> 원인인 줄 알았는데, 예외 스택 트레이스를 직접 잡아보니(`try/catch`로
+> `TargetInvocationException.InnerException`을 출력) `DrawField()`가
+> 아니라 완전히 무관한 `UpdatePileVisual()`에서 난 것이었고, `hand[0]`/
+> `field`/`captured[0]`가 전부 null인 걸 확인하고서야 "재컴파일이 이번
+> Play 세션 전체를 초기화했다"는 걸 알았다(이 프로젝트에 이미 여러 번
+> 기록된 함정과 같은 계열). **Play 모드 중 스크립트를 수정했다면 반드시
+> `editor_stop` → `recompile` → `editor_play` 순서를 지킬 것** — 이번
+> 세션 내내 지켜온 습관인데 이번에 한 번 건너뛰어서 바로 걸렸다.
+
+**후속 — GoEffect/StopEffect를 프리팹으로.** "코드에서 생성하는 부분
+없애고 다른 이펙트처럼 프리팹으로 만들어줘" — 예전엔 `GoEffectSeq`/
+`StopEffectSeq`가 매번 `new GameObject(...)`로 라벨·아이콘·링을 전부
+직접 조립했다. 새 컴포넌트 `GoStopGoEffectView`(메인/서브 라벨 + 확장
+링 2개 참조)/`GoStopStopEffectView`(라벨 + 아이콘 참조)를 만들고, 기존
+코드가 계산해 쓰던 그대로의 좌표·색·크기를 담아 `GoEffect.prefab`/
+`StopEffect.prefab`(`Assets/Resources/Prefabs/GoStop/Effects/`)으로
+구웠다 — 서브 라벨/링은 tense/flashy 전용이라 프리팹엔 기본 비활성으로
+들어있고, 코드는 `HwatuUI.InstantiateEffect<T>`(다른 콤보 이펙트들과
+같은 로더)로 인스턴스화한 뒤 티어에 따라 텍스트·색·크기·활성 여부만
+채운다 — 구조는 프리팹이, 애니메이션 타이밍(DOTween 시퀀스)은 코드가
+담당하는 이 프로젝트의 확립된 분담 원칙을 그대로 따랐다. 이제 Project
+창에서 이 두 프리팹을 열어 레이아웃·폰트·색을 직접 편집할 수 있다.
+
+검증(Play 모드 라이브): `FireGoEffect(seat,4)`(tense+flashy) → 서브
+라벨·링 모두 활성화 + 정확한 텍스트("배수 × 4!") 확인, `FireGoEffect(seat,1)`
+(calm) → 서브/링 전부 비활성 + `mainLabel.color`가 정확히
+`HwatuTheme.Gold`인 것 확인. `FireStopEffect(seat)` → 라벨·아이콘
+스프라이트("stophand") 정상 로드 확인. 실제 카드 플레이(조커 포함)로도
+콘솔 에러 없이 정상 진행되는 것까지 확인했다.
+
+> **함정 — Play 모드 도중 새 컴포넌트 타입을 참조하는 프리팹 빌드
+> 스크립트를 실행하려면, 그 컴포넌트가 이미 컴파일돼 있어야 한다(당연한
+> 얘기 같지만, 실제로는 "컴파일 → Play 진입 → 프리팹 빌드"가 아니라
+> "컴파일 → 프리팹 빌드(Edit 모드에서) → Play 진입해서 검증" 순서를
+> 지켜야 한다는 뜻이다) — 이번엔 새 뷰 컴포넌트 2개를 추가한 직후
+> `editor_stop` 상태(Edit 모드)에서 프리팹을 굽고, 그 다음에야 Play
+> 모드로 들어가 검증했다. 바로 이전 항목(겹친 패 툴팁)에서 "Play 모드
+> 도중 재컴파일하면 도메인 리로드로 게임 상태가 초기화된다"는 함정을
+> 겪은 직후라 이번엔 처음부터 순서를 지켰다.
+
+### 아직 손 안 댄 것 (14개 요청 중 나머지 1개)
+
+- "흔듬 이펙트 잘 나오는 거 확인함"(사용자 확인, 조치 불필요) — 나머지
+  "FieldChoicePopup 수정했으니 참고"(사용자가 직접 프리팹+
+  `CHOICE_CARD_W/H` 상수를 손봄, 이번 세션에서 반영된 값을 그대로 둠)도
+  둘 다 사용자 확인/정보 전달용이라 실제 남은 작업은 없다 — 14개 요청
+  전부 반영 완료.
+
+### 점당 가격 표시(`PointPriceInfo`) — 씬 오브젝트로 승격 (2026-09-06)
+
+"레이아웃잡기위해 씬에 오브젝트 추가해줄것" — 위 항목에서 코드가 매
+실행마다 새로 만들던 `PointPriceInfo`를 `GoStop3PScene.unity`의
+`ContentArea` 밑에 실제 씬 오브젝트로 구워 저장했다. Play 모드에서 코드가
+실제로 만드는 값(우상단 앵커, `sizeDelta=(210,48)`, `panel` 스프라이트,
+"점당"/숫자/"원" 3라벨)을 리플렉션으로 그대로 읽어 Edit 모드에서 동일하게
+재현하는, 이 프로젝트가 여러 번 써온 패턴(Cap/Back/StatusBox 등)을 그대로
+따랐다. `BuildStaticUI`의 기존 "씬에 있으면 재사용" 분기가 자동으로
+이 오브젝트를 집어가므로 코드는 안 건드렸다 — 이제 에디터에서 위치·
+크기를 직접 조정할 수 있다.
+
+검증: Play 모드에서 게임을 시작해 `PointPriceInfo`가 정확히 1개만(중복
+생성 없음) 존재하고 `pointPriceText`가 씬 오브젝트의 라벨을 그대로
+가리켜 실제 값(500원)을 정상 표시하는 것을 확인했다.

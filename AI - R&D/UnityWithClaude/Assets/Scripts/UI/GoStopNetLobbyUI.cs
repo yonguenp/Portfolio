@@ -25,11 +25,12 @@ using TMPro;
 /// </summary>
 public class GoStopNetLobbyUI : MonoBehaviour
 {
-    enum Screen { Home, Hosting, Scanning, Connecting, Waiting, Error }
+    enum Screen { NicknameSetup, Home, Hosting, Scanning, Connecting, Waiting, Error }
     Screen screen = Screen.Home;
     string errorMsg = "";
     string myName = "";
     GoStopRoomScanner.DiscoveredRoom connectingRoom;
+    TMP_InputField pendingNicknameField;
 
     [SerializeField] RectTransform panelRT;
     [SerializeField] RectTransform body;
@@ -105,9 +106,22 @@ public class GoStopNetLobbyUI : MonoBehaviour
         // 부르지만, 이 화면에 직접 진입하는 다른 경로가 생겨도 안전하도록
         // 방어적으로 한 번 더 정리한다.
         GoStopNetLobby.Instance?.StopAll();
-        myName = GenerateName();
         errorMsg = "";
-        screen = Screen.Home;
+        // 2026-09-05(사용자 확인) — 네트워크를 맨 처음 쓸 때만 닉네임을
+        // 정하게 한다. 한 번 정하면 기기에 영구 저장돼(같은 닉네임에
+        // 이어지는 보유머니 — GoStopNetLobby.LoadNetworkMoney 참고) 다음
+        // 접속부터는 이 화면을 건너뛰고 곧장 Home으로 간다.
+        string saved = PlayerPrefs.GetString(GoStopNetLobby.NicknameKey, "");
+        if (string.IsNullOrEmpty(saved))
+        {
+            myName = GenerateName(); // 입력창의 기본 추천값일 뿐, 확정은 사용자가 눌러야 된다
+            screen = Screen.NicknameSetup;
+        }
+        else
+        {
+            myName = saved;
+            screen = Screen.Home;
+        }
         panelRT.gameObject.SetActive(true);
         panelRT.SetAsLastSibling();
         Redraw();
@@ -172,6 +186,7 @@ public class GoStopNetLobbyUI : MonoBehaviour
         closeBtnRT.gameObject.SetActive(screen != Screen.Hosting);
         switch (screen)
         {
+            case Screen.NicknameSetup: subtitleLbl.text = "다른 유저에게 이 이름으로 보입니다"; ShowNicknameSetup(); break;
             case Screen.Home: subtitleLbl.text = "같은 와이파이 안에서 방을 만들거나 찾습니다"; ShowHome(); break;
             case Screen.Hosting: subtitleLbl.text = $"방 열림 · {myName}"; ShowRoster(true); break;
             case Screen.Scanning: subtitleLbl.text = "주변 방을 찾는 중..."; ShowScanning(); break;
@@ -179,6 +194,81 @@ public class GoStopNetLobbyUI : MonoBehaviour
             case Screen.Waiting: subtitleLbl.text = "호스트가 시작하기를 기다리는 중"; ShowRoster(false); break;
             case Screen.Error: subtitleLbl.text = "연결 실패"; ShowError(); break;
         }
+    }
+
+    const int NicknameMaxLen = 12;
+
+    void ShowNicknameSetup()
+    {
+        var hint = AddLabel(body, "닉네임을 정해주세요 — 방에 같이 있는\n다른 플레이어에게 이 이름으로 보입니다", 18f, T70);
+        hint.rectTransform.sizeDelta = new Vector2(BODY_W, 70f);
+        hint.rectTransform.anchoredPosition = new Vector2(0f, 92f);
+
+        pendingNicknameField = MakeInputField(body, -10f, "닉네임", myName);
+
+        MakeBigButton(body, -120f, "확인", "보유머니는 이 닉네임 하나로 계속 이어집니다", OnNicknameConfirmClicked, height: 90f);
+    }
+
+    void OnNicknameConfirmClicked()
+    {
+        string name = pendingNicknameField != null ? pendingNicknameField.text.Trim() : "";
+        if (string.IsNullOrEmpty(name)) name = GenerateName(); // 빈 입력은 그냥 자동 추천값으로 확정한다(재입력을 강요하지 않는다)
+        if (name.Length > NicknameMaxLen) name = name.Substring(0, NicknameMaxLen);
+        myName = name;
+        PlayerPrefs.SetString(GoStopNetLobby.NicknameKey, myName);
+        PlayerPrefs.Save();
+        pendingNicknameField = null;
+        screen = Screen.Home;
+        Redraw();
+    }
+
+    /// <summary>이 프로젝트에서 두 번째로 만드는 TMP_InputField(첫 번째는
+    /// GoStopChatView.prefab에 에디터에서 미리 구워둔 것) — 이번엔 화면
+    /// 자체가 매 Redraw()마다 코드로 새로 그려지는 구조라 프리팹으로 뺄 수
+    /// 없어서 런타임에 직접 조립한다. Viewport(RectMask2D)+Placeholder+
+    /// Text 세 조각을 TMP_InputField가 요구하는 최소 구성 그대로 만든다.</summary>
+    TMP_InputField MakeInputField(Transform parent, float y, string placeholder, string initialText)
+    {
+        var root = MakeRect("Input", parent, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+        root.sizeDelta = new Vector2(560f, 80f);
+        root.anchoredPosition = new Vector2(0f, y);
+        var bg = AddImg(root, UISkin.Input, Color.white, true);
+        bg.raycastTarget = true; // AddImg 기본 false — 입력창 클릭/캐럿 배치엔 반드시 켜야 한다(이 프로젝트 공통 함정)
+
+        var viewport = MakeRect("TextArea", root, Vector2.zero, Vector2.one);
+        viewport.offsetMin = new Vector2(24f, 8f);
+        viewport.offsetMax = new Vector2(-24f, -8f);
+        viewport.gameObject.AddComponent<RectMask2D>();
+
+        var placeholderTmp = MakeFieldText(viewport, placeholder, new Color(0f, 0f, 0f, 0.35f));
+        placeholderTmp.fontStyle = FontStyles.Italic;
+        var textTmp = MakeFieldText(viewport, "", new Color(0.05f, 0.05f, 0.08f, 1f));
+
+        var field = root.gameObject.AddComponent<TMP_InputField>();
+        field.targetGraphic = bg;
+        field.textViewport = viewport;
+        field.textComponent = textTmp;
+        field.placeholder = placeholderTmp;
+        field.lineType = TMP_InputField.LineType.SingleLine;
+        field.characterLimit = NicknameMaxLen;
+        field.text = initialText ?? "";
+        return field;
+    }
+
+    static TextMeshProUGUI MakeFieldText(Transform parent, string text, Color col)
+    {
+        var go = new GameObject("Text", typeof(RectTransform));
+        go.transform.SetParent(parent, false);
+        var rt = go.GetComponent<RectTransform>();
+        rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
+        rt.offsetMin = Vector2.zero; rt.offsetMax = Vector2.zero;
+        var tmp = go.AddComponent<TextMeshProUGUI>();
+        tmp.font = Resources.Load<TMP_FontAsset>("TextMesh Pro/Fonts/ONE Mobile POP SDF");
+        tmp.text = text; tmp.fontSize = 26f; tmp.color = col;
+        tmp.alignment = TextAlignmentOptions.MidlineLeft;
+        tmp.textWrappingMode = TextWrappingModes.NoWrap;
+        tmp.raycastTarget = false;
+        return tmp;
     }
 
     void ShowHome()

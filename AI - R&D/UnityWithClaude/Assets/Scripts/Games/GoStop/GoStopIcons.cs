@@ -197,7 +197,7 @@ public static class GoStopIcons
 
         var txt = HwatuUI.MakeLabel(rt, Vector2.zero, new Vector2(size, size), size * 0.5f, fg);
         txt.text = label;
-        txt.fontStyle = FontStyles.Bold;
+        txt.font = HwatuTheme.FontBold; // 합성 볼드 대신 실제 Bold 웨이트 폰트(목업 원칙)
         txt.alignment = TextAlignmentOptions.Center;
         txt.rectTransform.anchorMin = Vector2.zero;
         txt.rectTransform.anchorMax = Vector2.one;
@@ -236,7 +236,7 @@ public static class GoStopIcons
         labelTxt.text = $"[{label}]";
         labelTxt.fontSize = 15f;
         labelTxt.color = new Color(1f, 1f, 1f, 0.9f);
-        labelTxt.fontStyle = FontStyles.Bold;
+        labelTxt.font = HwatuTheme.FontBold;
         labelTxt.alignment = TextAlignmentOptions.Center;
 
         for (int i = 0; i < maxCount; i++)
@@ -308,6 +308,12 @@ public static class GoStopIcons
     public static void SpawnBurst(RectTransform parent, Vector2 localPos, Color color, int count = 12)
     {
         if (parent == null) return;
+
+        // 2026-09-03 — "필드 이펙트가 터질 때 바람 파티클(모티프)도 같이
+        // 터지는 연출" 요청. 이 함수를 8개 필드 이펙트 호출부가 전부
+        // 공유하므로, 여기 한 줄만 얹으면 전부 자동으로 같이 터진다.
+        GoStopWindParticles.Instance?.Burst(localPos);
+
         for (int i = 0; i < count; i++)
         {
             var go = new GameObject("Particle", typeof(RectTransform));

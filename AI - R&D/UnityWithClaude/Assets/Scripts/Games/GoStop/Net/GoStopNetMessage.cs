@@ -90,6 +90,18 @@ public class GoStopNetMessage
         /// 별도로 알고 있어서 <c>WaitForRemoteMessage</c>의 <c>fromSeat</c>
         /// 매개변수로 구분되므로 헷갈리지 않는다).</summary>
         DealerDrawPick,
+        /// <summary>양방향(2026-08-28, 채팅 기능). 게스트 → 호스트로 보낼 때는
+        /// <see cref="text"/>가 입력한 원문 그대로다(호스트가 보낸 사람 이름을
+        /// 붙여 완성한다). 호스트 → 게스트(브로드캐스트)로 보낼 때는
+        /// <see cref="text"/>가 이미 "이름: 내용" 또는 "OO 뻑!" 같은 완성된
+        /// 한 줄이라 게스트는 그대로 붙이기만 하면 된다 — 방향에 따라 같은
+        /// 필드의 "완성도"가 다르다는 걸 <c>GoStop3PGame</c>의 처리부(호스트는
+        /// <c>HandleIncomingGuestChat</c>, 게스트는 <c>LogLocalLine</c>)가
+        /// 구분해서 처리한다. <see cref="boolValue"/>=true면 사람이 직접 친
+        /// 채팅(탭 "채팅"), false면 게임 이벤트 로그(탭 "로그") — 2026-08-28
+        /// 채팅창 탭 분리 기능. 게스트→호스트 원문 전송 시점엔 아직 카테고리가
+        /// 안 실려 있어도 된다(항상 채팅이므로 호스트가 true로 재구성한다).</summary>
+        ChatLog,
     }
 
     public Type type;
@@ -139,7 +151,14 @@ public class GoStopNetMessage
     /// 돌아왔다"로 인식해 같은 좌석을 그대로 돌려준다. 2026-08-24 추가.</summary>
     public string clientId;
 
-    public static GoStopNetMessage Hello(string name, string clientId) => new GoStopNetMessage { type = Type.Hello, text = name, clientId = clientId };
+    /// <summary>Hello — 게스트가 자기 기기에 저장해 둔 닉네임별 보유 머니
+    /// (<see cref="GoStopNetLobby.LoadNetworkMoney"/>). 호스트는 이 값으로
+    /// 그 좌석의 시작 잔액을 seed한다 — 서버가 없는 P2P 구조라 "이 닉네임의
+    /// 돈"은 항상 그 사람 자신의 기기에만 존재하므로, 접속할 때마다 자기
+    /// 값을 스스로 보고해야 한다(2026-09-05).</summary>
+    public int money;
+
+    public static GoStopNetMessage Hello(string name, string clientId, int money) => new GoStopNetMessage { type = Type.Hello, text = name, clientId = clientId, money = money };
     public static GoStopNetMessage Play(string cardId) => new GoStopNetMessage { type = Type.PlayCard, cardId = cardId };
     public static GoStopNetMessage Choice(string cardId) => new GoStopNetMessage { type = Type.FieldChoice, cardId = cardId };
     public static GoStopNetMessage Shake(bool shake) => new GoStopNetMessage { type = Type.ShakeDecision, boolValue = shake };
@@ -157,4 +176,5 @@ public class GoStopNetMessage
     public static GoStopNetMessage SeatReassignMsg(int seat, int playerCount) => new GoStopNetMessage { type = Type.SeatReassign, seat = seat, playerCount = playerCount };
     public static GoStopNetMessage DealerDrawPrompt(bool[] taken) => new GoStopNetMessage { type = Type.DealerDrawPrompt, text = string.Concat(taken.Select(t => t ? '1' : '0')) };
     public static GoStopNetMessage DealerDrawPick(int slotIndex) => new GoStopNetMessage { type = Type.DealerDrawPick, seat = slotIndex };
+    public static GoStopNetMessage ChatLogMsg(string text, bool isChat = false) => new GoStopNetMessage { type = Type.ChatLog, text = text, boolValue = isChat };
 }

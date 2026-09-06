@@ -1,0 +1,51 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../UIElementsSchema/UIElements.xsd" editor-extension-mode="False">
+    <!--
+    고스톱 벡터 카드 이펙트 — 정적 뼈대. GoStopVectorEffect.cs가 이름으로
+    찾아 쓰는 6개 요소(Dim/CardRow/TitleLabel/AltRow/AltTitleLabel/SliceLine)
+    전부 여기 있다 — 이름을 바꾸면 코드의 Q<T>("이름") 조회가 깨진다.
+    카드 자체(Image, 캡처된 패마다 개수가 다름)는 매번 코드가 CardRow/AltRow
+    안에 동적으로 채워 넣는다 — 여기엔 컨테이너만 있다.
+
+    이 파일은 UI Builder(Window > UI Toolkit > UI Builder)로 열어 직접
+    편집할 수 있다 — 위치·크기·색·폰트 크기 등은 Inspector의 Style 패널에서
+    바꾸면 된다. 단, 이름(name)은 유지할 것 — 코드가 그 이름으로 찾는다.
+
+    - Dim: 전체화면 딤(완성 이펙트 전용, 딤 배경 뒤에서 카드가 확 부각되는
+      느낌). 비상/실패는 필드를 가리면 안 되므로 딤을 안 쓴다.
+    - CardRow: 완성(족보 완성) 카드들이 뜨는 영역 — 화면 상단 대부분을 쓰고
+      아래쪽 170px는 TitleLabel 자리로 비워둔다.
+    - TitleLabel: 완성 이펙트 제목("OO 완성!") — CardRow 아래.
+    - AltRow: 비상/실패 카드가 뜨는 영역 — 화면 최상단(top:0)에 고정,
+      다른 좌석이 항상 필드를 볼 수 있도록 최소한의 높이(220px)만 쓴다.
+    - AltTitleLabel: 비상/실패 제목("OO 비상!"/"OO 실패") — AltRow와
+      완전히 같은 영역(top:0, height:220)에 겹쳐서, 카드 이미지 앞
+      (z-order 상 나중에 그려짐 = 위)에 텍스트가 바로 얹힌다.
+    - SliceLine: 실패(Blocked) 전용 — 대각선으로 훑고 지나가는 슬래시.
+      AltRow와 같은 영역에 겹친다.
+    - ShakeRow/ShakeLabel: 흔들기(흔듬)/폭탄 전용 — 화면 전체가 아니라
+      발동시킨 좌석의 상태박스 자리에만, 그 박스 크기 그대로 표시한다
+      (코드가 매 호출마다 left/top/width/height를 그 상태박스 좌표로
+      다시 계산해 덮어쓴다 — 여기 선언된 기본값은 의미 없는 placeholder).
+      ShakeLabel은 ShakeRow와 완전히 같은 영역에 겹쳐서, 카드 위(z-order
+      앞)에 "흔듬" 텍스트가 바로 얹힌다 — AltRow/AltTitleLabel과 같은
+      원칙. 2026-09-06 — "겹침" 자체는 문제가 아니라 텍스트 시인성이
+      문제였다는 사용자 정정으로, 레이아웃을 나누는 대신 아웃라인을
+      강화(width 4, 진한 색)해서 어떤 카드 배경 위에서도 읽히게 했다.
+    -->
+    <ui:VisualElement name="Dim" picking-mode="Ignore"
+        style="position: absolute; left: 0; top: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0);" />
+    <ui:VisualElement name="CardRow" picking-mode="Ignore"
+        style="position: absolute; left: 0; right: 0; top: 0; bottom: 170; align-items: center; justify-content: center; flex-direction: row;" />
+    <ui:Label name="TitleLabel" picking-mode="Ignore"
+        style="position: absolute; left: 0; right: 0; bottom: 70; height: 90; -unity-text-align: middle-center; font-size: 52; -unity-font-style: bold; opacity: 0; -unity-text-outline-width: 3; -unity-text-outline-color: rgba(20, 14, 4, 0.85); color: rgb(255, 255, 255);" />
+    <ui:VisualElement name="AltRow" picking-mode="Ignore"
+        style="position: absolute; left: 0; right: 0; top: 0; height: 220; align-items: center; justify-content: center; flex-direction: row;" />
+    <ui:Label name="AltTitleLabel" picking-mode="Ignore"
+        style="position: absolute; left: 0; right: 0; top: 0; height: 220; -unity-text-align: middle-center; font-size: 46; -unity-font-style: bold; opacity: 0; -unity-text-outline-width: 3.5; -unity-text-outline-color: rgba(20, 14, 4, 0.9); color: rgb(255, 255, 255);" />
+    <ui:VisualElement name="SliceLine" picking-mode="Ignore"
+        style="position: absolute; left: 0; right: 0; top: 0; height: 220; background-color: rgba(255, 255, 255, 0);" />
+    <ui:VisualElement name="ShakeRow" picking-mode="Ignore"
+        style="position: absolute; left: 0; top: 0; width: 400; height: 165; overflow: visible;" />
+    <ui:Label name="ShakeLabel" picking-mode="Ignore"
+        style="position: absolute; left: 0; top: 0; width: 400; height: 165; -unity-text-align: middle-center; font-size: 34; -unity-font-style: bold; opacity: 0; -unity-text-outline-width: 4; -unity-text-outline-color: rgba(10, 7, 2, 0.95); color: rgb(255, 234, 160);" />
+</ui:UXML>

@@ -33,4 +33,7 @@
 crashlytics-build.txt
 mono_crash*.json
 
+# WebGL 빌드 산출물 — 소스만 저장소에 두고, 배포는 별도 저장소(Portfolio)로
+WebBuild/
+
 sysinfo.txt
