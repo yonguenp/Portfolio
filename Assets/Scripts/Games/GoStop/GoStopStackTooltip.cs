@@ -3,6 +3,7 @@ using System.Linq;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
 
 /// <summary>2026-09-06(사용자 확인) — "겹쳐있는 패는 유저가 눌렀을때 겹친패를
 /// 확인할 수 있게, 마우스오버나 터치가되면 배경이 dim되있는 툴팁으로 패들이
@@ -126,6 +127,30 @@ public class GoStopStackTooltip : MonoBehaviour
     public void Hide()
     {
         if (dim != null) dim.SetActive(false);
+    }
+
+    /// <summary>2026-09-06(사용자 확인) — "안 사라진다"는 재신고 조사 —
+    /// PointerUp/Exit이 원래 눌렀던 트리거 오브젝트로만 배달되는데, 그
+    /// 오브젝트가 눌려 있는 동안 자연 게임 진행(다른 좌석 턴 등)으로
+    /// RebuildUI가 돌면 필드가 다시 그려지며 <see cref="GoStopStackHoverTrigger"/>
+    /// 가 새 오브젝트로 교체된다 — 옛 오브젝트가 파괴돼 버리면 Up/Exit을
+    /// 받을 대상 자체가 사라져 손을 떼도 영원히 안 닫힌다. 특정 오브젝트가
+    /// 이벤트를 배달받는 것에 기대지 않고, **떠 있는 동안 매 프레임
+    /// "지금 실제로 뭔가 눌려 있는가"를 직접 확인**하는 안전망을 추가한다 —
+    /// 마우스도 터치도 아무것도 안 눌려 있으면 무조건 닫는다.</summary>
+    void Update()
+    {
+        if (dim == null || !dim.activeSelf) return;
+
+        bool anyPressed = Mouse.current != null && Mouse.current.leftButton.isPressed;
+        if (!anyPressed && Touchscreen.current != null)
+        {
+            foreach (var t in Touchscreen.current.touches)
+            {
+                if (t.press.isPressed) { anyPressed = true; break; }
+            }
+        }
+        if (!anyPressed) Hide();
     }
 }
 

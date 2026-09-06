@@ -11858,3 +11858,141 @@ UGUI는 마우스 클릭과 터치 시작/종료를 동일한 PointerDown/Up 이
 - 이 세션 전체(컴파일+Play 모드 테스트) 콘솔 `error`/`exception` 0건
   (기존에 이미 있던 무관한 경고들, 그리고 내 테스트 스크립트 자체의
   잘못된 `console` 커맨드 파라미터가 만든 warn 2건뿐).
+
+## 고스톱 — 겹친 패 툴팁 안 사라짐(진짜 원인), 필드 스택 오프셋 충돌,
+보너스패 anchor 합류(뻑 대기), 콤보 아이콘을 Twemoji→OpenMoji로 재교체
+(2026-09-06)
+
+같은 세션에서 이어진 4가지 요청 — "툴팁이 뜨고 안 사라짐", "FIELD_STACK_OFFSET
+수정 후 slamdown 포지션이 안 맞음(1월 2장 위에 내면 딱 겹침)", "뒷패
+보너스패가 빈 pos가 아니라 anchor 위에 쌓여야 함(뻑 대기)", "ComboIcons_SVG
+이미지가 게임 분위기와 안 어울림, 웹에서 더 나은 걸 찾아달라".
+
+### 겹친 패 툴팁 — Down/Up으로 되돌린 뒤에도 재발한 진짜 원인
+
+바로 전 세션에 Enter/Exit(호버)→Down/Up(press-and-hold)로 되돌렸는데도
+"뜨고 안 사라진다"는 재신고를 받았다. 원인은 입력 방식이 아니라 **눌려
+있는 동안 배경에서 자연 진행(다른 좌석 턴 등)이 RebuildUI를 돌리면
+`GoStopStackHoverTrigger`가 새 오브젝트로 교체된다**는 것이었다 — 옛
+트리거 오브젝트가 파괴되면 EventSystem이 저장해 둔 "pointerPress" 참조가
+죽은 오브젝트를 가리키게 되어, 손을 떼도 `OnPointerUp`을 받을 대상 자체가
+없다(Exit도 마찬가지 — 이미 파괴된 오브젝트는 어떤 이벤트도 못 받는다).
+
+**고침 — 특정 오브젝트의 이벤트 배달에 기대지 않는 독립적 안전망.**
+`GoStopStackTooltip`(싱글턴)에 `Update()`를 추가해 **떠 있는 동안 매
+프레임 "지금 실제로 뭔가 눌려 있는가"를 직접 확인**한다 — `Mouse.current.
+leftButton.isPressed` 또는 `Touchscreen.current.touches`의 어느 것도
+안 눌려 있으면 무조건 `Hide()`. 이러면 트리거 오브젝트가 중간에 파괴되든
+말든, "마우스/손가락을 뗀 순간"이라는 물리적 사실 자체를 매 프레임
+재확인하므로 절대 고착될 수 없다. 기존 Down/Up/Exit 핸들러(정상적인
+경우엔 즉시 반응하므로 그대로 유지)는 이 안전망과 공존한다.
+
+검증(Play 모드 라이브): `Show()`를 직접 호출해 즉시 `dim.activeSelf=True`
+확인 → 아무 입력도 안 누른 채 1초 대기 → `dim.activeSelf=False`로 스스로
+닫히는 것 확인(Update 안전망이 실제로 작동).
+
+### 필드 스택 오프셋 — 같은 슬롯에 카드가 늘어날 때 "겹쳐 놓이는" 버그
+
+"필드에 1월이 2장 있는데 손패 1월 한 장을 내면 위에 있는 패랑 딱 겹치게
+내려놔짐" — `SpawnGhostCard(HwatuCard, RectTransform)`가 착지 오프셋을
+계산할 때 **"이 카드까지 포함한 최종 장수" 기준 step**(`FieldStackStep
+(existing+1)`)을 썼는데, 이미 화면에 떠 있는 기존 카드들은 아직 **그
+이전 장수 기준 step**으로 그려진 채(DrawField가 다시 돌기 전까지)라서,
+두 step이 다르면 새 카드의 계산된 좌표가 기존 카드의 좌표와 정확히
+같은 숫자로 나올 수 있었다(예: 2장→3장 전환에서 `2×15=30`이 기존
+2번째 카드의 `1×30=30`과 우연히 일치).
+
+**고침 — 지금 화면에 이미 떠 있는 카드들과 같은 step을 그대로 이어서
+쓴다.** `float step = FieldStackStep(Mathf.Max(existing, 2));` — existing이
+2 이상이면 그 값 그대로(이미 그려진 카드들이 쓰고 있는 바로 그 step),
+1 이하면 최종 2장 기준으로 미리 맞춘다(카드가 1장뿐일 땐 겹칠 대상
+자체가 없어 어느 쪽이든 무해하다). `i*step`이 항상 `(i-1)*step`보다
+크므로 구조적으로 절대 겹칠 수 없다 — 이후 DrawField가 최종 step으로
+다시 그릴 때 생기는 미세한 차이는 이미 있는 SlamIn 보정(`flyFrom` 처리)이
+부드럽게 메워준다.
+
+**같은 요청으로 오프셋 표를 다시 조정했다**(2인/4인 공유
+`FieldStackStep`): 2장=20, 3장=15, 4장=10, 5장=7, 6장=6, 7장=5, 8장=4,
+9장 이상=3 — 장수가 늘수록 계속 좁아진다(보너스패가 뻑 무더기에 끼어들면
+4장을 넘길 수도 있어 방어적으로 8·9장 이상까지 표를 채웠다).
+
+검증(Play 모드 라이브): 3월 카드 2장을 필드에 세팅+RebuildUI로 실제
+렌더 → `SpawnGhostCard`로 3번째 카드 착지 위치 계산 → 계산된 오프셋이
+현재 그 슬롯에 있는 어떤 자식의 오프셋과도 1px 이내로 안 겹치는 것을
+직접 거리 비교로 확인(existing=4, step=FieldStackStep(4)=10,
+offset=40 — 공식과 정확히 일치, 충돌 없음).
+
+### 보너스패(조커)가 anchor 위에 쌓이도록 — 죽어 있던 `ppeokBonusPi` 소비
+경로에 처음으로 값을 채워 넣음
+
+"뒷패에서 보너스패가 나오면 빈 pos가 아니라 손패에서 나가 아직 필드에
+남은 카드(anchor) 위에 쌓여야 한다 — 뻑이 될 수도 있어서, 뻑 해소하는
+쪽이 조커까지 한꺼번에 가져가야 한다"는 요청. 조사해보니 **`ppeokBonusPi`
+(월→조커 매핑 dict)를 READ하는 코드는 이미 여러 곳(필드 2장 선택 분기,
+뒷패 매칭 분기, ResolveBonusJoker의 extra 처리, 뻑 먹기 matchCount==3
+분기 등)에 존재했지만, 그 dict에 값을 WRITE하는 코드는 프로젝트 어디에도
+없었다** — grep으로 `ppeokBonusPi[` 패턴이 단 한 번도 안 걸림을 확인.
+즉 "조커가 뻑에 걸려있으면 나중에 같이 걷어간다"는 소비 로직 자체는
+완성돼 있었는데, 그걸 트리거할 데이터가 여태 한 번도 안 채워지는
+죽은 코드였다 — `ResolveBonusJoker`가 매번 anchor 유무와 무관하게
+무조건 그 자리에서 바로 revealer의 캡처로 가져가고 있었기 때문.
+
+**고침 — `ResolveBonusJoker`에 `parkOnAnchor` 분기 신설.** `anchor`가
+아직 `field`에 살아있으면(캡처 안 된 채 대기 중이면):
+1. `fieldSlotAssign[joker] = AssignFieldSlot(anchor)` — anchor와
+   **같은 pos 슬롯**에 합류(조커는 원래 `AssignFieldSlot`이 월이 없어
+   무조건 새 빈 슬롯을 주는데, 이 배정을 미리 가로챈다).
+2. `ppeokBonusPi[anchor.month] = joker` — 이제 이 값이 채워지므로,
+   이미 있던 소비 로직들이 자동으로 작동한다.
+3. 즉시 캡처하지 않고 그대로 필드에 남긴다(`Toast(seat, "보너스패
+   쌓임")`만 표시).
+
+anchor가 없거나(DeckOnlySeq 등) 이미 다른 경로로 사라졌으면 기존처럼
+그 자리에서 즉시 캡처(겹쳐놓을 대상이 없으므로).
+
+검증(Play 모드 라이브, 리플렉션): 필드에 실제 1월 카드 하나(existingJan) +
+anchor(다른 1월 카드, 같은 슬롯에 합류시켜 둠)를 세팅하고
+`ResolveBonusJoker(0, joker, anchor, cap0, false, null)`를 직접 실행(코루틴의
+"첫 yield까지 동기 실행" 특성으로 곧바로 확인) — `fieldSlotAssign[joker]`
+가 anchor/existingJan과 정확히 같은 슬롯 번호, `ppeokBonusPi[1]==joker`로
+정확히 등록, `field.Contains(joker)=True`, **`captured[0].Contains(joker)
+=False`**(예전이면 즉시 캡처됐을 상황이 이제 대기 상태로 남는 것)까지
+전부 확인. 이어서 다른 실제 1월 카드(4번째)를 필드에 추가해 봤더니
+`AssignFieldSlot`이 정확히 같은 슬롯으로 배정 — "1월,1월,보너스패,1월"
+4장이 한 슬롯에 쌓인다는 사용자 예시와 일치하는 것까지 확인. 4번째
+카드가 실제로 그 슬롯을 캡처할 때 조커까지 같이 걷어가는 다운스트림
+소비 로직(`ResolveJokerPpeok` 등) 자체는 이번에 안 건드렸고 — 이미
+2인판 v13 등 이전 세션에서 별도로 검증된 기존 코드라 재검증은 생략했다.
+
+### 콤보 아이콘 재소싱 — Twemoji → OpenMoji
+
+"ComboIcons_SVG 안에 있는 이미지가 우리 게임에 안 어울리는 것 같다,
+웹에서 더 나은 이미지를 찾아달라" — Twemoji는 둥글고 그라데이션이 있는
+"채팅 이모지" 느낌이라, 이 프로젝트의 나머지 톤(Kenney UI의 굵은
+외곽선+평면 채색, 절차적으로 그린 GoStopIcons/GoStopMotifAtlas의 단순
+실루엣)과 잘 안 어울렸다. **OpenMoji**(hfg-gmuend/openmoji, CC BY-SA
+4.0 — 화투 카드와 같은 라이선스 계열)의 color SVG 세트로 교체했다 —
+굵은 검정 외곽선+평면 채색이라 이 프로젝트 톤에 훨씬 가깝다.
+
+같은 6개 코드포인트(1F4A9 뻑·1F9FB 뻑먹기·1F48B 쪽·1FAF0 따닥·1F9F9 쓸·
+270B 스톱)를 `raw.githubusercontent.com/hfg-gmuend/openmoji/master/color/
+svg/`에서 받아 `Assets/Art/OpenMoji/`(원본, 코드포인트 파일명)에 보관하고
+`Assets/Resources/ComboIcons_SVG/`(실제 게임이 쓰는 6장, 역할 이름)의
+기존 파일을 덮어썼다 — `.meta`(GUID, `svgType=TexturedSprite` 임포트
+설정)는 이미 있던 걸 그대로 유지해서 재작업 없이 새 내용만 재임포트됐다.
+`TitleOptionsUI.cs`의 라이선스 정보 화면과 `GoStopComboIcons.cs`의 클래스
+문서 주석도 Twemoji→OpenMoji, CC BY 4.0→CC BY-SA 4.0으로 갱신했다(겸사
+겸사 문서 주석에 있던 "svgType=VectorSprite"라는 스테일한 서술도
+`TexturedSprite`로 바로잡았다 — 실제 .meta 값과 어긋나 있었다).
+
+검증: 6개 스프라이트 전부 `Resources.Load<Sprite>`로 정상 로드+
+`sprite.texture != null`(TexturedSprite 정상) 확인. 6장 전부 읽기 가능한
+텍스처로 렌더해 PNG로 저장한 뒤 직접 열어봐서(이 환경 Game 뷰 스크린샷을
+못 믿으므로 이 프로젝트가 항상 써 온 검증 방식) 실제로 굵은 외곽선+평면
+채색 스타일인 것을 확인했다. `Toast(0, "뻑"/"쪽"/"따닥"/"쓸")`을 실제로
+호출해 콤보 아이콘 파이프라인 전체가 예외 없이 도는 것까지 확인.
+
+이 세션 전체(필드 스택·보너스패·툴팁·아이콘 검증 전부 포함) 콘솔
+`error`/`exception` 0건 — warn만 있었고 전부 기존에 이미 있던 무관한
+노이즈(자동화 모드 경고, em-dash 폰트 폴백, PNG 렌더 헬퍼의 RenderTexture
+경고, 내 테스트 스크립트 자체의 콘솔 명령 파라미터 오류)였다.
