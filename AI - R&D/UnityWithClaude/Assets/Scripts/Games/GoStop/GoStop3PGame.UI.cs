@@ -1688,17 +1688,23 @@ public partial class GoStop3PGame
         }
     }
 
-    // 같은 pos 슬롯에 여러 장(뻑 무더기 등)이 쌓일 때 완전히 포개지지 않게
-    // 살짝 밀어내는 간격 — 몇 장인지 한눈에 보이면서도 "한 자리에 쌓였다"는
-    // 느낌은 유지된다. 2026-09-06(사용자 확인) — 장수가 늘수록 한 칸씩의
-    // 간격을 좁혀서(2장=30, 3장=15, 4장=10) 전체 퍼짐 폭이 너무 커지지
-    // 않게 했다(예전엔 장수와 무관하게 항상 20이라 4장이 쌓이면 3×20=60px
-    // 나 밀려나 옆 슬롯을 침범할 여지가 있었다).
+    // 같은 pos 슬롯에 여러 장(뻑 무더기·보너스패 합류 등)이 쌓일 때 완전히
+    // 포개지지 않게 살짝 밀어내는 간격 — 몇 장인지 한눈에 보이면서도 "한
+    // 자리에 쌓였다"는 느낌은 유지된다. 2026-09-06(사용자 확인, 2차 조정) —
+    // 장수가 늘수록 한 칸씩의 간격을 계속 좁혀서 전체 퍼짐 폭이 너무
+    // 커지지 않게 한다. 보너스패가 뻑 무더기에 끼어들면 4장을 넘어갈 수도
+    // 있어(1월,1월,보너스패,1월 같은 4장 이상 케이스) 8장 이상도 방어적으로
+    // 계속 줄인다.
     static float FieldStackStep(int countInSlot) => countInSlot switch
     {
-        2 => 30f,
+        2 => 20f,
         3 => 15f,
-        >= 4 => 10f,
+        4 => 10f,
+        5 => 7f,
+        6 => 6f,
+        7 => 5f,
+        8 => 4f,
+        >= 9 => 3f,
         _ => 20f, // 1장뿐이면 i=0이라 어차피 안 쓰인다 — 안전한 기본값만 둔다
     };
 
@@ -2548,7 +2554,19 @@ public partial class GoStop3PGame
     GameObject SpawnGhostCard(HwatuCard card, RectTransform target)
     {
         int existing = target.childCount;
-        float step = FieldStackStep(existing + 1); // +1 — 이 카드까지 포함한 최종 장수 기준(DrawField와 같은 규칙)
+        // 2026-09-06 버그 수정 — "이 카드까지 포함한 최종 장수" 기준
+        // step(FieldStackStep(existing+1))을 쓰면, 이미 화면에 떠 있는
+        // 기존 카드들은 아직 "그 이전 장수" 기준 step으로 그려진 채라서
+        // (DrawField가 다시 돌기 전까지) 두 step이 달라 새 카드가 기존
+        // 카드와 정확히 같은 좌표로 계산될 수 있었다(예: 2장→3장 전환에서
+        // 우연히 숫자가 겹침 — "1월 두 장 위에 내면 딱 겹치게 놓인다"
+        // 신고). 지금 화면에 이미 떠 있는 카드들과 **같은** step
+        // (FieldStackStep(existing), 단 existing<2면 겹칠 대상 자체가
+        // 없으므로 최종 2장 기준으로 미리 맞춘다)을 그대로 이어서 쓰면
+        // 항상 "마지막 카드 바로 다음 자리"라 절대 겹칠 수 없다 — 이후
+        // DrawField가 최종 step으로 다시 그릴 때 생기는 미세한 차이는
+        // 이미 있는 SlamIn 보정(위 flyFrom 처리)이 부드럽게 메워준다.
+        float step = FieldStackStep(Mathf.Max(existing, 2));
         var offset = new Vector2(existing * step, -existing * step);
         var go = HwatuUI.MakeCard(card, target, offset, FIELD_W, FIELD_H, null, false);
         go.AddComponent<GhostMarker>();

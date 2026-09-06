@@ -3498,9 +3498,20 @@ public partial class GoStop3PGame : MonoBehaviour
     }
 
     /// <summary>보너스피(조커) 처리. 조커는 월이 없어(<see cref="HwatuCard.isJoker"/>)
-    /// 실제 매칭에 참여할 수 없으므로 <paramref name="anchor"/>(이번 턴에
-    /// 낸 손패가 매칭 안 돼 필드에 남은 카드, 없으면 null) 유무와 무관하게
-    /// 항상 그 자리에서 바로 가져간다.
+    /// 실제 매칭에 참여할 수 없다.
+    /// <br/>
+    /// 2026-09-06(사용자 확인) — "뒷패에서 보너스패가 나오면 빈 pos가 아니라
+    /// 손패에서 나가 아직 필드에 남아있는 카드(<paramref name="anchor"/>) 위에
+    /// 쌓여야 한다 — 나중에 뻑이 될 수도 있어서, 뻑을 해소하는 쪽이 조커까지
+    /// 한꺼번에 가져가야 한다." anchor가 아직 필드에 살아있으면(캡처 안 된
+    /// 채 대기 중이면) 즉시 캡처하지 않고 anchor의 슬롯에 합류시켜 그대로
+    /// 필드에 남긴다 — <c>ppeokBonusPi[anchor.month]</c>에 등록해 두면
+    /// 이후 그 달을 캡처하는 모든 경로(2인/4인 여러 곳 — 필드선택 팝업을
+    /// 조커 핸드오프로 대체하는 분기, 뻑 먹기 matchCount==3 분기 등)가
+    /// 자동으로 조커까지 같이 걷어간다. **이 소비 로직 자체는 이미 있었지만
+    /// 지금까지 아무도 `ppeokBonusPi`에 값을 써준 적이 없어 죽은 코드였다**
+    /// — anchor가 없거나(DeckOnlySeq 등) 이미 다른 경로로 사라진 경우에만
+    /// 예전처럼 그 자리에서 즉시 캡처한다(겹쳐놓을 대상이 없으므로).
     /// <br/>
     /// **함정 — 뒷패(extra)를 절대 `Resolve()` 없이 그냥 필드에 던지지
     /// 말 것.** 조커는 진짜 카드가 아니라 이번 턴 덱 소모 몫을 아직 못
@@ -3522,17 +3533,31 @@ public partial class GoStop3PGame : MonoBehaviour
     /// 적용된다(사용자 확인).</param>
     IEnumerator ResolveBonusJoker(int seat, HwatuCard joker, HwatuCard anchor, List<HwatuCard> cap, bool isLastHandCard, Vector3? revealFrom = null)
     {
-        field.Add(joker);
-        flyFrom[joker] = revealFrom ?? drawPileArea.position;
-        RebuildUI();
-        yield return new WaitForSeconds(PLAY_STEP_DELAY * 0.5f);
+        bool parkOnAnchor = anchor != null && field.Contains(anchor);
+        if (parkOnAnchor)
+        {
+            fieldSlotAssign[joker] = AssignFieldSlot(anchor); // anchor와 같은 pos에 쌓인다
+            field.Add(joker);
+            ppeokBonusPi[anchor.month] = joker;
+            flyFrom[joker] = revealFrom ?? drawPileArea.position;
+            Toast(seat, "보너스패 쌓임");
+            RebuildUI();
+            yield return new WaitForSeconds(PLAY_STEP_DELAY * 0.5f);
+        }
+        else
+        {
+            field.Add(joker);
+            flyFrom[joker] = revealFrom ?? drawPileArea.position;
+            RebuildUI();
+            yield return new WaitForSeconds(PLAY_STEP_DELAY * 0.5f);
 
-        field.Remove(joker);
-        cap.Add(joker);
-        flyFrom[joker] = fieldArea.position;
-        Toast(seat, "보너스 획득");
-        RebuildUI();
-        yield return new WaitForSeconds(PLAY_STEP_DELAY * 0.5f);
+            field.Remove(joker);
+            cap.Add(joker);
+            flyFrom[joker] = fieldArea.position;
+            Toast(seat, "보너스 획득");
+            RebuildUI();
+            yield return new WaitForSeconds(PLAY_STEP_DELAY * 0.5f);
+        }
 
         if (drawPile.Count == 0) yield break;
 

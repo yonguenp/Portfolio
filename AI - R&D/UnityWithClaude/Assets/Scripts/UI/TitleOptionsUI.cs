@@ -126,10 +126,10 @@ public class TitleOptionsUI : MonoBehaviour
             "Spencjo (Wikimedia Commons) · CC BY-SA 4.0\n" +
             "원본 수정 없이/일부 수정하여 사용\n" +
             "라이선스 전문: creativecommons.org/licenses/by-sa/4.0\n\n" +
-            "<b>Twemoji</b>\n" +
-            "Twitter, Inc / X Corp · CC BY 4.0\n" +
+            "<b>OpenMoji</b>\n" +
+            "designed by OpenMoji · CC BY-SA 4.0\n" +
             "고스톱 이벤트 아이콘(뻑/쪽/따닥/쓸/스톱 등)에 사용\n" +
-            "라이선스 전문: creativecommons.org/licenses/by/4.0\n\n" +
+            "라이선스 전문: creativecommons.org/licenses/by-sa/4.0\n\n" +
             "<b>ONE Mobile POP 폰트</b>\n" +
             "티몬 · OFL 1.1 (무료 상업적 이용 허용)";
 
