@@ -11592,10 +11592,67 @@ found" 파이프라인 일시 오류와 겹쳐서 처음엔 진짜 코드 버그
 뻔했다). `parent.parent != null`을 먼저 확인하고 나서야 정확한 결과를
 얻었다.
 
-### 아직 손 안 댄 것 (14개 요청 중 나머지 5개)
+**후속 — GoEffect(고 이펙트) tense 상태 텍스트 겹침.** 원인은 박스
+좌표 계산 실수였다 — 메인 라벨(`"{좌석} N고!"`)이 top-pivot 박스
+(높이 340)를 쓰면서 `TextAlignmentOptions.Center`(박스 세로 중앙 정렬)
+라 실제 글자는 박스 아래쪽 절반 부근(대략 y=[-254,-86], 140pt 폰트
+기준)에 찍혔는데, tense(3고 이상)일 때만 추가되는 서브 라벨("배수
+×N!")이 그 범위 *안쪽*(y=[-240,-150])에 배치돼 있어서 두 텍스트가
+그대로 겹쳤다. 정확한 폰트 메트릭을 계산해 미세 조정하는 대신, 메인
+라벨 박스를 한 줄만 담기게 줄이고(340→220, 가장 큰 170pt 폰트도 한
+줄이면 충분) 서브 라벨을 메인 박스 완전히 바깥(y=[-270,-190], 메인
+박스 하단 -160과 30px 간격)으로 못박았다 — 박스 자체가 안 겹치면
+폰트 메트릭을 정확히 몰라도 글자가 겹칠 수 없다는 원리. 검증: tier=4
+(tense+flashy)로 직접 트리거해 메인 라벨 박스(top=60, bottom=-160)와
+서브 라벨 박스(top=-190, bottom=-270)가 30px 간격을 두고 완전히
+분리된 것을 확인했다.
 
-- 겹쳐있는 필드 카드를 마우스오버/터치로 확인하는 dim 툴팁.
-- GoEffect(고 이펙트) tense(3고 이상) 상태에서 텍스트 겹침.
+**후속 — 겹쳐있는 필드 카드 확인용 dim 툴팁(`GoStopStackTooltip.cs`,
+신규).** "겹쳐있는 패는 유저가 눌렀을때 겹친패를 확인할 수 있게, 마우스
+오버나 터치가되면 배경이 dim되있는 툴팁으로 패들이 보이게 해줘. 마우스
+포인터나 터치 위치 상단에 리스팅되어야할듯." — 마우스/터치를 굳이
+구분하지 않고 "누르고 있는 동안만 보인다"(press-to-reveal, release시
+자동 닫힘)로 통일했다. `DrawField()`가 같은 슬롯에 2장 이상 쌓일 때만
+(`FieldStackStep` 참고) 그 슬롯 전체를 덮는 투명 오버레이
+(`StackTooltipTrigger`, `IPointerDownHandler`/`IPointerUpHandler`/
+`IPointerExitHandler`)를 카드들보다 나중 sibling으로 하나 더 얹는다 —
+맨 위 카드가 뭐든 그 슬롯 어디를 눌러도 반응한다. 누르면 화면 전체
+딤 + 그 슬롯 카드 전부를 실물 크기로 나열한 패널이 터치 지점 바로
+위(패널 pivot을 아래쪽 중앙으로 둬서 `anchoredPosition`을 터치 좌표로
+잡으면 자연히 그 위로 솟아오른다)에 뜬다. 다른 GoStop 싱글턴 UI
+(`GoStopVectorEffect`/`GoStopWindParticles`)와 같은 `Ensure()` 패턴.
+
+검증(Play 모드 라이브, 리플렉션) 중 실제 버그 하나를 잡았다 —
+`HorizontalLayoutGroup`은 `childControlWidth=false`일 때 자식 배치만
+계산할 뿐 **부모(panel) 자신의 `sizeDelta`는 절대 안 건드린다**(별도
+`ContentSizeFitter` 없이는) — 그래서 카드 4장을 채워도 패널 폭이
+RectTransform 기본값 100에 그대로 멈춰 있었다(3월이 4장인데
+"3장(광/열끗/피)"로 잘못 가정한 테스트 주석에서 먼저 `panelChildCount=4`
+로 어긋난 걸 보고 발견). 카드 수 기준으로 폭을 직접 계산해서
+(`count*CARD_W + (count-1)*spacing + padding*2`) 해결했다 — 수정 후
+4장 기준 정확히 346px로 계산되는 것, 눌렀을 때 딤+4장 카드(월순 정렬)가
+정확히 표시되고 손을 떼면 닫히는 것, 슬롯의 실제 카드 4장이 오버레이와
+함께 정상적으로 공존하는 것까지 확인했다.
+
+> **함정 — Play 모드 도중 새 스크립트를 작성하고 재컴파일하면 도메인
+> 리로드로 진행 중이던 게임 상태(`hand`/`field`/`captured`/`drawPile`
+> 등 참조 타입 필드)가 전부 `null`로 리셋된다.** 이 툴팁 기능을 만드는
+> 도중 정확히 이 함정에 걸렸다 — `FireGoEffect` 테스트가 성공한 직후
+> `GoStopStackTooltip.cs`를 새로 작성하고 Play 모드인 채로
+> `recompile`을 돌렸더니, 그 다음 `RebuildUI()` 호출이
+> `UpdatePileVisual()`에서 `drawPile.Count`(drawPile이 null) NRE를
+> 던졌다 — 처음엔 방금 짠 새 코드(DrawField에 추가한 오버레이 로직)가
+> 원인인 줄 알았는데, 예외 스택 트레이스를 직접 잡아보니(`try/catch`로
+> `TargetInvocationException.InnerException`을 출력) `DrawField()`가
+> 아니라 완전히 무관한 `UpdatePileVisual()`에서 난 것이었고, `hand[0]`/
+> `field`/`captured[0]`가 전부 null인 걸 확인하고서야 "재컴파일이 이번
+> Play 세션 전체를 초기화했다"는 걸 알았다(이 프로젝트에 이미 여러 번
+> 기록된 함정과 같은 계열). **Play 모드 중 스크립트를 수정했다면 반드시
+> `editor_stop` → `recompile` → `editor_play` 순서를 지킬 것** — 이번
+> 세션 내내 지켜온 습관인데 이번에 한 번 건너뛰어서 바로 걸렸다.
+
+### 아직 손 안 댄 것 (14개 요청 중 나머지 3개)
+
 - GoEffect/StopEffect를 다른 이펙트처럼 코드생성 대신 프리팹화.
 - "흔듬 이펙트 잘 나오는 거 확인함"(사용자 확인, 조치 불필요).
 - "FieldChoicePopup 수정했으니 참고"(사용자가 직접 프리팹+

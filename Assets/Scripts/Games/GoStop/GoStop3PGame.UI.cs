@@ -1705,6 +1705,7 @@ public partial class GoStop3PGame
         {
             var cardsInSlot = group.ToList();
             float step = FieldStackStep(cardsInSlot.Count);
+            var slotTarget = FieldSlotTransform(cardsInSlot[0]); // 그룹 전체가 공유하는 슬롯 — 오버레이 배치용으로 미리 확보
             for (int i = 0; i < cardsInSlot.Count; i++)
             {
                 var c = cardsInSlot[i];
@@ -1752,6 +1753,28 @@ public partial class GoStop3PGame
                 {
                     GoStopFX.SetArtShadow(go, true); // 이번 리빌드에서 안 움직이는 정적 카드
                 }
+            }
+
+            // 2026-09-06(사용자 확인) — "겹쳐있는 패는 눌렀을 때 겹친 패를
+            // 확인할 수 있게, dim 배경 툴팁으로 보여달라" 요청. 2장 이상
+            // 쌓인 슬롯에만 슬롯 전체를 덮는 투명 오버레이를 하나 더
+            // 얹는다 — 맨 위 카드 하나만이 아니라 그 슬롯 어디를 눌러도
+            // 반응하도록. 오버레이는 이 그룹의 마지막 카드 자식(GhostMarker
+            // 없는 경우)보다도 나중 sibling이라 항상 최상단에서 입력을 받는다.
+            if (cardsInSlot.Count > 1)
+            {
+                var overlayGo = new GameObject("StackTooltipTrigger", typeof(RectTransform));
+                overlayGo.transform.SetParent(slotTarget, false);
+                var overlayRt = overlayGo.GetComponent<RectTransform>();
+                overlayRt.anchorMin = overlayRt.anchorMax = new Vector2(0.5f, 1f);
+                overlayRt.pivot = new Vector2(0.5f, 1f);
+                float extra = (cardsInSlot.Count - 1) * step;
+                overlayRt.sizeDelta = new Vector2(FIELD_W + extra, FIELD_H + extra);
+                overlayRt.anchoredPosition = new Vector2(extra * 0.5f, -extra * 0.5f); // 스택 전체의 대략적 중심
+                var overlayImg = overlayGo.AddComponent<Image>();
+                overlayImg.color = new Color(0f, 0f, 0f, 0f); // 완전 투명 — 레이캐스트만 받는다
+                var trigger = overlayGo.AddComponent<GoStopStackHoverTrigger>();
+                trigger.Init(cardsInSlot, GoStopCanvasRoot());
             }
         }
     }

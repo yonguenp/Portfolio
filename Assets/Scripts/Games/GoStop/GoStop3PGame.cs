@@ -2121,8 +2121,18 @@ public partial class GoStop3PGame : MonoBehaviour
         var group = goObj.AddComponent<CanvasGroup>();
         group.alpha = 0f;
 
+        // 2026-09-06(사용자 확인) — "GoEffect tense상태일때 글씨가 겹침".
+        // 예전엔 메인 라벨 박스가 340px나 되는데 그 안에서 텍스트가
+        // 세로 중앙 정렬돼(TextAlignmentOptions.Center) 실제 글자는 박스
+        // 아래쪽 절반 근처에 찍히고, 서브 라벨("배수 ×N!")은 그 박스
+        // *안쪽*(-150~-240) 좌표에 겹쳐 놓여 있었다 — 박스 자체가 서로
+        // 겹치니 글자도 겹칠 수밖에 없었다. 메인 라벨 박스를 한 줄만 딱
+        // 담기게 줄이고(220px — 가장 큰 170pt 폰트도 한 줄이면 충분),
+        // 서브 라벨을 메인 박스 *아래*(겹치지 않는 좌표)로 확실히
+        // 떨어뜨렸다 — 두 박스 자체가 안 겹치면 폰트 메트릭을 정확히
+        // 몰라도 글자가 겹칠 수 없다.
         Color mainColor = flashy ? new Color(1f, 0.45f, 0.10f) : tense ? new Color(1f, 0.55f, 0.20f) : HwatuTheme.Gold;
-        var label = HwatuUI.MakeLabel(rt, Vector2.zero, new Vector2(1800f, 340f), flashy ? 170f : tense ? 140f : 110f, mainColor);
+        var label = HwatuUI.MakeLabel(rt, new Vector2(0f, 60f), new Vector2(1800f, 220f), flashy ? 170f : tense ? 140f : 110f, mainColor);
         label.text = $"{SeatName(seat)} {goNumber}고!";
         label.fontStyle = FontStyles.Bold;
         label.alignment = TextAlignmentOptions.Center;
@@ -2130,7 +2140,7 @@ public partial class GoStop3PGame : MonoBehaviour
 
         if (tense)
         {
-            var sub = HwatuUI.MakeLabel(rt, new Vector2(0f, -150f), new Vector2(1800f, 90f), 48f, new Color(1f, 0.65f, 0.35f));
+            var sub = HwatuUI.MakeLabel(rt, new Vector2(0f, -190f), new Vector2(1800f, 80f), 48f, new Color(1f, 0.65f, 0.35f));
             sub.text = string.Format("배수 × {0}!", (tier - 2) * 2);
             sub.alignment = TextAlignmentOptions.Center;
             sub.raycastTarget = false;
