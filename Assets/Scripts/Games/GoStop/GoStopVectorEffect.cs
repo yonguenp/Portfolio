@@ -107,6 +107,22 @@ public class GoStopVectorEffect : MonoBehaviour
             altGeneration++;
             altRow.Clear();
             altTitleLabel.style.opacity = 0f;
+
+            // 2026-09-06 버그 수정 — "실패 이펙트가 어느 순간부터 계속 안
+            // 뜬다"는 신고로 발견. 밀려난 옛 AltDispatchLoop은 자기
+            // myGeneration이 낡았다는 걸 다음 while 체크에서야 확인하고
+            // 조용히 빠져나가는데, 그 시점엔 이미 altGeneration이 바뀐
+            // 뒤라 "내가 최신이면 playingAlt를 비운다"는 자기 정리 조건
+            // (`if (altGeneration == myGeneration) playingAlt = null;`)이
+            // 영영 성립하지 않는다 — playingAlt가 죽은 코루틴 참조를 계속
+            // 들고 있게 되고, 그러면 아래 `if (playingAlt == null)` 가드가
+            // 이후로는 절대 통과하지 못해 새 디스패치 루프가 다시는 안
+            // 걸린다(실측 확인: 다른 좌석이 끼어든 뒤로는 몇 초를 기다려도
+            // 큐에 쌓인 요청이 영원히 재생되지 않았다). 세대를 올리는 이
+            // 시점에 playingAlt를 직접 비워서, 곧바로 새 디스패치 루프가
+            // 시작되게 한다 — 밀려난 옛 코루틴은 다음 틱에 조용히
+            // 자멸하고, 이미 null로 밀어둔 playingAlt를 건드리지 않는다.
+            playingAlt = null;
         }
         altQueue.Enqueue(new AltEffectRequest(owner, blocked, title, list));
         if (playingAlt == null) playingAlt = StartCoroutine(AltDispatchLoop(altGeneration));
@@ -568,8 +584,20 @@ public class GoStopVectorEffect : MonoBehaviour
     {
         var list = cards?.Where(c => c != null).ToList() ?? new List<HwatuCard>();
         if (list.Count == 0 || anchorBox == null) return;
+        // 2026-09-06 — "왼쪽 유저가 흔들었는데 내 상태박스 위에 표시됐다"는
+        // 신고가 있었는데, 격리된 리플렉션 재현(같은 프레임 안에서 좌석→
+        // 슬롯→박스를 계산해 곧바로 호출)으로는 재현이 안 됐다 — 다음에
+        // 재현되면 이 로그로 그 순간 실제로 어떤 박스가 넘어왔는지 확인할 것.
+        Debug.Log($"[GoStopShake] anchorBox={anchorBox.name} path={GetHierarchyPath(anchorBox)}");
         if (playingShake != null) StopCoroutine(playingShake);
         playingShake = StartCoroutine(PlayShakeSeq(anchorBox, list));
+    }
+
+    static string GetHierarchyPath(Transform tr)
+    {
+        var names = new List<string>();
+        while (tr != null) { names.Insert(0, tr.name); tr = tr.parent; }
+        return string.Join("/", names);
     }
 
     IEnumerator PlayShakeSeq(RectTransform anchorBox, List<HwatuCard> cards)

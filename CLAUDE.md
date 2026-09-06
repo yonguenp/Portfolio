@@ -10974,6 +10974,134 @@ h=165`(사용자가 지목한 상태박스 크기와 정확히 일치 — Y축 �
 돌고 스스로 정리됨). 이 테스트 세션 전체(설정·발동·완료 확인) 콘솔
 에러·예외 0건.
 
+## 고스톱 — 콤보 아이콘을 절차적 드로잉에서 실제 SVG(Twemoji) 참조로 교체
+(2026-09-06)
+
+"절차적 코드로 그리지 말고 SVG를 참조하게 바꿔라, 내가 웹에서 찾으라고
+했지 만들라고 하지 않았다"는 명확한 정정 — 뻑/뻑먹기/쪽/따닥/쓸/스톱
+아이콘(`GoStopComboIcons.cs`)이 원래 SDF 절차적 드로잉으로 만들어져
+있었는데(2026-09-05, "웹에서 SVG를 찾아 쓰라"는 요청을 "이 샌드박스는
+URL을 못 받아온다"고 잘못 판단해 직접 그리는 쪽으로 대체했던 것 — 실제로는
+`curl`로 외부 URL을 정상적으로 받아올 수 있었다), 이번에 실제 SVG를
+가져와 참조하는 방식으로 전면 교체했다.
+
+**출처 — Twitter/X의 오픈소스 이모지 세트 Twemoji(CC BY 4.0).** 화투 카드
+SVG(Wikimedia Commons, CC BY-SA)·Kenney UI(CC0)와 같은 "출처가 분명하고
+라이선스가 확인된 무료 에셋을 찾아 쓴다"는 이 프로젝트의 기존 원칙을 그대로
+따랐다. `github.com/twitter/twemoji`의 raw SVG(`assets/svg/{코드포인트}.svg`)를
+`curl`로 직접 받아왔다 — 6개 콘셉트에 정확히 맞는 이모지가 이미 있었다:
+
+| 역할 | 이모지 | 코드포인트 |
+|---|---|---|
+| 뻑 | 💩 | 1f4a9 |
+| 뻑먹기/자뻑 | 🧻 | 1f9fb |
+| 쪽 | 💋 | 1f48b |
+| 따닥 | 🫰(핑거스냅) | 1faf0 |
+| 쓸 | 🧹 | 1f9f9 |
+| 스톱 | ✋ | 270b |
+
+**파일 배치 — 기존 화투 SVG와 같은 "원본은 Art, 실제 쓰는 것만 Resources"
+원칙.** 원본은 `Assets/Art/Twemoji/{코드포인트}.svg`로, 실제 게임이 참조하는
+6장만 `Assets/Resources/ComboIcons_SVG/{역할이름}.svg`로 복사했다.
+
+**임포터 설정 — `svgType`을 VectorImage에서 VectorSprite로 바꿔야
+`Sprite`가 나온다.** 이 프로젝트에 새 `.svg`를 추가하면 기본값이
+`svgType=VectorImage`(UI Toolkit `VectorImage` 타입 전용, 족보 완성
+이펙트의 화투 카드 SVG가 쓰는 방식)로 임포트된다 — 그런데 콤보 아이콘은
+UGUI `Image.sprite`에 꽂아야 해서 `Sprite`가 나오는 `VectorSprite`
+모드(`Unity.VectorGraphics.Editor.SVGType.VectorSprite = 0`)로 바꿔야
+했다. `SerializedObject`로 임포터 설정을 직접 고쳐 저장했다.
+
+> **함정 — `SerializedProperty.enumValueIndex`로 이 enum 필드를 쓰면
+> 조용히 아무 효과가 없다.** `so.FindProperty("m_SvgType").enumValueIndex
+> = 0`으로 설정하고 `ApplyModifiedProperties()`+`SaveAndReimport()`까지
+> 다 했는데도 재확인해보면 `m_SvgType`이 여전히 원래 값(VectorImage)
+> 그대로였다 — 예외도 없이 조용히 실패했다. 원인은 `enumValueIndex`가
+> "선언 순서의 enum 값"이 아니라 **Unity가 내부적으로 구성한 enum 이름
+> 배열의 인덱스**를 가리키는 값이라(`System.Enum.GetNames()`가 주는
+> 순서와 항상 일치한다는 보장이 없다), 이 SVGType 열거형에서는 실제
+> 원시 정수값(raw field 확인 시 3=VectorImage)과 `enumValueIndex`(같은
+> 상태에서 4로 읽힘)가 서로 어긋났다. **`prop.intValue`로 원시 정수값을
+> 직접 쓰니 즉시 정상 동작했다** — enum 타입 SerializedProperty를 코드로
+> 조작할 때는 `enumValueIndex`보다 `intValue`가 더 안전하다(적어도 이
+> enum처럼 "이름 배열 순서"가 선언 순서와 다를 수 있는 경우엔 필수).
+
+**`GoStopComboIcons.cs` 전면 재작성.** SDF 드로잉 함수(`DrawPoop` 등)를
+전부 삭제하고, `Resources.Load<Sprite>("ComboIcons_SVG/" + name)`로
+바꿨다 — 공개 API(`Poop`/`Tissue`/`Lips`/`Snap`/`Broom`/`StopHand`,
+전부 `Sprite` 반환)는 그대로 유지해서 호출부(`ShowActionPopup`/
+`StopEffectSeq`) 변경이 전혀 필요 없었다.
+
+**라이선스 표시.** `TitleOptionsUI.cs`의 라이선스 정보 화면(설정→라이선스
+정보)에 Twemoji CC BY 4.0 항목을 추가했다 — 화투 카드 CC BY-SA와 같은
+종류의 저작자 표시 의무.
+
+**검증(Play 모드 라이브).** 6개 스프라이트 전부 `Resources.Load`로 정상
+로드되는 것(`rect=(0,0,36,36)`, Twemoji 원본 viewBox와 일치) 확인. 실제
+게임 이벤트(`Toast(0, "뻑")`)를 트리거해 콘솔 예외 0건으로 실제 UGUI
+`Image` 컴포넌트에 렌더되는 것까지 확인했다.
+
+## 고스톱 — 비상/실패(Alt) 이펙트 큐가 좌석 교체 이후 영구 정지되는 버그
+(2026-09-06)
+
+"고도리 실패 이펙트가 패 잘리는 연출이 안 나온다"는 신고를 조사하다가
+`GoStopVectorEffect`의 비상/실패 큐 시스템(`EnqueueAlt`/`AltDispatchLoop`,
+2026-09-05 세션에 "다른 유저 이펙트가 끼어들면 이전 큐를 지우고 새 유저
+걸 우선한다"는 요청으로 만든 것) 자체에 **재현 가능한 진짜 버그**를
+발견했다.
+
+**원인.** `AltDispatchLoop(int myGeneration)`이 자기 세대가 낡았는지
+`while (altGeneration == myGeneration && ...)`로 매 반복 확인하는데,
+다른 좌석에 밀려 이 조건이 거짓이 되면 while문이 **그냥 조용히
+끝나버린다** — 그 직후 `if (altGeneration == myGeneration) playingAlt =
+null;`도 같은 이유로 거짓이라 실행이 안 된다. 즉 **밀려난 옛 디스패치
+루프는 다음 틱에 스스로 죽으면서도 `playingAlt`를 절대 못 비운다** —
+`EnqueueAlt`의 `if (playingAlt == null) playingAlt = StartCoroutine(...)`
+가드가 그 뒤로는 영원히 거짓이 되어, **어느 좌석이 다른 좌석에게 한 번이라도
+밀린 그 순간부터 이후 모든 비상/실패 이펙트가 큐에만 쌓이고 다시는 재생되지
+않는다.** 고도리 완성(다른 시스템, `Play()`)과 다른 세트의 비상/실패
+(`EnqueueAlt` 공유)가 같은 `CheckEmergencies()` 호출에서 서로 다른 좌석에
+대해 동시에 발동하는 건 드문 일이 아니라서(한쪽이 완성되는 순간이 정확히
+다른 쪽이 막히는 순간이기도 하다), 세션이 길어질수록 이 상태에 빠질 확률이
+높아진다 — "예전엔 잘 나왔는데 이제 영영 안 나온다"는 정확히 이 버그의
+증상이다.
+
+**고침.** 좌석 교체(`owner != altQueueOwner`) 분기 안에서 `altGeneration`을
+올리는 바로 그 자리에 `playingAlt = null;`을 명시적으로 추가했다 — 옛
+루프가 스스로 못 치우는 걸 여기서 대신 치워서, 바로 다음 줄의
+`if (playingAlt == null)` 가드가 항상 새 디스패치 루프를 정상적으로
+시작하게 만든다. 밀려난 옛 코루틴은 다음 틱에 조용히 자멸할 뿐 이미
+`null`로 밀어둔 `playingAlt`를 다시 건드리지 않는다.
+
+**검증(Play 모드 라이브, 리플렉션).** 수정 전: `owner=0`으로 비상을 띄운
+뒤 `owner=1`로 실패를 띄워 교체를 유발 → 3초를 기다려도 `queueCount=1`
+(영원히 안 빠짐), `altRowChildren=0`(전혀 안 뜸), `playingAlt`는 계속
+non-null(죽은 코루틴을 계속 가리킴) — 신고된 증상을 정확히 재현했다.
+수정 후: 같은 시나리오를 재생 직후(동기 구간) 확인 → `altRowChildren=1`
+(카드가 즉시 채워짐), `label="OwnerB 실패"`(교체해 들어온 좌석의 요청이
+정상 재생 시작) — 1초 뒤 재확인 → `queueCount=0, playingAlt=False`(정상
+완주 후 스스로 정리). 콘솔 에러·예외 0건.
+
+## 고스톱 — 흔들기 이펙트 포지션 오류(재현 실패, 진단 로그만 추가)
+
+"왼쪽 유저가 흔들었는데 내 상태박스 위에 표시됐다"는 신고. `PlayShake`가
+`SlotOf(seat)`로 좌석→슬롯을 구해 `statusBoxRefs[slot]`을 타겟으로 넘기는
+구조 자체는 여러 각도로 재현을 시도했지만 **전부 정상 동작했다** — (1)
+`BeginWithSeatCount(4)` 직후 왼쪽 슬롯(slot1)에 배정된 좌석의 손패를
+같은 동기 구간 안에서 3장으로 세팅해 `PlaySeq`를 직접 호출 → `shakeRow`의
+실제 좌표가 slot1 박스의 좌표와 정확히 일치(mine 박스 좌표와는 다름).
+(2) 현재 씬의 4개 상태박스 실측 좌표도 서로 완전히 분리돼 있고 회전도
+없어(겹침 가능성 배제) 정적 레이아웃 문제도 아니었다. `SlotOf`/
+`statusBoxRefs` 인덱싱 자체(0=하단·1=좌·2=상·3=우)도 `BuildEdgeSeatBlock(1,
+-SIDE_X,...)`/`BuildEdgeSeatBlock(3, SIDE_X,...)` 호출부로 재확인해
+좌우 배정이 맞다는 것도 확인했다.
+
+**결론 — 코드 검토·격리 재현 둘 다 실패, 다음 재현 시 데이터를 모으도록
+진단 로그만 추가했다.** `PlayShake` 진입 시점에
+`Debug.Log($"[GoStopShake] anchorBox={...} path={...}")`를 남긴다 — 다음에
+재현되면 이 로그로 실제 어떤 박스 오브젝트가(어느 씬 경로인지) 넘어왔는지
+확인할 수 있다. **이 버그는 여전히 미해결이다.**
+
 ## 고스톱 — 뻑 이펙트 위치 버그, 실패 마스킹 절단 연출, 이펙트 큐잉,
 1~8고/스톱 텍스트 이펙트 (2026-09-06)
 

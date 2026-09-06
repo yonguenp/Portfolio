@@ -1,222 +1,45 @@
 using UnityEngine;
 
 /// <summary>
-/// 뻑/뻑먹기/쪽/따닥/쓸 센터스크린 아이콘(2026-09-05) — 사용자는 "웹에서
-/// SVG를 찾아서" 요청했지만, 이 프로젝트는 처음부터 커스텀 아트(동전 아이콘,
-/// 카드 뒷면 무늬, 화투 파티클 모티프 등)를 전부 코드로 직접 그려왔다 —
-/// 외부 이미지를 받아오면 출처·라이선스를 확인할 방법이 없고(이 샌드박스는
-/// 임의 URL을 신뢰성 있게 받아오지 못한다), 이 프로젝트가 화투 카드조차
-/// CC BY-SA 원본을 신중히 골라 쓴 전례가 있어 그 원칙을 지켰다 — 그래서
-/// 같은 SDF(signed-distance function) 페인팅 방식(GoStopMotifAtlas와 같은
-/// 기법이지만 그쪽은 private이라 재사용 대신 이 파일에 축소판으로 다시
-/// 구현했다)으로 poop·휴지·입술·핑거스냅·빗자루 5개 아이콘을 직접 그린다.
-/// 정교한 사실화가 아니라 이 프로젝트 전역의 "단순 실루엣" 톤(화투 파티클
-/// 모티프와 같은 수준)에 맞춘 것이다.
+/// 뻑/뻑먹기/쪽/따닥/쓸/스톱 센터스크린 아이콘.
+///
+/// 2026-09-05에 처음 만들 때는 절차적(SDF) 코드로 직접 그렸는데, 사용자가
+/// "웹에서 SVG를 찾아 쓰라고 했지 만들라고 하지 않았다"고 명확히 지적해서
+/// 2026-09-06에 실제 SVG 참조 방식으로 교체했다 — Twitter의 오픈소스 이모지
+/// 세트 Twemoji(CC BY 4.0, twitter/twemoji 저장소)에서 각 콘셉트에 맞는
+/// 이모지를 그대로 가져왔다. 원본은 <c>Assets/Art/Twemoji/</c>에 코드포인트
+/// 파일명 그대로(예: <c>1f4a9.svg</c>) 보관하고, 실제 게임이 쓰는 6장만
+/// <c>Assets/Resources/ComboIcons_SVG/</c>에 역할 이름으로 복사했다(Kenney·
+/// 화투 SVG 때와 같은 "원본은 Art, 실제 쓰는 것만 Resources" 원칙).
+///
+/// | 역할 | 이모지 | 코드포인트 |
+/// |---|---|---|
+/// | 뻑 | 💩 | 1f4a9 |
+/// | 뻑먹기/자뻑 | 🧻 | 1f9fb |
+/// | 쪽 | 💋 | 1f48b |
+/// | 따닥 | 🫰 | 1faf0 |
+/// | 쓸 | 🧹 | 1f9f9 |
+/// | 스톱 | ✋ | 270b |
+///
+/// Twemoji 그래픽은 CC BY 4.0 — 출처 표시가 필요하다(화투 카드 CC BY-SA와
+/// 같은 종류의 의무, 타이틀 설정→라이선스 정보 화면에 이미 같이 적어뒀다).
+/// 앱 전체를 오픈소스로 풀 필요는 없고 이 이미지 자산에만 적용된다.
+///
+/// 각 SVG는 Unity 내장 Vector Graphics 임포터(svgType=VectorSprite)로
+/// 임포트해서 `Sprite`를 직접 만든다 — 벡터라서 크기를 키워도(뻑 이펙트가
+/// 300×300까지 커진다) 깨지지 않는다. `Resources.Load`는 최초 1회만 하고
+/// 캐싱해서 재사용한다.
 /// </summary>
 public static class GoStopComboIcons
 {
-    const int Size = 128;
+    const string ResPrefix = "ComboIcons_SVG/";
+
     static Sprite poopSprite, tissueSprite, lipsSprite, snapSprite, broomSprite, stopHandSprite;
 
-    public static Sprite Poop     => poopSprite     != null ? poopSprite     : (poopSprite     = Build(DrawPoop));
-    public static Sprite Tissue   => tissueSprite   != null ? tissueSprite   : (tissueSprite   = Build(DrawTissue));
-    public static Sprite Lips     => lipsSprite     != null ? lipsSprite     : (lipsSprite     = Build(DrawLips));
-    public static Sprite Snap     => snapSprite     != null ? snapSprite     : (snapSprite     = Build(DrawSnap));
-    public static Sprite Broom    => broomSprite    != null ? broomSprite    : (broomSprite    = Build(DrawBroom));
-    public static Sprite StopHand => stopHandSprite != null ? stopHandSprite : (stopHandSprite = Build(DrawStopHand));
-
-    static Sprite Build(System.Action<Color32[]> draw)
-    {
-        var px = new Color32[Size * Size]; // 전부 투명(0,0,0,0)에서 시작
-        draw(px);
-        var tex = new Texture2D(Size, Size, TextureFormat.RGBA32, false);
-        tex.filterMode = FilterMode.Bilinear;
-        tex.SetPixels32(px);
-        tex.Apply();
-        tex.hideFlags = HideFlags.HideAndDontSave;
-        return Sprite.Create(tex, new Rect(0, 0, Size, Size), new Vector2(0.5f, 0.5f), Size);
-    }
-
-    static void Set(Color32[] px, int x, int y, Color c, float a)
-    {
-        if (x < 0 || y < 0 || x >= Size || y >= Size) return;
-        int idx = y * Size + x;
-        float newA = Mathf.Clamp01(a);
-        var existing = px[idx];
-        // 함정 — 여기 원래 "<="였다(GoStopMotifAtlas.Set과 같은 규칙, 겹치지
-        // 않는 불투명 도형들끼리는 안전하다). 그런데 이 파일은 "흰 몸통
-        // 위에 진한 튜브 구멍을 나중에 그린다"처럼 **의도적으로 겹치는
-        // 불투명 전경 디테일**이 많다 — 두 도형이 같은 픽셀에서 둘 다
-        // 알파 1.0(완전 불투명)로 끝나면 부동소수점이 정확히 같은 1.0f로
-        // 맞아떨어져 "<="에 걸려 나중 도형이 통째로 무시됐다(휴지 튜브
-        // 구멍·입술 라인/광택·스냅 중심 하이라이트가 전부 안 보이는 걸
-        // PNG로 직접 저장해 확인하고 나서야 발견했다). "<"로 좁혀서
-        // 알파가 같을 땐 나중 그림이 이기게(=의도한 레이어 순서) 했다 —
-        // 알파가 실제로 더 낮을 때만(안티에일리어싱 경계) 기존 걸 지킨다.
-        if (newA < existing.a / 255f) return;
-        px[idx] = new Color32((byte)(c.r * 255), (byte)(c.g * 255), (byte)(c.b * 255), (byte)(newA * 255));
-    }
-
-    /// <paramref name="sdf"/>가 음수면 안쪽, 0이 경계 — feather 폭으로 경계를 부드럽게 깎는다.
-    static void Paint(Color32[] px, System.Func<float, float, float> sdf, Color color, float feather = 0.035f)
-    {
-        for (int y = 0; y < Size; y++)
-        {
-            float v = (y + 0.5f) / Size * 2f - 1f;
-            for (int x = 0; x < Size; x++)
-            {
-                float u = (x + 0.5f) / Size * 2f - 1f;
-                float d = sdf(u, v);
-                float a = Mathf.Clamp01(0.5f - d / feather);
-                if (a > 0f) Set(px, x, y, color, a);
-            }
-        }
-    }
-
-    static float EllipseD(float u, float v, float rx, float ry)
-    {
-        float du = u / rx, dv = v / ry;
-        return Mathf.Sqrt(du * du + dv * dv) - 1f;
-    }
-
-    static float BoxD(float u, float v, float hw, float hh)
-    {
-        float dx = Mathf.Abs(u) - hw, dy = Mathf.Abs(v) - hh;
-        float ax = Mathf.Max(dx, 0f), ay = Mathf.Max(dy, 0f);
-        return Mathf.Sqrt(ax * ax + ay * ay) + Mathf.Min(Mathf.Max(dx, dy), 0f);
-    }
-
-    // ── 뻑(위기감) — 똥 모양 3단 스월 + 만화식 눈 두 개 ──────────────
-    static void DrawPoop(Color32[] px)
-    {
-        var brown = new Color(0.40f, 0.27f, 0.15f);
-        var brownLight = new Color(0.52f, 0.37f, 0.20f);
-        Paint(px, (u, v) => EllipseD(u + 0.04f, v + 0.56f, 0.60f, 0.32f), brown);   // 밑단(가장 큼)
-        Paint(px, (u, v) => EllipseD(u - 0.05f, v + 0.14f, 0.46f, 0.30f), brown);   // 중단
-        Paint(px, (u, v) => EllipseD(u + 0.06f, v - 0.28f, 0.32f, 0.26f), brown);   // 상단
-        Paint(px, (u, v) => EllipseD(u - 0.01f, v - 0.58f, 0.15f, 0.15f), brown);   // 꼭대기 소용돌이 끝
-        Paint(px, (u, v) => EllipseD(u - 0.15f, v - 0.62f, 0.06f, 0.06f), brownLight, 0.05f); // 하이라이트
-        // 만화식 눈
-        Paint(px, (u, v) => EllipseD(u + 0.15f, v - 0.02f, 0.055f, 0.075f), Color.white, 0.03f);
-        Paint(px, (u, v) => EllipseD(u - 0.19f, v - 0.02f, 0.055f, 0.075f), Color.white, 0.03f);
-        Paint(px, (u, v) => EllipseD(u + 0.15f, v, 0.025f, 0.035f), Color.black, 0.02f);
-        Paint(px, (u, v) => EllipseD(u - 0.19f, v, 0.025f, 0.035f), Color.black, 0.02f);
-    }
-
-    // ── 뻑먹기(상쾌함) — 두루마리 화장지 ────────────────────────────
-    static void DrawTissue(Color32[] px)
-    {
-        var white = new Color(0.97f, 0.97f, 0.94f);
-        var tube = new Color(0.55f, 0.50f, 0.42f);
-        var shade = new Color(0.85f, 0.85f, 0.80f);
-        // 몸통 — 세로 캡슐(위아래 반원 + 중간 직선 구간을 하나의 SDF로 근사)
-        Paint(px, (u, v) =>
-        {
-            float vv = Mathf.Clamp(v, -0.32f, 0.32f);
-            return EllipseD(u, v - vv, 0.40f, 0.40f);
-        }, white, 0.04f);
-        Paint(px, (u, v) => EllipseD(u, v - 0.60f, 0.19f, 0.085f), tube, 0.03f); // 위쪽 튜브 구멍
-        Paint(px, (u, v) => BoxD(u - 0.10f, v, 0.010f, 0.50f), shade, 0.02f);    // 롤 결 음영선
-        Paint(px, (u, v) => BoxD(u + 0.16f, v, 0.010f, 0.50f), shade, 0.02f);
-        Paint(px, (u, v) => BoxD(u - 0.52f, v + 0.70f, 0.15f, 0.20f), white, 0.03f); // 늘어진 화장지 조각
-    }
-
-    // ── 쪽 — 입술(키스마크) ─────────────────────────────────────────
-    static void DrawLips(Color32[] px)
-    {
-        var red = new Color(0.85f, 0.16f, 0.35f);
-        var redDark = new Color(0.60f, 0.07f, 0.20f);
-        var shine = new Color(1f, 0.75f, 0.80f);
-        Paint(px, (u, v) => EllipseD(u + 0.19f, v - 0.08f, 0.27f, 0.19f), red, 0.03f); // 윗입술 좌
-        Paint(px, (u, v) => EllipseD(u - 0.19f, v - 0.08f, 0.27f, 0.19f), red, 0.03f); // 윗입술 우
-        Paint(px, (u, v) => EllipseD(u, v + 0.26f, 0.44f, 0.28f), red, 0.03f);          // 아랫입술
-        Paint(px, (u, v) => BoxD(u, v - 0.02f, 0.40f, 0.014f), redDark, 0.01f);         // 입술 라인
-        Paint(px, (u, v) => EllipseD(u - 0.12f, v + 0.20f, 0.08f, 0.05f), shine, 0.03f); // 광택
-    }
-
-    // ── 따닥 — 핑거스냅(스파크) ──────────────────────────────────────
-    static void DrawSnap(Color32[] px)
-    {
-        var yellow = new Color(1f, 0.85f, 0.20f);
-        Paint(px, (u, v) =>
-        {
-            float r = Mathf.Sqrt(u * u + v * v);
-            float ang = Mathf.Atan2(v, u);
-            const int points = 6;
-            float seg = Mathf.PI / points;
-            float folded = Mathf.Repeat(ang, 2f * seg) - seg;
-            float t = Mathf.Abs(folded) / seg;
-            float outerR = Mathf.Lerp(0.86f, 0.22f, t);
-            return r / outerR - 1f;
-        }, yellow, 0.04f);
-        Paint(px, (u, v) => EllipseD(u, v, 0.17f, 0.17f), Color.white, 0.05f); // 중심 하이라이트
-    }
-
-    // ── 쓸 — 빗자루 ──────────────────────────────────────────────────
-    static void DrawBroom(Color32[] px)
-    {
-        var handle = new Color(0.55f, 0.36f, 0.18f);
-        var bristle = new Color(0.82f, 0.66f, 0.30f);
-        var bristleDark = new Color(0.70f, 0.54f, 0.22f);
-        const float ang = -18f * Mathf.Deg2Rad;
-        float cosA = Mathf.Cos(ang), sinA = Mathf.Sin(ang);
-        Paint(px, (u, v) =>
-        {
-            float ru = u * cosA - v * sinA;
-            float rv = u * sinA + v * cosA;
-            return BoxD(ru, rv - 0.12f, 0.05f, 0.52f);
-        }, handle, 0.03f); // 손잡이(대각선 막대)
-        for (int i = -2; i <= 2; i++)
-        {
-            float offset = i * 0.10f;
-            var col = (i % 2 == 0) ? bristle : bristleDark;
-            Paint(px, (u, v) => BoxD(u - offset * 1.3f, v + 0.55f, 0.045f, 0.30f), col, 0.03f);
-        }
-        Paint(px, (u, v) => BoxD(u, v + 0.30f, 0.34f, 0.055f), handle, 0.02f); // 솔 밑동 띠
-    }
-
-    // ── 스톱 — 손바닥을 편 "정지" 손모양 ──────────────────────────────
-    // 2026-09-06 — 손가락 4개(세로 박스, 살짝 다른 높이) + 엄지(옆으로
-    // 튀어나온 박스) + 손바닥(둥근 박스)을 합성한 단순 실루엣. 완전한
-    // 손 윤곽선을 SDF로 정교하게 뽑기보다, "손을 펴서 멈추라는" 제스처가
-    // 실루엣만으로 읽히는 선에서 단순화했다(이 프로젝트 전역의 다른
-    // 아이콘들과 같은 수준).
-    static void DrawStopHand(Color32[] px)
-    {
-        var skin = new Color(0.95f, 0.78f, 0.55f);
-        var shade = new Color(0.82f, 0.63f, 0.42f);
-
-        // 손바닥(손가락 아래 몸통)
-        Paint(px, (u, v) => BoxD(u, v + 0.30f, 0.34f, 0.30f), skin, 0.04f);
-        // 손목(아래로 이어짐)
-        Paint(px, (u, v) => BoxD(u, v + 0.72f, 0.20f, 0.14f), skin, 0.04f);
-
-        // 손가락 4개 — 각자 다른 높이로 세운 세로 박스(검지가 가장 길고
-        // 새끼로 갈수록 짧아지는 자연스러운 실루엣)
-        float[] fingerX = { -0.27f, -0.09f, 0.09f, 0.27f };
-        float[] fingerTop = { -0.62f, -0.72f, -0.68f, -0.52f }; // 화면 위(-)일수록 손가락 끝
-        for (int i = 0; i < 4; i++)
-        {
-            float x = fingerX[i], top = fingerTop[i];
-            float centerV = (top + 0.02f) * 0.5f; // 박스 중심(손바닥 상단 근처 ~ 손끝)
-            float halfH = (0.02f - top) * 0.5f;
-            Paint(px, (u, v) => BoxD(u - x, v - centerV, 0.075f, halfH), skin, 0.035f);
-        }
-        // 엄지 — 옆으로 비스듬히 튀어나온 박스
-        const float thumbAng = 35f * Mathf.Deg2Rad;
-        float tc = Mathf.Cos(thumbAng), ts = Mathf.Sin(thumbAng);
-        Paint(px, (u, v) =>
-        {
-            float du = u + 0.36f, dv = v + 0.12f;
-            float ru = du * tc + dv * ts, rv = -du * ts + dv * tc;
-            return BoxD(ru, rv, 0.16f, 0.07f);
-        }, skin, 0.035f);
-
-        // 손가락 사이 음영선 — 입체감
-        for (int i = 0; i < 3; i++)
-        {
-            float x = (fingerX[i] + fingerX[i + 1]) * 0.5f;
-            Paint(px, (u, v) => BoxD(u - x, v + 0.30f, 0.008f, 0.28f), shade, 0.02f);
-        }
-    }
+    public static Sprite Poop     => poopSprite     != null ? poopSprite     : (poopSprite     = Resources.Load<Sprite>(ResPrefix + "poop"));
+    public static Sprite Tissue   => tissueSprite   != null ? tissueSprite   : (tissueSprite   = Resources.Load<Sprite>(ResPrefix + "tissue"));
+    public static Sprite Lips     => lipsSprite     != null ? lipsSprite     : (lipsSprite     = Resources.Load<Sprite>(ResPrefix + "lips"));
+    public static Sprite Snap     => snapSprite     != null ? snapSprite     : (snapSprite     = Resources.Load<Sprite>(ResPrefix + "snap"));
+    public static Sprite Broom    => broomSprite    != null ? broomSprite    : (broomSprite    = Resources.Load<Sprite>(ResPrefix + "broom"));
+    public static Sprite StopHand => stopHandSprite != null ? stopHandSprite : (stopHandSprite = Resources.Load<Sprite>(ResPrefix + "stophand"));
 }
