@@ -11041,6 +11041,32 @@ UGUI `Image.sprite`에 꽂아야 해서 `Sprite`가 나오는 `VectorSprite`
 게임 이벤트(`Toast(0, "뻑")`)를 트리거해 콘솔 예외 0건으로 실제 UGUI
 `Image` 컴포넌트에 렌더되는 것까지 확인했다.
 
+> **버그(당일 후속) — `svgType=VectorSprite`로는 UGUI에서 아예 안
+> 보인다.** 커밋 직후 "이번에 수정한 SVG가 안 나온다"는 신고를 받고 조사—
+> `VectorSprite` 모드는 `sprite.texture`가 **null인 순수 메시 스프라이트**
+> (정점 색으로 채운 폴리곤, `SpriteRenderer`/월드 스페이스 2D 오브젝트
+> 전용 방식)를 만든다. UGUI `Image`는 `sprite.texture`를 샘플링해서
+> 그리는 텍스처 기반 렌더링이라, 텍스처가 없는 이 스프라이트를 그냥 안
+> 그린다(예외도 안 남기고 조용히 빈 화면). **`svgType`을
+> `TexturedSprite`(값 1)로 바꿔서 고쳤다** — 이 모드는 SVG를 실제
+> `Texture2D`로 래스터화한 뒤 평범한 4-vertex 사각 메시 스프라이트로
+> 감싸서, 일반 PNG 스프라이트와 완전히 동일하게 UGUI `Image`에서
+> 렌더링된다. 벡터 확대 이점은 포기하지만(이제 고정 해상도 래스터,
+> 256px 기준), 이 아이콘들은 화면에서 최대 300px 정도로만 쓰이니
+> 체감 열화가 없다. 6개 파일 전부 `intValue=1`로 재설정 후 재임포트해
+> `sprite.texture != null`(256×256 전후 실제 텍스처)이 되는 것과, 텍스처를
+> PNG로 저장해 직접 열어봐서(이 프로젝트 확립된 검증 방식 — 스크린샷
+> 대신 직접 렌더 결과를 저장해서 눈으로 확인) 뻑(💩)·따닥(🫰)·스톱(✋)
+> 아이콘이 전부 의도한 그림으로 정확히 나오는 것까지 확인했다.
+>
+> **교훈 — Unity Vector Graphics의 `SVGType`은 렌더링 파이프라인별로
+> 완전히 다른 자산을 만든다.** `VectorImage`(UI Toolkit 전용, 족보 완성
+> 이펙트가 쓰는 방식)·`VectorSprite`(메시+정점색, SpriteRenderer용)·
+> `TexturedSprite`(래스터+사각 메시, UGUI Image용) 세 가지가 서로 호환
+> 안 되는 별개 산출물이다 — "SVG를 Sprite로 쓰고 싶다"는 요구 하나에도
+> **어느 렌더링 시스템(UGUI vs UI Toolkit vs SpriteRenderer)에 꽂을
+> 것인지**에 따라 맞는 svgType이 갈린다는 걸 이번에 명확히 확인했다.
+
 ## 고스톱 — 비상/실패(Alt) 이펙트 큐가 좌석 교체 이후 영구 정지되는 버그
 (2026-09-06)
 
