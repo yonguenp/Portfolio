@@ -8630,6 +8630,49 @@ Portfolio 저장소(`github.com/yonguenp/Portfolio`)가 GitHub Pages로 이미
 폴더로 나가고, 이 프로젝트 저장소엔 소스만 남긴다**는 원칙을 지키기
 위해서다.
 
+### 이 저장소(소스) 자체의 push 방법 — `git subtree` (2026-09-06,
+사용자가 두 번째로 알려줌 — 반드시 여기 적어둘 것)
+
+**이 UnityWithClaude 프로젝트 저장소에는 자체 GitHub 원격이 없다.**
+`git remote -v`가 비어 있는 게 정상이다 — 소스 코드 전체가
+**`github.com/yonguenp/Portfolio` 저장소의 `AI - R&D/UnityWithClaude/`
+서브디렉터리**로 `git subtree`를 통해 들어가 있다(WebGL 빌드 산출물이
+들어가는 `unitywithclaude/`와는 다른 폴더다 — 헷갈리지 말 것. 하나는
+플레이 가능한 빌드, 하나는 소스 전체).
+
+**최초 연결**은 `git-subtree-dir`/`git-subtree-split` 트레일러가 남아있는
+Portfolio 저장소의 커밋 `8ae67ad`("Add UnityWithClaude project (full
+history) under AI - R&D/UnityWithClaude")로 확인할 수 있다 — `git
+subtree add --prefix="AI - R&D/UnityWithClaude" <이 저장소 경로> main`
+(squash 없이, 전체 히스토리 보존)으로 만들어졌다.
+
+**이후 새 커밋을 반영하는 절차** (Portfolio 저장소 쪽에서 실행):
+```bash
+cd /Users/yonguen/Documents/Portfolio   # 이 컴퓨터의 로컬 clone 경로
+# 최초 1회만 — 이 로컬 UnityWithClaude 저장소를 원격으로 등록해 둔다
+git remote add unitywithclaude-src /Users/yonguen/UnityWithClaude/UnityWithClaude
+git fetch unitywithclaude-src
+git subtree pull --prefix="AI - R&D/UnityWithClaude" unitywithclaude-src main -m "Sync UnityWithClaude N commits — ..."
+git push origin main
+```
+`unitywithclaude-src` 원격은 이미 Portfolio 저장소에 등록해 뒀다(2026-09-06)
+— 다음부터는 `git fetch unitywithclaude-src` → `git subtree pull ...`
+→ `git push origin main` 세 줄이면 된다. **`git subtree push`(반대
+방향, split해서 밀어내기)가 아니라 `pull`이다** — 실제 작업은 항상
+로컬 UnityWithClaude 저장소에서 이뤄지므로, Portfolio 쪽에서 그 변경을
+당겨오는 `pull`이 맞는 방향이다.
+
+> **함정 — `/Users/yonguen/Documents/`, `.../용근/Git/`, `.../용근/샌드박스/이직/`
+> 세 곳 모두에 `Portfolio`라는 이름의 클론이 있다.** 뒤의 둘은
+> `unitywithclaude` 폴더가 없는 무관한(다른 용도의) 클론이다 —
+> **`/Users/yonguen/Documents/Portfolio`가 맞는 경로**다(`ls`로
+> `unitywithclaude`/`AI - R&D` 존재 여부를 확인해서 구분할 것).
+
+이 사실을 이전 세션에서도 사용자가 알려줬는데 문서화를 안 해서 다시
+물어봐야 했다 — **반드시 여기(CLAUDE.md)에 남길 것.** 다음에 "이
+저장소를 push해달라"는 요청이 오면 이 섹션부터 볼 것, 원격 URL을 다시
+묻거나 추측하지 말 것.
+
 ## 고스톱 4인판 — 필드 카드를 pos1~12 마커에 attach + 슬램다운 애니메이션
 버그 3종 (2026-09-02)
 

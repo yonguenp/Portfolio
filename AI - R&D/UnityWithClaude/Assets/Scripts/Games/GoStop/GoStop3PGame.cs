@@ -802,7 +802,7 @@ public partial class GoStop3PGame : MonoBehaviour
             dualPiPopup.Show();
         if (snap.declarePending)
         {
-            declarePopup.messageText.text = $"{snap.declareDealerName}이(가) 선입니다. 이번 판 참가하시겠습니까?";
+            declarePopup.messageText.text = $"{snap.declareDealerName}님이 선입니다. 이번 판 참가하시겠습니까?";
             declarePopup.Show();
         }
 
@@ -1420,7 +1420,7 @@ public partial class GoStop3PGame : MonoBehaviour
         if (candidate == PLAYER_SEAT)
         {
             pendingDeclareChoice = null;
-            declarePopup.messageText.text = $"{SeatName(dealerSeat)}이(가) 선입니다. 이번 판 참가하시겠습니까?";
+            declarePopup.messageText.text = $"{SeatName(dealerSeat)}님이 선입니다. 이번 판 참가하시겠습니까?";
             declarePopup.Show();
             // 2026-09-05 — 네트워크 대전에서만 10초 제한(오프라인 vs AI는
             // 서두를 이유가 없어 그대로 무한정 대기). 무응답 기본값은
@@ -2427,7 +2427,7 @@ public partial class GoStop3PGame : MonoBehaviour
         GoStopIcons.SpawnBurst(canvasRoot, local, EmergencyColor(setName), 20);
         GoStopVectorEffect.Ensure().PlayEmergency(seat, $"{SeatName(seat)} {setName} 비상!", cards);
 
-        ShowTimedToast($"{SeatName(seat)}이(가) {setName} 완성 직전!");
+        ShowTimedToast($"{SeatName(seat)}님이 {setName} 완성 직전!");
         GoStopAudio.Instance?.Siren();
     }
 
@@ -2457,7 +2457,7 @@ public partial class GoStop3PGame : MonoBehaviour
         GoStopIcons.SpawnBurst(canvasRoot, local, new Color(0.75f, 0.2f, 0.2f), 16);
         GoStopVectorEffect.Ensure().PlayBlocked(seat, $"{SeatName(seat)} {setName} 실패", cards);
 
-        ShowTimedToast($"{SeatName(seat)}의 {setName}이(가) 막혔습니다");
+        ShowTimedToast($"{SeatName(seat)}의 {setName}이 막혔습니다");
         GoStopAudio.Instance?.Slice();
     }
 
@@ -2493,9 +2493,9 @@ public partial class GoStop3PGame : MonoBehaviour
 
         GoStopIcons.SpawnBurst(canvasRoot, local, EmergencyColor(setName), 30);
 
-        GoStopVectorEffect.Ensure().Play($"{SeatName(seat)}이(가) {setName} 완성!", EmergencyColor(setName), cards);
+        GoStopVectorEffect.Ensure().Play($"{SeatName(seat)}님이 {setName} 완성!", EmergencyColor(setName), cards);
 
-        ShowTimedToast($"{SeatName(seat)}이(가) {setName} 완성!");
+        ShowTimedToast($"{SeatName(seat)}님이 {setName} 완성!");
         GoStopAudio.Instance?.Fanfare(); // 2026-09-05 — 기존 Win()보다 웅장한 전용 사운드로 교체(실제 게임 승리와는 다른 소리여야 구분된다)
     }
 
@@ -2543,9 +2543,9 @@ public partial class GoStop3PGame : MonoBehaviour
 
         GoStopIcons.SpawnBurst(canvasRoot, local, color, 30);
 
-        GoStopVectorEffect.Ensure().Play($"{SeatName(seat)}이(가) {label} 완성!", color, gwangCards);
+        GoStopVectorEffect.Ensure().Play($"{SeatName(seat)}님이 {label} 완성!", color, gwangCards);
 
-        ShowTimedToast($"{SeatName(seat)}이(가) {label} 완성!");
+        ShowTimedToast($"{SeatName(seat)}님이 {label} 완성!");
         GoStopAudio.Instance?.Fanfare();
     }
 
@@ -2867,7 +2867,7 @@ public partial class GoStop3PGame : MonoBehaviour
         // 그런 특별한 사건이 한동안 안 터지면(흔한 경우) 채팅창이 계속
         // 비어 있어 보인다 — 매턴 기본 로그를 하나 깔아서 항상 뭔가
         // 올라오게 한다.
-        AppendChatLine($"{SeatNameFor(seat, -1)}이(가) {card.month}월 패를 냈습니다");
+        AppendChatLine($"{SeatNameFor(seat, -1)}님이 {card.month}월 패를 냈습니다");
 
         if (h.Count(c => c.month == card.month) == 3 && declareShake && shookMonths[seat].Add(card.month))
         {
@@ -3774,7 +3774,7 @@ public partial class GoStop3PGame : MonoBehaviour
                 // 고를 부른 순간 점수에도 +1이 즉시 반영된다(정산 때만 반영되던
                 // 걸 화면 표시에도 맞췄다 — "3점에서 고하면 4점이 돼야 한다"는
                 // 신고).
-                ShowTimedToast($"{SeatName(seat)}가 고를 외쳤습니다! ({rawScore + goCount[seat]}점)");
+                ShowTimedToast($"{SeatName(seat)}님이 고를 외쳤습니다! ({rawScore + goCount[seat]}점)");
                 GoStopAudio.Instance?.Go();
                 FireGoEffect(seat, goCount[seat]);
                 AdvanceTurn();
@@ -3815,7 +3815,7 @@ public partial class GoStop3PGame : MonoBehaviour
             goCount[seat]++;
             lastGoScore[seat] = rawScore;
             calledGo[seat] = true;
-            ShowTimedToast($"{SeatName(seat)}가 고를 외쳤습니다! ({rawScore + goCount[seat]}점)");
+            ShowTimedToast($"{SeatName(seat)}님이 고를 외쳤습니다! ({rawScore + goCount[seat]}점)");
             GoStopAudio.Instance?.Go();
             FireGoEffect(seat, goCount[seat]);
             AdvanceTurn();
