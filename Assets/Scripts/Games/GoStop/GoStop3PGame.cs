@@ -86,11 +86,23 @@ public partial class GoStop3PGame : MonoBehaviour
     }
 
     // ── 판돈 ─────────────────────────────────────────────
-    const int STARTING_MONEY = 100_000;
+    const int STARTING_MONEY = 100_000; // 네트워크 대전 전용 기본값 — 오프라인은 아래 PLAYER_STARTING_MONEY/GoStopCharacters.StartingMoney를 쓴다
+    // 2026-09-06(사용자 확인) — 오프라인(vs AI) 플레이의 내 시드머니.
+    // AI는 캐릭터 티어별로 다르다(GoStopCharacters.StartingMoney).
+    const int PLAYER_STARTING_MONEY = 500_000;
     // 2026-08-23(design.md §49.2): 예전엔 고정 상수였다 — 이제 네트워크
     // 방에서는 호스트가 Home 화면에서 정한 값을 쓴다(Awake()에서 읽어옴).
     // 오프라인(vs AI) 플레이는 이 UI 대상이 아니라서 계속 기본값(100원).
     int WON_PER_POINT = 100;
+
+    // 2026-09-06(사용자 확인) — "AI-A/B/C 대신 타짜 등장인물 이름 + 난이도".
+    // 좌석 인덱스가 아니라 "이름"으로 정체성이 이어져야 하므로(매 세션
+    // 랜덤 배정이라 같은 사람이 다른 좌석에 앉을 수 있다) 좌석→캐릭터
+    // 매핑을 별도 배열로 둔다. PLAYER_SEAT 자리는 안 채운다(항상 "나").
+    // Start()에서 한 번만 뽑고, 다운그레이드(ApplyDowngrade)에서 money[]와
+    // 같은 방식으로 압축해서 살아남은 좌석의 정체성을 유지한다.
+    readonly string[] seatCharName = new string[SEATS_MAX];
+    readonly GoStopTier[] seatTier = new GoStopTier[SEATS_MAX];
     // 광팔이 — 사용자 확인 규칙: 광이나 쌍피 계열(쌍피·9월 열끗·보너스 조커)
     // 한 장당 "1점 가격"씩을, 2·3번째(선을 제외한, 나를 밀어낸 두 명)에게서
     // "각각" 받는다(2인이 각자 내므로 카드 한 장당 실수령은 1점 가격의
@@ -115,12 +127,23 @@ public partial class GoStop3PGame : MonoBehaviour
     // 남아있다. "시작 자금"을 결과 화면에 보여주려면 여기 따로 남겨둬야 한다.
     readonly int[] pendingMoneyBefore = new int[SEATS_MAX];
 
+    /// <summary>2026-09-06 — 좌석 인덱스 기반 저장(플레이어 전용)과 캐릭터
+    /// 이름 기반 저장(AI 전용)을 갈라 부른다. AI 쪽은 seatCharName[s]로
+    /// 어느 캐릭터인지 알아내서 그 이름으로 저장한다 — 다음 세션에 이
+    /// 캐릭터가 다른 좌석에 랜덤 배정돼도 같은 지갑을 이어받는다.</summary>
     void SaveMoney()
     {
         for (int s = 0; s < SEATS; s++)
         {
-            PlayerPrefs.SetInt(MoneyKey(s), money[s]);
-            PlayerPrefs.SetInt(AllInKey(s), allInCount[s]);
+            if (s == PLAYER_SEAT)
+            {
+                PlayerPrefs.SetInt(MoneyKey(s), money[s]);
+                PlayerPrefs.SetInt(AllInKey(s), allInCount[s]);
+            }
+            else if (!string.IsNullOrEmpty(seatCharName[s]))
+            {
+                GoStopCharacters.SaveMoney(seatCharName[s], money[s]);
+            }
         }
         PlayerPrefs.Save();
     }
@@ -163,14 +186,26 @@ public partial class GoStop3PGame : MonoBehaviour
     {
         var survivorMoney = new List<int>();
         var survivorAllIn = new List<int>();
+        var survivorCharName = new List<string>();
+        var survivorTier = new List<GoStopTier>();
         for (int s = 0; s < SEATS; s++)
         {
             if (bankruptSeats.Contains(s)) continue;
             survivorMoney.Add(money[s]);
             survivorAllIn.Add(allInCount[s]);
+            survivorCharName.Add(seatCharName[s]);
+            survivorTier.Add(seatTier[s]);
         }
         int newSeats = survivorMoney.Count;
-        for (int i = 0; i < newSeats; i++) { money[i] = survivorMoney[i]; allInCount[i] = survivorAllIn[i]; }
+        for (int i = 0; i < newSeats; i++)
+        {
+            money[i] = survivorMoney[i]; allInCount[i] = survivorAllIn[i];
+            // 2026-09-06 — money[]/allInCount[]와 같은 방식으로 캐릭터
+            // 정체성도 같이 압축한다. 안 그러면 좌석이 당겨진 뒤
+            // seatCharName[새 인덱스]가 여전히 압축 전 옛 좌석의 캐릭터를
+            // 가리켜 "다른 사람 이름이 뜨는" 버그가 난다.
+            seatCharName[i] = survivorCharName[i]; seatTier[i] = survivorTier[i];
+        }
         SetSeatCount(newSeats);
         dealerSeat = 0; // 다운그레이드 직후엔 선을 단순하게 나로 리셋한다(누가 이겼는지와 무관하게)
         SaveMoney();
@@ -1050,15 +1085,33 @@ public partial class GoStop3PGame : MonoBehaviour
 
         if (!isNetworkHost && !isNetworkGuest)
         {
-            // 저장된 잔액이 있으면 이어서 쓰고, 없으면(첫 실행) 10만원으로
-            // 시작한다. 네트워크 판은 이 로컬 저장을 안 쓴다 — 매판 접속하는
-            // 실제 사람이 달라질 수 있어 "이 기기의 좌석 N 잔액"이라는
-            // 개념 자체가 성립하지 않는다(잔액은 항상 호스트의 StateSync가
-            // 정답이다).
+            // 2026-09-06(사용자 확인) — "AI-A/B/C 대신 타짜 캐릭터, 게임
+            // 시작시 랜덤으로 입장, 0원 된 캐릭터는 등장 안 함". 세션이
+            // 시작될 때(Start()는 씬 진입당 한 번) 은퇴 안 한 캐릭터 중
+            // PLAYER_SEAT를 제외한 좌석 수만큼 무작위로(중복 없이) 뽑는다
+            // — 이후 "다시 시작"으로 여러 판을 이어도 같은 사람들이 계속
+            // 앉아 있는다(실제 카드 테이블처럼 한 번 앉으면 판마다 안
+            // 바뀐다). 저장된 잔액이 있으면(이 캐릭터가 예전에도 등장한
+            // 적 있음) 이어서 쓰고, 없으면(처음 등장) 티어별 시드머니로
+            // 시작한다 — 플레이어 본인은 여전히 좌석 인덱스 기반 키를
+            // 그대로 쓴다(기존 저장과 호환).
+            var drawnChars = GoStopCharacters.DrawRandom(SEATS - 1);
+            int drawIdx = 0;
             for (int s = 0; s < SEATS; s++)
             {
-                money[s] = PlayerPrefs.GetInt(MoneyKey(s), STARTING_MONEY);
-                allInCount[s] = PlayerPrefs.GetInt(AllInKey(s), 0);
+                if (s == PLAYER_SEAT)
+                {
+                    money[s] = PlayerPrefs.GetInt(MoneyKey(s), PLAYER_STARTING_MONEY);
+                    allInCount[s] = PlayerPrefs.GetInt(AllInKey(s), 0);
+                }
+                else
+                {
+                    var ch = drawnChars[drawIdx++];
+                    seatCharName[s] = ch.name;
+                    seatTier[s] = ch.tier;
+                    money[s] = GoStopCharacters.LoadMoney(ch.name, ch.tier);
+                    allInCount[s] = 0; // AI 개인별 올인 횟수는 세션 내 표시용일 뿐 영구 저장 범위 밖
+                }
             }
         }
         else if (isNetworkHost)
@@ -1327,7 +1380,7 @@ public partial class GoStop3PGame : MonoBehaviour
             // design.md §50.1 — 무응답(타임아웃) 시 불참(죽기) 처리.
             wantsIn = declMsg?.boolValue ?? false;
         }
-        else wantsIn = GoStopAI.WantsToPlay(hand[candidate]);
+        else wantsIn = GoStopAI.WantsToPlay(hand[candidate], seatTier[candidate]);
         onResult(wantsIn);
     }
 
@@ -1653,7 +1706,10 @@ public partial class GoStop3PGame : MonoBehaviour
             if (names != null && seat >= 0 && seat < names.Length && !string.IsNullOrEmpty(names[seat]))
                 return names[seat];
         }
-        return seat switch { 0 => "AI", 1 => "AI-A", 2 => "AI-B", 3 => "AI-C", _ => "?" };
+        // 2026-09-06(사용자 확인) — "AI-A/B/C 대신 타짜 캐릭터 이름".
+        // 오프라인 전용 분기(네트워크는 위에서 이미 리턴)라 seat는 항상
+        // AI 좌석 — seatCharName이 세션 시작 때 뽑아둔 이름을 그대로 쓴다.
+        return !string.IsNullOrEmpty(seatCharName[seat]) ? seatCharName[seat] : "AI";
     }
 
     // ── 피 뺏기 헬퍼 (다자간 일반화) ────────────────────────
@@ -2716,8 +2772,8 @@ public partial class GoStop3PGame : MonoBehaviour
             {
                 if (seat != PLAYER_SEAT && !IsRemoteSeat(seat))
                 {
-                    var next = GoStopAI.ChooseCard(h, field);
-                    yield return StartCoroutine(PlaySeq(seat, next, GoStopAI.ShouldShake(), onDone));
+                    var next = GoStopAI.ChooseCard(h, field, seatTier[seat]);
+                    yield return StartCoroutine(PlaySeq(seat, next, GoStopAI.ShouldShake(seatTier[seat]), onDone));
                 }
                 else if (IsRemoteSeat(seat))
                 {
@@ -3552,7 +3608,7 @@ public partial class GoStop3PGame : MonoBehaviour
             chosen = decoded != null ? initial.choiceCandidates.FirstOrDefault(c => c.spriteName == decoded.spriteName) : null;
             if (chosen == null) chosen = GoStopAI.ChooseFieldMatch(initial.choiceCandidates); // 방어 — 오염된 메시지/타임아웃이 와도 판이 안 멈추게
         }
-        else chosen = GoStopAI.ChooseFieldMatch(initial.choiceCandidates);
+        else chosen = GoStopAI.ChooseFieldMatch(initial.choiceCandidates, seatTier[seat]);
 
         onResolved(GoStopRules.ResolveChoice(played, chosen, field));
     }
@@ -3591,7 +3647,7 @@ public partial class GoStop3PGame : MonoBehaviour
             // DeckOnlySeq의 호출부 참고), 여기서 또 AI가 덮어쓰면 안 된다.
             if (captured[seat].Any(c => c.dualPi))
             {
-                GoStopAI.OptimizeDualPi(captured[seat]);
+                GoStopAI.OptimizeDualPi(captured[seat], seatTier[seat]);
                 RebuildUI();
             }
         }
@@ -3638,7 +3694,7 @@ public partial class GoStop3PGame : MonoBehaviour
                 return;
             }
 
-            if (GoStopAI.ShouldGo(rawScore, goCount[seat], hand[seat].Count))
+            if (GoStopAI.ShouldGo(rawScore, goCount[seat], hand[seat].Count, seatTier[seat]))
             {
                 goCount[seat]++;
                 lastGoScore[seat] = rawScore;
@@ -3859,14 +3915,14 @@ public partial class GoStop3PGame : MonoBehaviour
             StartCoroutine(DeckOnlySeq(seat, () => AfterAction(seat)));
         else
         {
-            var card = GoStopAI.ChooseCard(hand[seat], field);
+            var card = GoStopAI.ChooseCard(hand[seat], field, seatTier[seat]);
             // 2026-08-23: 플레이어 쪽과 같은 이유 — 이 카드가 폭탄으로
             // 터질 조건(손 3장+필드 1장)이면 흔들기 배수까지 같이 주면
             // 안 된다(OnPlayerPlay 주석 참고). AI도 예외 없이 같은 규칙을
             // 받는다.
             bool bombEligible = hand[seat].Count(c => c.month == card.month) == 3
                               && field.Count(c => c.month == card.month) == 1;
-            StartCoroutine(PlaySeq(seat, card, !bombEligible && GoStopAI.ShouldShake(), () => AfterAction(seat)));
+            StartCoroutine(PlaySeq(seat, card, !bombEligible && GoStopAI.ShouldShake(seatTier[seat]), () => AfterAction(seat)));
         }
     }
 
@@ -4069,21 +4125,38 @@ public partial class GoStop3PGame : MonoBehaviour
 
         if (!downgrade && bankruptSeats.Count > 0)
         {
-            for (int s = 0; s < SEATS; s++) money[s] = STARTING_MONEY;
+            // 2026-09-06 정정 — 예전엔 세션이 끝나는 김에 전 좌석을
+            // STARTING_MONEY로 리셋했는데, 이제 AI는 이름이 이어지는
+            // 캐릭터라 그러면 "파산해서 은퇴해야 할 캐릭터"가 다음에
+            // 또 100% 든 지갑으로 부활해버리고, 살아남은 다른 캐릭터가
+            // 벌어둔 돈도 같이 날아간다. 파산한 게 나(플레이어)일 때만
+            // 리셋한다 — 그래야 다음에 또 열 수 있다. AI는 자기 실제
+            // 최종 잔액을 그대로 둔다(생존자는 번 돈 그대로, 파산자는
+            // 0원 이하 = 아래 SaveMoney()가 그대로 저장해서 자동으로
+            // 은퇴 처리된다 — GoStopCharacters.IsRetired 참고).
+            if (bankruptSeats.Contains(PLAYER_SEAT)) money[PLAYER_SEAT] = PLAYER_STARTING_MONEY;
             foreach (var s in bankruptSeats) allInCount[s]++;
-            // 네트워크 판은 로컬 저장을 안 한다(Start()와 같은 이유 — 매판
-            // 접속하는 사람이 달라질 수 있어 "이 기기의 좌석 N 잔액"이라는
-            // 개념이 안 맞는다). downgrade 분기는 ApplyDowngrade가 저장까지
-            // 알아서 한다.
-            if (!isNetworkHost && !isNetworkGuest) SaveMoney();
         }
+        // 2026-09-06 버그 수정 — "게임을 다시하면 돈이 초기화되는 것
+        // 같다" 신고. SaveMoney()가 그동안 파산(위 분기)/다운그레이드
+        // (ApplyDowngrade 내부) 경로에서만 불렸다 — 아무도 안 망한
+        // 평범한 승부(가장 흔한 경우)는 money[]가 메모리에서만 바뀌고
+        // PlayerPrefs에 저장된 적이 없어서, 다음에 씬을 다시 열면 마지막
+        // 저장 시점(대개 훨씬 예전)의 낡은 값을 읽어와 마치 초기화된
+        // 것처럼 보였다. 여기서 매 라운드 종료마다 무조건 한 번
+        // 저장한다 — 다운그레이드 분기는 ApplyDowngrade가 좌석 압축
+        // *이후*에 한 번 더 저장하지만(이 시점은 압축 *전*), 캐릭터
+        // 저장은 이름 기반이라 압축 여부와 무관하게 같은 결과를 내므로
+        // 두 번 불러도 무해하다.
+        if (!isNetworkHost && !isNetworkGuest) SaveMoney();
 
         string title = winnerSeat == PLAYER_SEAT ? "승리!" : $"{SeatName(winnerSeat)} 승리";
         Color col = winnerSeat == PLAYER_SEAT ? HwatuTheme.Gold : new Color(.55f, .55f, .60f);
         // "이번 판 얼마를 벌었는지/잃었는지"가 최종 잔액만으론 안 보인다는 요청 —
         // 정산 직전 스냅샷(pendingMoneyBefore) 대비 내 변동을 부호와 함께 보여준다.
-        // (파산으로 세션이 끝나는 판은 위에서 이미 전 좌석 money를 리셋했으므로
-        // 이 delta는 "리셋 후" 기준이 된다 — 아래에서 별도 파산 문구로 구분한다.)
+        // (내가 파산해서 세션이 끝나는 판은 위에서 이미 내 money를
+        // PLAYER_STARTING_MONEY로 리셋했으므로 이 delta는 "리셋 후"
+        // 기준이 된다 — 아래에서 별도 파산 문구로 구분한다.)
         int myDelta = money[PLAYER_SEAT] - pendingMoneyBefore[PLAYER_SEAT];
         string myDeltaStr = myDelta == 0 ? "변동 없음" : (myDelta > 0 ? $"+{myDelta:N0}원" : $"{myDelta:N0}원");
         string moneyLine = $"이번 판 {myDeltaStr} · 내 머니 {money[PLAYER_SEAT]:N0}원";

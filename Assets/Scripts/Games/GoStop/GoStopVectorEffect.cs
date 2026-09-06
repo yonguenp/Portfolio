@@ -615,26 +615,23 @@ public class GoStopVectorEffect : MonoBehaviour
         float boxW = normalizedBox.width * panelSize.width;
         float boxH = normalizedBox.height * panelSize.height;
 
-        // 2026-09-06 — "svg 이펙트 이미지와 텍스트 겹침" 신고. 예전엔
-        // 라벨·카드 둘 다 박스 전체(boxH)를 그대로 차지해서, 박스가 작다
-        // 보니(165px 높이) 카드가 거의 꽉 채우는 상태에서 라벨까지 같은
-        // 영역에 겹쳐 그려졌다 — 완성/비상 이펙트(화면 넓게 차지, 카드
-        // 아래 별도 여백)와 달리 이 박스는 여유가 없어서 그대로 옮기면
-        // 안 됐다. 박스를 상단 텍스트 띠 + 하단 카드 영역으로 나눠서
-        // 겹치지 않게 한다.
-        float textH = boxH * 0.24f;
-        float cardAreaTop = top + textH;
-        float cardAreaH = boxH - textH;
-
-        shakeRow.style.left = left; shakeRow.style.top = cardAreaTop;
-        shakeRow.style.width = boxW; shakeRow.style.height = cardAreaH;
+        // 2026-09-06 — "svg 이펙트 이미지와 텍스트 겹침" 신고에 한 번은
+        // 박스를 상단 텍스트 띠+하단 카드 영역으로 나눠 물리적으로 안
+        // 겹치게 했었는데, 사용자가 "겹침 자체는 텍스트 시인성만 좋으면
+        // 해결된다 — 아웃라인만 깔아달라"고 정정했다. 카드 영역을 굳이
+        // 줄이지 않고 완성/비상 이펙트와 같은 방식(카드 위에 텍스트가
+        // z-order 앞으로 겹쳐 뜨되, 진한 아웃라인으로 어떤 카드 배경
+        // 위에서도 읽히게 하는 것)으로 되돌렸다 — 박스 전체를 라벨·카드
+        // 둘 다 그대로 쓴다. 아웃라인 자체는 UXML(ShakeLabel)에서 강화.
+        shakeRow.style.left = left; shakeRow.style.top = top;
+        shakeRow.style.width = boxW; shakeRow.style.height = boxH;
         shakeLabel.style.left = left; shakeLabel.style.top = top;
-        shakeLabel.style.width = boxW; shakeLabel.style.height = textH;
+        shakeLabel.style.width = boxW; shakeLabel.style.height = boxH;
         shakeLabel.text = "흔듬";
         shakeLabel.style.opacity = 0f;
 
         int n = cards.Count;
-        float cardH = cardAreaH * 0.92f;
+        float cardH = boxH * 0.92f;
         float cardW = cardH * 0.62f;
         const float angleStep = 18f;
         float startAngle = -(n - 1) * angleStep * 0.5f;

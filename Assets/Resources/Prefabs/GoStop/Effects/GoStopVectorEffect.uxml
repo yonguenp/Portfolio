@@ -26,11 +26,11 @@
       발동시킨 좌석의 상태박스 자리에만, 그 박스 크기 그대로 표시한다
       (코드가 매 호출마다 left/top/width/height를 그 상태박스 좌표로
       다시 계산해 덮어쓴다 — 여기 선언된 기본값은 의미 없는 placeholder).
-      2026-09-06 — 예전엔 라벨·카드가 박스 전체를 같이 차지해 겹쳐
-      보였다("svg 이펙트 이미지와 텍스트 겹침" 신고) — 이제 코드가 박스를
-      상단 텍스트 띠(전체 높이의 24%)와 하단 카드 영역으로 나눠서 서로
-      겹치지 않는다. ShakeLabel의 UXML 크기(width 400×height 40)는 이
-      나뉜 띠의 대략적인 기본값일 뿐 실제로는 코드가 다시 계산한다.
+      ShakeLabel은 ShakeRow와 완전히 같은 영역에 겹쳐서, 카드 위(z-order
+      앞)에 "흔듬" 텍스트가 바로 얹힌다 — AltRow/AltTitleLabel과 같은
+      원칙. 2026-09-06 — "겹침" 자체는 문제가 아니라 텍스트 시인성이
+      문제였다는 사용자 정정으로, 레이아웃을 나누는 대신 아웃라인을
+      강화(width 4, 진한 색)해서 어떤 카드 배경 위에서도 읽히게 했다.
     -->
     <ui:VisualElement name="Dim" picking-mode="Ignore"
         style="position: absolute; left: 0; top: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0);" />
@@ -47,5 +47,5 @@
     <ui:VisualElement name="ShakeRow" picking-mode="Ignore"
         style="position: absolute; left: 0; top: 0; width: 400; height: 165; overflow: visible;" />
     <ui:Label name="ShakeLabel" picking-mode="Ignore"
-        style="position: absolute; left: 0; top: 0; width: 400; height: 40; -unity-text-align: upper-center; font-size: 26; -unity-font-style: bold; opacity: 0; -unity-text-outline-width: 2.5; -unity-text-outline-color: rgba(20, 14, 4, 0.9); color: rgb(255, 217, 130);" />
+        style="position: absolute; left: 0; top: 0; width: 400; height: 165; -unity-text-align: middle-center; font-size: 34; -unity-font-style: bold; opacity: 0; -unity-text-outline-width: 4; -unity-text-outline-color: rgba(10, 7, 2, 0.95); color: rgb(255, 234, 160);" />
 </ui:UXML>
