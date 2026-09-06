@@ -390,6 +390,18 @@ public partial class GoStop3PGame : MonoBehaviour
     ModalTwoButtonPopup declarePopup;
     bool? pendingDeclareChoice;
 
+    /// <summary>2026-09-06 — "뻑 이펙트가 뻑난 카드 위가 아니라 한칸반정도
+    /// 어긋나게 나온다" 신고로 추가. `ShowActionPopup`이 예전엔 항상
+    /// `fieldArea.position`(필드 컨테이너 전체의 기준점, 특정 슬롯이
+    /// 아니다)에 이펙트를 띄웠다 — 뻑/쪽/따닥/폭탄처럼 "필드의 특정 달
+    /// 슬롯 하나"에서 일어난 사건인데 그 슬롯 위치를 전혀 안 쓰고
+    /// 있었던 게 원인. 뻑/쪽/따닥/폭탄/뻑먹기 호출부가 관련 카드로
+    /// `FieldSlotTransform(card).position`을 여기 채워두면
+    /// `ShowActionPopup`이 `fieldArea.position` 대신 이 값을 쓴다(쓰고
+    /// 나면 비움) — 싹쓸이처럼 필드 전체가 비는 이벤트는 특정 슬롯이
+    /// 의미 없어 일부러 안 채운다(그대로 `fieldArea.position` 폴백).</summary>
+    Vector3? comboEffectWorldPos;
+
     // 나가기 확인 팝업 — "누르면 바로 나가지 말고 확인/취소로 물어봐야 한다"
     // 요청. ShakeConfirmPopup과 같은 프리팹(범용 2버튼 모달)을 재사용한다.
     ModalTwoButtonPopup exitConfirmPopup;
@@ -1777,9 +1789,25 @@ public partial class GoStop3PGame : MonoBehaviour
             null;
         if (prefabName == null) return;
 
-        // fieldArea → ContentArea(root) → SafeArea → Canvas — 3단계 위.
-        var canvasRoot = fieldArea.parent.parent.parent as RectTransform; // Canvas — Overlay와 같은 층
-        Vector2 local = canvasRoot.InverseTransformPoint(fieldArea.position);
+        // fieldArea(FieldCards) → Field → ContentArea → SafeArea → Canvas(GameUI) — 4단계 위.
+        // 2026-09-06 버그 수정 — "뻑 이펙트가 뻑난 카드 위가 아니라
+        // 한칸반정도 어긋나게 나온다" 신고로 발견. fieldArea가 가리키는
+        // 실제 오브젝트("FieldCards")는 예전에 이 계산이 쓰여질 때보다
+        // 한 단계 더 안쪽에 중첩됐다(필드 카드를 pos1~12 마커에 attach하는
+        // 리팩터 때 추가된 래퍼로 보인다) — 실제 계층은
+        // FieldCards→Field→ContentArea→SafeArea→GameUI(진짜 Canvas)로
+        // 4단계인데 3단계만 올라가 SafeArea에서 멈추고 있었다. SafeArea와
+        // 진짜 Canvas(GameUI)는 앵커/피벗 구성이 달라 InverseTransformPoint
+        // 결과가 어긋난다 — 실측으로 Y축이 약 112px 어긋나는 것까지
+        // 확인했다. 4단계로 정정.
+        var canvasRoot = fieldArea.parent.parent.parent.parent as RectTransform; // Canvas(GameUI) — Overlay와 같은 층
+        // 2026-09-06 — comboEffectWorldPos(위 필드 주석 참고)가 채워져 있으면
+        // 그 특정 슬롯 위치를, 없으면(싹쓸이 등) 예전처럼 필드 전체 기준점을
+        // 쓴다. 한 번 쓰면 반드시 비워야 다음 무관한 Toast가 이 값을
+        // 잘못 재사용하지 않는다.
+        Vector3 sourceWorldPos = comboEffectWorldPos ?? fieldArea.position;
+        comboEffectWorldPos = null;
+        Vector2 local = canvasRoot.InverseTransformPoint(sourceWorldPos);
 
         bool moneyEvent = IsMoneyEventLabel(label);
         // 2026-08-19: "파티클 이펙트로 애니메이션을 좀 더 역동적으로" 요청 —
@@ -1908,6 +1936,181 @@ public partial class GoStop3PGame : MonoBehaviour
                 break;
         }
         seq.OnComplete(() => { if (go != null) Destroy(go); });
+    }
+
+    /// <summary>2026-09-06 이펙트 추가 요청 — 고를 외칠 때(나든 상대든)
+    /// 뜨는 텍스트 중심 이펙트. "메인은 이미지가 아니라 텍스트, 주변은
+    /// 파티클/애니메이션으로 꾸민다"는 요청대로 텍스트가 주인공이고
+    /// <see cref="GoStopIcons.SpawnBurst"/>(기존 콤보 아이콘들과 같은
+    /// 파티클)로 장식한다. 1~2고는 담백하게, 3고부터는 "이제부터 배수
+    /// 2배"라는 위기감(주황 톤 + 살짝 흔들림), 4~5고는 더 화려하게(파티클
+    /// 확대 + 확장 링), 6고 이상은 이론상 거의 안 나오므로 5고 연출을
+    /// 그대로 재사용한다(tier를 5로 클램프).</summary>
+    void FireGoEffect(int seat, int goNumber)
+    {
+        if (fieldArea == null) return;
+        // 2026-09-06 버그 수정 — "뻑 이펙트가 뻑난 카드 위가 아니라
+        // 한칸반정도 어긋나게 나온다" 신고로 발견. fieldArea가 가리키는
+        // 실제 오브젝트("FieldCards")는 예전에 이 계산이 쓰여질 때보다
+        // 한 단계 더 안쪽에 중첩됐다(필드 카드를 pos1~12 마커에 attach하는
+        // 리팩터 때 추가된 래퍼로 보인다) — 실제 계층은
+        // FieldCards→Field→ContentArea→SafeArea→GameUI(진짜 Canvas)로
+        // 4단계인데 3단계만 올라가 SafeArea에서 멈추고 있었다. SafeArea와
+        // 진짜 Canvas(GameUI)는 앵커/피벗 구성이 달라 InverseTransformPoint
+        // 결과가 어긋난다 — 실측으로 Y축이 약 112px 어긋나는 것까지
+        // 확인했다. 4단계로 정정.
+        var canvasRoot = fieldArea.parent.parent.parent.parent as RectTransform; // Canvas(GameUI) — Overlay와 같은 층
+        Vector2 local = canvasRoot.InverseTransformPoint(fieldArea.position);
+        StartCoroutine(GoEffectSeq(canvasRoot, local, seat, goNumber));
+    }
+
+    IEnumerator GoEffectSeq(RectTransform canvasRoot, Vector2 local, int seat, int goNumber)
+    {
+        int tier = Mathf.Min(goNumber, 5);
+        bool tense = tier >= 3;
+        bool flashy = tier >= 4;
+
+        var goObj = new GameObject("GoEffect", typeof(RectTransform));
+        goObj.transform.SetParent(canvasRoot, false);
+        var rt = goObj.GetComponent<RectTransform>();
+        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+        rt.pivot = new Vector2(0.5f, 0.5f);
+        rt.sizeDelta = new Vector2(700f, 220f);
+        rt.anchoredPosition = local;
+        rt.localScale = Vector3.one * 0.5f;
+
+        var group = goObj.AddComponent<CanvasGroup>();
+        group.alpha = 0f;
+
+        Color mainColor = flashy ? new Color(1f, 0.45f, 0.10f) : tense ? new Color(1f, 0.55f, 0.20f) : HwatuTheme.Gold;
+        var label = HwatuUI.MakeLabel(rt, Vector2.zero, new Vector2(700f, 140f), flashy ? 76f : tense ? 64f : 52f, mainColor);
+        label.text = $"{SeatName(seat)} {goNumber}고!";
+        label.fontStyle = FontStyles.Bold;
+        label.alignment = TextAlignmentOptions.Center;
+        label.raycastTarget = false;
+
+        if (tense)
+        {
+            var sub = HwatuUI.MakeLabel(rt, new Vector2(0f, -66f), new Vector2(700f, 46f), 26f, new Color(1f, 0.65f, 0.35f));
+            sub.text = "지금부터 배수 ×2!";
+            sub.alignment = TextAlignmentOptions.Center;
+            sub.raycastTarget = false;
+        }
+
+        // 확장 링 — 4~5고에서만, 텍스트보다 먼저 그려지게 맨 뒤로 보낸다.
+        RectTransform ring1 = null, ring2 = null;
+        if (flashy)
+        {
+            ring1 = MakeExpandingRing(rt, mainColor);
+            ring2 = MakeExpandingRing(rt, mainColor);
+            ring1.SetAsFirstSibling();
+            ring2.SetAsFirstSibling();
+        }
+
+        int burstCount = tier switch { 1 => 8, 2 => 10, 3 => 14, 4 => 20, _ => 26 };
+        GoStopIcons.SpawnBurst(canvasRoot, local, mainColor, burstCount);
+
+        var seq = DOTween.Sequence();
+        seq.Append(rt.DOScale(flashy ? 1.15f : 1f, 0.18f).SetEase(Ease.OutBack));
+        seq.Join(group.DOFade(1f, 0.12f));
+        if (tense) seq.Append(rt.DOShakePosition(0.22f, strength: 10f, vibrato: 12));
+        if (flashy)
+        {
+            seq.Join(ring1.DOScale(2.4f, 0.55f).SetEase(Ease.OutCubic));
+            seq.Join(ring1.GetComponent<CanvasGroup>().DOFade(0f, 0.55f));
+            seq.Join(ring2.DOScale(2.4f, 0.55f).SetEase(Ease.OutCubic).SetDelay(0.12f));
+            seq.Join(ring2.GetComponent<CanvasGroup>().DOFade(0f, 0.55f).SetDelay(0.12f));
+        }
+        seq.Append(rt.DOScale(1f, 0.10f));
+        seq.AppendInterval(flashy ? 0.65f : tense ? 0.5f : 0.4f);
+        seq.Append(group.DOFade(0f, 0.28f));
+        seq.OnComplete(() => { if (goObj != null) Destroy(goObj); });
+        yield return seq.WaitForCompletion();
+    }
+
+    RectTransform MakeExpandingRing(RectTransform parent, Color color)
+    {
+        var go = new GameObject("GoRing", typeof(RectTransform));
+        go.transform.SetParent(parent, false);
+        var rt = go.GetComponent<RectTransform>();
+        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+        rt.pivot = new Vector2(0.5f, 0.5f);
+        rt.sizeDelta = new Vector2(140f, 140f);
+        rt.localScale = Vector3.one * 0.6f;
+        var img = go.AddComponent<Image>();
+        img.sprite = UISkin.CircleLine;
+        img.color = color;
+        img.raycastTarget = false;
+        var group = go.AddComponent<CanvasGroup>();
+        group.alpha = 0.8f;
+        return rt;
+    }
+
+    /// <summary>스톱을 외칠 때(나든 상대든) 뜨는 이펙트 — "스톱!" 텍스트 +
+    /// 손으로 정지 신호를 보내는 아이콘(<see cref="GoStopComboIcons.StopHand"/>,
+    /// 절차적으로 직접 그린 실루엣 — 위 GoStopComboIcons 클래스 문서의
+    /// "웹 SVG 대신 직접 그린다" 원칙을 그대로 따랐다).</summary>
+    void FireStopEffect(int seat)
+    {
+        if (fieldArea == null) return;
+        // 2026-09-06 버그 수정 — "뻑 이펙트가 뻑난 카드 위가 아니라
+        // 한칸반정도 어긋나게 나온다" 신고로 발견. fieldArea가 가리키는
+        // 실제 오브젝트("FieldCards")는 예전에 이 계산이 쓰여질 때보다
+        // 한 단계 더 안쪽에 중첩됐다(필드 카드를 pos1~12 마커에 attach하는
+        // 리팩터 때 추가된 래퍼로 보인다) — 실제 계층은
+        // FieldCards→Field→ContentArea→SafeArea→GameUI(진짜 Canvas)로
+        // 4단계인데 3단계만 올라가 SafeArea에서 멈추고 있었다. SafeArea와
+        // 진짜 Canvas(GameUI)는 앵커/피벗 구성이 달라 InverseTransformPoint
+        // 결과가 어긋난다 — 실측으로 Y축이 약 112px 어긋나는 것까지
+        // 확인했다. 4단계로 정정.
+        var canvasRoot = fieldArea.parent.parent.parent.parent as RectTransform; // Canvas(GameUI) — Overlay와 같은 층
+        Vector2 local = canvasRoot.InverseTransformPoint(fieldArea.position);
+        StartCoroutine(StopEffectSeq(canvasRoot, local, seat));
+    }
+
+    IEnumerator StopEffectSeq(RectTransform canvasRoot, Vector2 local, int seat)
+    {
+        var goObj = new GameObject("StopEffect", typeof(RectTransform));
+        goObj.transform.SetParent(canvasRoot, false);
+        var rt = goObj.GetComponent<RectTransform>();
+        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+        rt.pivot = new Vector2(0.5f, 0.5f);
+        rt.sizeDelta = new Vector2(500f, 220f);
+        rt.anchoredPosition = local;
+        rt.localScale = Vector3.one * 0.5f;
+
+        var group = goObj.AddComponent<CanvasGroup>();
+        group.alpha = 0f;
+
+        var stopRed = new Color(0.90f, 0.28f, 0.24f);
+        var iconGo = new GameObject("StopHand", typeof(RectTransform));
+        iconGo.transform.SetParent(rt, false);
+        var iconRt = iconGo.GetComponent<RectTransform>();
+        iconRt.anchorMin = iconRt.anchorMax = new Vector2(0.5f, 1f);
+        iconRt.pivot = new Vector2(0.5f, 0.5f);
+        iconRt.sizeDelta = new Vector2(110f, 110f);
+        iconRt.anchoredPosition = new Vector2(0f, -55f);
+        var iconImg = iconGo.AddComponent<Image>();
+        iconImg.sprite = GoStopComboIcons.StopHand;
+        iconImg.preserveAspect = true;
+        iconImg.raycastTarget = false;
+
+        var label = HwatuUI.MakeLabel(rt, new Vector2(0f, -140f), new Vector2(500f, 60f), 46f, stopRed);
+        label.text = $"{SeatName(seat)} 스톱!";
+        label.fontStyle = FontStyles.Bold;
+        label.alignment = TextAlignmentOptions.Center;
+        label.raycastTarget = false;
+
+        GoStopIcons.SpawnBurst(canvasRoot, local, stopRed, 10);
+
+        var seq = DOTween.Sequence();
+        seq.Append(rt.DOScale(1f, 0.16f).SetEase(Ease.OutBack));
+        seq.Join(group.DOFade(1f, 0.12f));
+        seq.Join(iconRt.DOPunchRotation(new Vector3(0, 0, 8f), 0.3f, 8, 0.6f));
+        seq.AppendInterval(0.55f);
+        seq.Append(group.DOFade(0f, 0.28f));
+        seq.OnComplete(() => { if (goObj != null) Destroy(goObj); });
+        yield return seq.WaitForCompletion();
     }
 
     /// <summary>파티클 버스트 색 — 텍스트 팝업(EffectJjok=하늘색 등)과 톤을
@@ -2047,11 +2250,21 @@ public partial class GoStop3PGame : MonoBehaviour
     {
         if (fieldArea == null) return;
 
-        var canvasRoot = fieldArea.parent.parent.parent as RectTransform;
+        // 2026-09-06 버그 수정 — "뻑 이펙트가 뻑난 카드 위가 아니라
+        // 한칸반정도 어긋나게 나온다" 신고로 발견. fieldArea가 가리키는
+        // 실제 오브젝트("FieldCards")는 예전에 이 계산이 쓰여질 때보다
+        // 한 단계 더 안쪽에 중첩됐다(필드 카드를 pos1~12 마커에 attach하는
+        // 리팩터 때 추가된 래퍼로 보인다) — 실제 계층은
+        // FieldCards→Field→ContentArea→SafeArea→GameUI(진짜 Canvas)로
+        // 4단계인데 3단계만 올라가 SafeArea에서 멈추고 있었다. SafeArea와
+        // 진짜 Canvas(GameUI)는 앵커/피벗 구성이 달라 InverseTransformPoint
+        // 결과가 어긋난다 — 실측으로 Y축이 약 112px 어긋나는 것까지
+        // 확인했다. 4단계로 정정.
+        var canvasRoot = fieldArea.parent.parent.parent.parent as RectTransform; // Canvas(GameUI) — Overlay와 같은 층
         Vector2 local = canvasRoot.InverseTransformPoint(fieldArea.position);
 
         GoStopIcons.SpawnBurst(canvasRoot, local, EmergencyColor(setName), 20);
-        GoStopVectorEffect.Ensure().PlayEmergency($"{SeatName(seat)} {setName} 비상!", cards);
+        GoStopVectorEffect.Ensure().PlayEmergency(seat, $"{SeatName(seat)} {setName} 비상!", cards);
 
         ShowTimedToast($"{SeatName(seat)}이(가) {setName} 완성 직전!");
         GoStopAudio.Instance?.Siren();
@@ -2067,11 +2280,21 @@ public partial class GoStop3PGame : MonoBehaviour
     {
         if (fieldArea == null) return;
 
-        var canvasRoot = fieldArea.parent.parent.parent as RectTransform;
+        // 2026-09-06 버그 수정 — "뻑 이펙트가 뻑난 카드 위가 아니라
+        // 한칸반정도 어긋나게 나온다" 신고로 발견. fieldArea가 가리키는
+        // 실제 오브젝트("FieldCards")는 예전에 이 계산이 쓰여질 때보다
+        // 한 단계 더 안쪽에 중첩됐다(필드 카드를 pos1~12 마커에 attach하는
+        // 리팩터 때 추가된 래퍼로 보인다) — 실제 계층은
+        // FieldCards→Field→ContentArea→SafeArea→GameUI(진짜 Canvas)로
+        // 4단계인데 3단계만 올라가 SafeArea에서 멈추고 있었다. SafeArea와
+        // 진짜 Canvas(GameUI)는 앵커/피벗 구성이 달라 InverseTransformPoint
+        // 결과가 어긋난다 — 실측으로 Y축이 약 112px 어긋나는 것까지
+        // 확인했다. 4단계로 정정.
+        var canvasRoot = fieldArea.parent.parent.parent.parent as RectTransform; // Canvas(GameUI) — Overlay와 같은 층
         Vector2 local = canvasRoot.InverseTransformPoint(fieldArea.position);
 
         GoStopIcons.SpawnBurst(canvasRoot, local, new Color(0.75f, 0.2f, 0.2f), 16);
-        GoStopVectorEffect.Ensure().PlayBlocked($"{SeatName(seat)} {setName} 실패", cards);
+        GoStopVectorEffect.Ensure().PlayBlocked(seat, $"{SeatName(seat)} {setName} 실패", cards);
 
         ShowTimedToast($"{SeatName(seat)}의 {setName}이(가) 막혔습니다");
         GoStopAudio.Instance?.Slice();
@@ -2094,7 +2317,17 @@ public partial class GoStop3PGame : MonoBehaviour
     {
         if (fieldArea == null) return;
 
-        var canvasRoot = fieldArea.parent.parent.parent as RectTransform;
+        // 2026-09-06 버그 수정 — "뻑 이펙트가 뻑난 카드 위가 아니라
+        // 한칸반정도 어긋나게 나온다" 신고로 발견. fieldArea가 가리키는
+        // 실제 오브젝트("FieldCards")는 예전에 이 계산이 쓰여질 때보다
+        // 한 단계 더 안쪽에 중첩됐다(필드 카드를 pos1~12 마커에 attach하는
+        // 리팩터 때 추가된 래퍼로 보인다) — 실제 계층은
+        // FieldCards→Field→ContentArea→SafeArea→GameUI(진짜 Canvas)로
+        // 4단계인데 3단계만 올라가 SafeArea에서 멈추고 있었다. SafeArea와
+        // 진짜 Canvas(GameUI)는 앵커/피벗 구성이 달라 InverseTransformPoint
+        // 결과가 어긋난다 — 실측으로 Y축이 약 112px 어긋나는 것까지
+        // 확인했다. 4단계로 정정.
+        var canvasRoot = fieldArea.parent.parent.parent.parent as RectTransform; // Canvas(GameUI) — Overlay와 같은 층
         Vector2 local = canvasRoot.InverseTransformPoint(fieldArea.position);
 
         GoStopIcons.SpawnBurst(canvasRoot, local, EmergencyColor(setName), 30);
@@ -2133,7 +2366,17 @@ public partial class GoStop3PGame : MonoBehaviour
 
         if (fieldArea == null) return;
 
-        var canvasRoot = fieldArea.parent.parent.parent as RectTransform;
+        // 2026-09-06 버그 수정 — "뻑 이펙트가 뻑난 카드 위가 아니라
+        // 한칸반정도 어긋나게 나온다" 신고로 발견. fieldArea가 가리키는
+        // 실제 오브젝트("FieldCards")는 예전에 이 계산이 쓰여질 때보다
+        // 한 단계 더 안쪽에 중첩됐다(필드 카드를 pos1~12 마커에 attach하는
+        // 리팩터 때 추가된 래퍼로 보인다) — 실제 계층은
+        // FieldCards→Field→ContentArea→SafeArea→GameUI(진짜 Canvas)로
+        // 4단계인데 3단계만 올라가 SafeArea에서 멈추고 있었다. SafeArea와
+        // 진짜 Canvas(GameUI)는 앵커/피벗 구성이 달라 InverseTransformPoint
+        // 결과가 어긋난다 — 실측으로 Y축이 약 112px 어긋나는 것까지
+        // 확인했다. 4단계로 정정.
+        var canvasRoot = fieldArea.parent.parent.parent.parent as RectTransform; // Canvas(GameUI) — Overlay와 같은 층
         Vector2 local = canvasRoot.InverseTransformPoint(fieldArea.position);
         var color = EmergencyColor("3광"); // 광 계열 톤
 
@@ -2155,7 +2398,17 @@ public partial class GoStop3PGame : MonoBehaviour
     void FireChongtong(int seat)
     {
         if (fieldArea == null) return;
-        var canvasRoot = fieldArea.parent.parent.parent as RectTransform;
+        // 2026-09-06 버그 수정 — "뻑 이펙트가 뻑난 카드 위가 아니라
+        // 한칸반정도 어긋나게 나온다" 신고로 발견. fieldArea가 가리키는
+        // 실제 오브젝트("FieldCards")는 예전에 이 계산이 쓰여질 때보다
+        // 한 단계 더 안쪽에 중첩됐다(필드 카드를 pos1~12 마커에 attach하는
+        // 리팩터 때 추가된 래퍼로 보인다) — 실제 계층은
+        // FieldCards→Field→ContentArea→SafeArea→GameUI(진짜 Canvas)로
+        // 4단계인데 3단계만 올라가 SafeArea에서 멈추고 있었다. SafeArea와
+        // 진짜 Canvas(GameUI)는 앵커/피벗 구성이 달라 InverseTransformPoint
+        // 결과가 어긋난다 — 실측으로 Y축이 약 112px 어긋나는 것까지
+        // 확인했다. 4단계로 정정.
+        var canvasRoot = fieldArea.parent.parent.parent.parent as RectTransform; // Canvas(GameUI) — Overlay와 같은 층
         Vector2 local = canvasRoot.InverseTransformPoint(fieldArea.position);
         var color = new Color(1f, 0.85f, 0.3f);
 
@@ -2178,7 +2431,17 @@ public partial class GoStop3PGame : MonoBehaviour
     void FireNagari()
     {
         if (fieldArea == null) return;
-        var canvasRoot = fieldArea.parent.parent.parent as RectTransform;
+        // 2026-09-06 버그 수정 — "뻑 이펙트가 뻑난 카드 위가 아니라
+        // 한칸반정도 어긋나게 나온다" 신고로 발견. fieldArea가 가리키는
+        // 실제 오브젝트("FieldCards")는 예전에 이 계산이 쓰여질 때보다
+        // 한 단계 더 안쪽에 중첩됐다(필드 카드를 pos1~12 마커에 attach하는
+        // 리팩터 때 추가된 래퍼로 보인다) — 실제 계층은
+        // FieldCards→Field→ContentArea→SafeArea→GameUI(진짜 Canvas)로
+        // 4단계인데 3단계만 올라가 SafeArea에서 멈추고 있었다. SafeArea와
+        // 진짜 Canvas(GameUI)는 앵커/피벗 구성이 달라 InverseTransformPoint
+        // 결과가 어긋난다 — 실측으로 Y축이 약 112px 어긋나는 것까지
+        // 확인했다. 4단계로 정정.
+        var canvasRoot = fieldArea.parent.parent.parent.parent as RectTransform; // Canvas(GameUI) — Overlay와 같은 층
         Vector2 local = canvasRoot.InverseTransformPoint(fieldArea.position);
         var color = new Color(0.75f, 0.75f, 0.78f); // 나가리 — 다른 족보(원색)와 구분되는 무채색 톤
 
@@ -2750,6 +3013,7 @@ public partial class GoStop3PGame : MonoBehaviour
 
                 int streak = ++ppeokStreak[seat];
                 int total = ++ppeokTotalCount[seat];
+                comboEffectWorldPos = FieldSlotTransform(card).position;
                 if (wasFirstPlay) { ApplyMoneyBonus(seat, PpeokMoney(), "첫뻑비"); Toast(seat, "첫뻑"); }
                 else if (streak == 2) { ApplyMoneyBonus(seat, PpeokMoney(), "연뻑비"); Toast(seat, "연뻑"); }
                 else Toast(seat, "뻑");
@@ -2882,6 +3146,7 @@ public partial class GoStop3PGame : MonoBehaviour
                     if (chok)
                     {
                         StealPiFromEachOther(seat, 1);
+                        comboEffectWorldPos = FieldSlotTransform(card).position;
                         Toast(seat, "쪽");
                         stole2 = true;
                         if (r2.sweep)
@@ -2899,6 +3164,7 @@ public partial class GoStop3PGame : MonoBehaviour
                         // 에서만 판정한다 — 위 선택 시점에서 옮겨왔다(그때는 아직
                         // 진짜 따닥인지 몰랐다). 피 뺏기는 원래대로 그대로 일어나고
                         // (상대에게 피가 있다면), 첫 턴이면 그 위에 판돈을 추가로 얹는다.
+                        comboEffectWorldPos = FieldSlotTransform(card).position;
                         if (wasFirstPlay) { ApplyMoneyBonus(seat, PpeokMoney(), "첫따닥비"); Toast(seat, "첫따닥"); }
                         else Toast(seat, "따닥");
                         stole2 = true;
@@ -3097,6 +3363,7 @@ public partial class GoStop3PGame : MonoBehaviour
             if (chok)
             {
                 StealPiFromEachOther(seat, 1);
+                comboEffectWorldPos = FieldSlotTransform(anchor).position;
                 Toast(seat, "보너스+쪽");
                 if (r.sweep)
                 {
@@ -3132,6 +3399,12 @@ public partial class GoStop3PGame : MonoBehaviour
     bool ApplyMatchBonus(int seat, GoStopRules.CaptureResult r, bool bomb, bool allowSweep = true, bool wasFirstHandPlay = false)
     {
         bool did = false;
+        // 폭탄/뻑 먹기/자뻑은 전부 "필드의 특정 달 슬롯 하나"에서 일어나므로
+        // r.captured[0](항상 그 슬롯에 있던 카드 중 하나)로 위치를 잡는다 —
+        // 순수 싹쓸이(matchCount!=3, bomb 아님)로 여기 들어온 경우는 아래
+        // `r.sweep` 블록에서 이 값을 안 건드리고 fieldArea.position 폴백으로
+        // 자연히 넘어간다(위 comboEffectWorldPos 필드 주석 참고).
+        if (bomb || r.matchCount == 3) comboEffectWorldPos = FieldSlotTransform(r.captured[0]).position;
         if (bomb) { StealPiFromEachOther(seat, 1); Toast(seat, "폭탄"); did = true; }
         else if (r.matchCount == 3)
         {
@@ -3321,10 +3594,12 @@ public partial class GoStop3PGame : MonoBehaviour
                 // 신고).
                 ShowTimedToast($"{SeatName(seat)}가 고를 외쳤습니다! ({rawScore + goCount[seat]}점)");
                 GoStopAudio.Instance?.Go();
+                FireGoEffect(seat, goCount[seat]);
                 AdvanceTurn();
                 return;
             }
             GoStopAudio.Instance?.Stop();
+            FireStopEffect(seat);
             EndGame(seat);
             return;
         }
@@ -3361,11 +3636,13 @@ public partial class GoStop3PGame : MonoBehaviour
             calledGo[seat] = true;
             ShowTimedToast($"{SeatName(seat)}가 고를 외쳤습니다! ({rawScore + goCount[seat]}점)");
             GoStopAudio.Instance?.Go();
+            FireGoEffect(seat, goCount[seat]);
             AdvanceTurn();
         }
         else
         {
             GoStopAudio.Instance?.Stop();
+            FireStopEffect(seat);
             EndGame(seat);
         }
     }
@@ -3413,6 +3690,7 @@ public partial class GoStop3PGame : MonoBehaviour
         lastGoScore[PLAYER_SEAT] = pendingGoRawScore; // 이 점수를 넘어서야 다음에 다시 묻는다
         calledGo[PLAYER_SEAT] = true;
         GoStopAudio.Instance?.Go();
+        FireGoEffect(PLAYER_SEAT, goCount[PLAYER_SEAT]);
         AdvanceTurn();
     }
 
@@ -3426,6 +3704,7 @@ public partial class GoStop3PGame : MonoBehaviour
             return;
         }
         GoStopAudio.Instance?.Stop();
+        FireStopEffect(PLAYER_SEAT);
         EndGame(PLAYER_SEAT);
     }
 

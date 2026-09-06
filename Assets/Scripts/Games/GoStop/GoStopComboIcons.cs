@@ -16,13 +16,14 @@ using UnityEngine;
 public static class GoStopComboIcons
 {
     const int Size = 128;
-    static Sprite poopSprite, tissueSprite, lipsSprite, snapSprite, broomSprite;
+    static Sprite poopSprite, tissueSprite, lipsSprite, snapSprite, broomSprite, stopHandSprite;
 
-    public static Sprite Poop   => poopSprite   != null ? poopSprite   : (poopSprite   = Build(DrawPoop));
-    public static Sprite Tissue => tissueSprite != null ? tissueSprite : (tissueSprite = Build(DrawTissue));
-    public static Sprite Lips   => lipsSprite   != null ? lipsSprite   : (lipsSprite   = Build(DrawLips));
-    public static Sprite Snap   => snapSprite   != null ? snapSprite   : (snapSprite   = Build(DrawSnap));
-    public static Sprite Broom  => broomSprite  != null ? broomSprite  : (broomSprite  = Build(DrawBroom));
+    public static Sprite Poop     => poopSprite     != null ? poopSprite     : (poopSprite     = Build(DrawPoop));
+    public static Sprite Tissue   => tissueSprite   != null ? tissueSprite   : (tissueSprite   = Build(DrawTissue));
+    public static Sprite Lips     => lipsSprite     != null ? lipsSprite     : (lipsSprite     = Build(DrawLips));
+    public static Sprite Snap     => snapSprite     != null ? snapSprite     : (snapSprite     = Build(DrawSnap));
+    public static Sprite Broom    => broomSprite    != null ? broomSprite    : (broomSprite    = Build(DrawBroom));
+    public static Sprite StopHand => stopHandSprite != null ? stopHandSprite : (stopHandSprite = Build(DrawStopHand));
 
     static Sprite Build(System.Action<Color32[]> draw)
     {
@@ -172,5 +173,50 @@ public static class GoStopComboIcons
             Paint(px, (u, v) => BoxD(u - offset * 1.3f, v + 0.55f, 0.045f, 0.30f), col, 0.03f);
         }
         Paint(px, (u, v) => BoxD(u, v + 0.30f, 0.34f, 0.055f), handle, 0.02f); // 솔 밑동 띠
+    }
+
+    // ── 스톱 — 손바닥을 편 "정지" 손모양 ──────────────────────────────
+    // 2026-09-06 — 손가락 4개(세로 박스, 살짝 다른 높이) + 엄지(옆으로
+    // 튀어나온 박스) + 손바닥(둥근 박스)을 합성한 단순 실루엣. 완전한
+    // 손 윤곽선을 SDF로 정교하게 뽑기보다, "손을 펴서 멈추라는" 제스처가
+    // 실루엣만으로 읽히는 선에서 단순화했다(이 프로젝트 전역의 다른
+    // 아이콘들과 같은 수준).
+    static void DrawStopHand(Color32[] px)
+    {
+        var skin = new Color(0.95f, 0.78f, 0.55f);
+        var shade = new Color(0.82f, 0.63f, 0.42f);
+
+        // 손바닥(손가락 아래 몸통)
+        Paint(px, (u, v) => BoxD(u, v + 0.30f, 0.34f, 0.30f), skin, 0.04f);
+        // 손목(아래로 이어짐)
+        Paint(px, (u, v) => BoxD(u, v + 0.72f, 0.20f, 0.14f), skin, 0.04f);
+
+        // 손가락 4개 — 각자 다른 높이로 세운 세로 박스(검지가 가장 길고
+        // 새끼로 갈수록 짧아지는 자연스러운 실루엣)
+        float[] fingerX = { -0.27f, -0.09f, 0.09f, 0.27f };
+        float[] fingerTop = { -0.62f, -0.72f, -0.68f, -0.52f }; // 화면 위(-)일수록 손가락 끝
+        for (int i = 0; i < 4; i++)
+        {
+            float x = fingerX[i], top = fingerTop[i];
+            float centerV = (top + 0.02f) * 0.5f; // 박스 중심(손바닥 상단 근처 ~ 손끝)
+            float halfH = (0.02f - top) * 0.5f;
+            Paint(px, (u, v) => BoxD(u - x, v - centerV, 0.075f, halfH), skin, 0.035f);
+        }
+        // 엄지 — 옆으로 비스듬히 튀어나온 박스
+        const float thumbAng = 35f * Mathf.Deg2Rad;
+        float tc = Mathf.Cos(thumbAng), ts = Mathf.Sin(thumbAng);
+        Paint(px, (u, v) =>
+        {
+            float du = u + 0.36f, dv = v + 0.12f;
+            float ru = du * tc + dv * ts, rv = -du * ts + dv * tc;
+            return BoxD(ru, rv, 0.16f, 0.07f);
+        }, skin, 0.035f);
+
+        // 손가락 사이 음영선 — 입체감
+        for (int i = 0; i < 3; i++)
+        {
+            float x = (fingerX[i] + fingerX[i + 1]) * 0.5f;
+            Paint(px, (u, v) => BoxD(u - x, v + 0.30f, 0.008f, 0.28f), shade, 0.02f);
+        }
     }
 }
