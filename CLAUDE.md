@@ -10843,6 +10843,73 @@ UXML만 더 손보면 된다. 실제 게임 내 자연 발생(합성 카드가 �
 효과들은 원래도 매 세션 합성 카드로만 검증돼 왔다(이전 세션들과 동일한
 한계).
 
+## 고스톱 — 고/스톱 이펙트 화면 중앙 대형화 + 결과화면 지연 + 카드 아이콘
+2배 확대 (2026-09-06)
+
+바로 위 1~8고/스톱 텍스트 이펙트를 실제로 보고 나온 후속 피드백 4가지 —
+"실패 이펙트는 마음에 든다"(승인, 손 안 댐)를 빼면 전부 조정 요청.
+
+**고/스톱 이펙트를 카드 포지션 방식(comboEffectWorldPos)에서 화면
+정중앙·대형으로 전환.** `GoEffectSeq`/`StopEffectSeq`가 기존엔 다른
+콤보 아이콘처럼 `ShowActionPopup`의 카드-위치 타겟팅 경로를 안 쓰고
+있었지만(원래도 좌표 인자를 안 받았다), 크기가 작아서(1200×500) "화면이
+꽉 찰 만큼 커야 한다"는 요청에 못 미쳤다. `GoStopCanvasRoot()` 헬퍼
+(`fieldArea.parent.parent.parent.parent as RectTransform` — 아래 카드
+아이콘 4-hop 수정과 동일한 체인)로 캔버스 루트만 구하고, 앵커/피벗/
+`anchoredPosition`을 전부 `(0.5,0.5)`/`Vector2.zero`로 고정해 **화면
+정중앙에 절대 좌표로 고정**했다.
+- `GoEffectSeq`: 박스 1800×700(기존 1200×500), 기본 폰트 110(기존 72).
+  링 이펙트(`MakeExpandingRing`) 기본 크기 260(기존 140), 확대 목표
+  스케일 4.5(기존 2.4)로 같이 키워 화면을 꽉 채운다.
+- `StopEffectSeq`: 박스 1500×700, 손 모양 아이콘(`GoStopComboIcons.
+  StopHand`) 260×260로 확대.
+
+**결과 화면을 스톱 이펙트가 끝난 뒤로 지연.** `FireStopEffect`의 반환
+타입을 `void`→`Coroutine`으로 바꾸고, 새 `EndGameAfterStop(int seat)`
+코루틴(`yield return FireStopEffect(seat); EndGame(seat);`)을 만들어
+스톱을 부르는 3개 지점(내 스톱 버튼, AI 자동 스톱, 원격 좌석 스톱) 전부
+`FireStopEffect(seat); EndGame(seat);`(동시 실행) 대신
+`StartCoroutine(EndGameAfterStop(seat));`(순차 실행)로 바꿨다 — 이제
+스톱 텍스트+파티클 연출(약 0.95초)이 다 끝난 뒤에야 승패 오버레이가
+뜬다.
+
+**카드 위치 콤보 아이콘(쪽/뻑/따닥/자뻑/싹쓸이)을 2배로.**
+`SpawnComboIcon`의 `sizeDelta`를 150×150→300×300으로, 크기에 비례하던
+애니메이션 오프셋 두 곳(똥 아이콘 낙하 시작 오프셋 90→140, 화장지
+아이콘 부유 거리 26→40)도 같이 스케일했다.
+
+**고/스톱 재질문(gate) 버그 — 재조사, 재현 실패, 진단 로그만 추가.**
+"3점 도달 → 고 → 다음 턴 뻑으로 아무것도 못 먹음 → 그런데도 고/스톱을
+다시 묻는다"는 재신고에, 사용자가 "이전 고 시점의 점수는 고 보너스(+1점)를
+뺀 원점수를 말한 것"이라고 재확인해줬다 — 이미 `lastGoScore[seat] =
+pendingGoRawScore`(고 배수 적용 전 원점수)로 정확히 이 정의를 쓰고
+있다는 걸 재확인했고, `GoStopRules.CalcScore`가 `goCount`를 아예 참조조차
+안 한다는 것도 소스를 다시 읽어 재확인했다. 격리된 `AfterAction` 직접
+호출(합성 12피 캡처)과, 실제 `PlaySeq`를 태운 뻑 형성 재현(덱을 한 장씩
+통제해 셔플 오염을 피함) 둘 다 시도했지만 **게이트는 매번 정확하게
+동작했다**(캡처가 안 늘면 재질문 안 함) — 재현에 실패했다. 사용자가
+"지금 정상 동작한다는 뜻이냐"며 명확히 납득을 거부했으므로, 코드가
+맞다고 결론짓는 대신 `AfterAction`의 게이트 체크 직전에 영구 진단
+로그를 추가했다:
+```csharp
+if (seat == PLAYER_SEAT)
+    Debug.Log($"[GoStopGate] seat={seat} rawScore={rawScore} lastGoScore={lastGoScore[seat]} " +
+        $"willPrompt={rawScore >= CaptureLine && rawScore > lastGoScore[seat]} " +
+        $"capturedCount={captured[seat].Count} goCount={goCount[seat]} captureLine={CaptureLine}");
+```
+라이브로 정상 호출 시 로그가 정확한 값으로 찍히는 것까지 확인했다
+(`rawScore=1 lastGoScore=-1 willPrompt=False ...`). **이 버그는 여전히
+미해결이다** — 다음에 사용자가 실제 플레이 중 재현하면 이 로그
+(`[GoStopGate]` 태그)로 정확한 순간의 `rawScore`/`lastGoScore`/
+`capturedCount`를 확보해 원인을 좁힐 것.
+
+검증(Play 모드 라이브, 리플렉션): `SpawnComboIcon`의 `sizeDelta=(300,300)`
+확인, `GoEffectSeq`의 `sizeDelta=(1800,700)`·`anchoredPosition=(0,0)`·
+1고 기준 `fontSize=110` 확인. `OnPlayerStop()` 호출 직후엔 `state=Turn`
+(아직 안 끝남)+스톱 이펙트 오브젝트 존재, ~1.6초 뒤엔 `state=GameOver`+
+이펙트 오브젝트 소멸까지 확인해 지연 순서가 실제로 동작함을 확인했다.
+콘솔 에러·예외 0건.
+
 ## 고스톱 — 뻑 이펙트 위치 버그, 실패 마스킹 절단 연출, 이펙트 큐잉,
 1~8고/스톱 텍스트 이펙트 (2026-09-06)
 

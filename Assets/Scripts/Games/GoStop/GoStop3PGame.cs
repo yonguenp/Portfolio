@@ -1885,7 +1885,7 @@ public partial class GoStop3PGame : MonoBehaviour
         var rt = go.GetComponent<RectTransform>();
         rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
         rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.sizeDelta = new Vector2(150f, 150f);
+        rt.sizeDelta = new Vector2(300f, 300f); // 2026-09-06(사용자 확인) — "쫌스럽게 보임", 기존 150의 2배
         rt.anchoredPosition = local;
         rt.localScale = Vector3.zero;
 
@@ -1915,7 +1915,7 @@ public partial class GoStop3PGame : MonoBehaviour
                 seq.Join(group.DOFade(0f, 0.28f).SetDelay(0.32f));
                 break;
             case "poop": // 뻑 — 위에서 뚝 떨어지는 불길함
-                rt.anchoredPosition = local + new Vector2(0f, 90f);
+                rt.anchoredPosition = local + new Vector2(0f, 140f); // 아이콘이 2배 커진 만큼 낙하 거리도 비례해 키움
                 seq.Append(rt.DOAnchorPos(local, 0.16f).SetEase(Ease.InQuad));
                 seq.Join(rt.DOScale(1f, 0.16f).SetEase(Ease.OutBack));
                 seq.Append(rt.DOPunchScale(new Vector3(0.12f, 0.12f, 0f), 0.30f, 6, 0.8f));
@@ -1925,7 +1925,7 @@ public partial class GoStop3PGame : MonoBehaviour
             case "tissue": // 뻑 먹기 — 통통 튀며 떠오르는 상쾌함
                 seq.Append(rt.DOScale(1.18f, 0.14f).SetEase(Ease.OutBack));
                 seq.Append(rt.DOScale(1f, 0.10f));
-                seq.Join(rt.DOAnchorPosY(local.y + 26f, 0.55f).SetEase(Ease.OutSine));
+                seq.Join(rt.DOAnchorPosY(local.y + 40f, 0.55f).SetEase(Ease.OutSine)); // 아이콘 확대에 비례해 상승 거리도 키움
                 seq.Append(group.DOFade(0f, 0.30f));
                 break;
             default: // "lips" 쪽 — 짧게 통통 튀는 뽀뽁 펄스
@@ -1948,23 +1948,18 @@ public partial class GoStop3PGame : MonoBehaviour
     /// 그대로 재사용한다(tier를 5로 클램프).</summary>
     void FireGoEffect(int seat, int goNumber)
     {
-        if (fieldArea == null) return;
-        // 2026-09-06 버그 수정 — "뻑 이펙트가 뻑난 카드 위가 아니라
-        // 한칸반정도 어긋나게 나온다" 신고로 발견. fieldArea가 가리키는
-        // 실제 오브젝트("FieldCards")는 예전에 이 계산이 쓰여질 때보다
-        // 한 단계 더 안쪽에 중첩됐다(필드 카드를 pos1~12 마커에 attach하는
-        // 리팩터 때 추가된 래퍼로 보인다) — 실제 계층은
-        // FieldCards→Field→ContentArea→SafeArea→GameUI(진짜 Canvas)로
-        // 4단계인데 3단계만 올라가 SafeArea에서 멈추고 있었다. SafeArea와
-        // 진짜 Canvas(GameUI)는 앵커/피벗 구성이 달라 InverseTransformPoint
-        // 결과가 어긋난다 — 실측으로 Y축이 약 112px 어긋나는 것까지
-        // 확인했다. 4단계로 정정.
-        var canvasRoot = fieldArea.parent.parent.parent.parent as RectTransform; // Canvas(GameUI) — Overlay와 같은 층
-        Vector2 local = canvasRoot.InverseTransformPoint(fieldArea.position);
-        StartCoroutine(GoEffectSeq(canvasRoot, local, seat, goNumber));
+        var canvasRoot = GoStopCanvasRoot();
+        if (canvasRoot == null) return;
+        StartCoroutine(GoEffectSeq(canvasRoot, seat, goNumber));
     }
 
-    IEnumerator GoEffectSeq(RectTransform canvasRoot, Vector2 local, int seat, int goNumber)
+    /// <summary>2026-09-06(사용자 확인) — "고/스톱 이펙트는 화면 정중앙에
+    /// 나와야 할거같고 사이즈도 지금보다 많이 크게, 화면이 꽉찰듯 보여야".
+    /// 카드 슬롯 위치가 아니라 항상 화면 정중앙에 뜨는 게 맞는 이펙트라
+    /// `comboEffectWorldPos`류 타겟팅 없이 `Vector2.zero`(canvasRoot 자신의
+    /// 피벗=중심)를 그대로 쓴다 — canvasRoot(GameUI)는 부모가 없는 루트
+    /// Canvas라 자기 자신의 로컬 원점이 곧 화면 중심이다.</summary>
+    IEnumerator GoEffectSeq(RectTransform canvasRoot, int seat, int goNumber)
     {
         int tier = Mathf.Min(goNumber, 5);
         bool tense = tier >= 3;
@@ -1975,15 +1970,15 @@ public partial class GoStop3PGame : MonoBehaviour
         var rt = goObj.GetComponent<RectTransform>();
         rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
         rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.sizeDelta = new Vector2(700f, 220f);
-        rt.anchoredPosition = local;
+        rt.sizeDelta = new Vector2(1800f, 700f);
+        rt.anchoredPosition = Vector2.zero; // 화면 정중앙
         rt.localScale = Vector3.one * 0.5f;
 
         var group = goObj.AddComponent<CanvasGroup>();
         group.alpha = 0f;
 
         Color mainColor = flashy ? new Color(1f, 0.45f, 0.10f) : tense ? new Color(1f, 0.55f, 0.20f) : HwatuTheme.Gold;
-        var label = HwatuUI.MakeLabel(rt, Vector2.zero, new Vector2(700f, 140f), flashy ? 76f : tense ? 64f : 52f, mainColor);
+        var label = HwatuUI.MakeLabel(rt, Vector2.zero, new Vector2(1800f, 340f), flashy ? 170f : tense ? 140f : 110f, mainColor);
         label.text = $"{SeatName(seat)} {goNumber}고!";
         label.fontStyle = FontStyles.Bold;
         label.alignment = TextAlignmentOptions.Center;
@@ -1991,7 +1986,7 @@ public partial class GoStop3PGame : MonoBehaviour
 
         if (tense)
         {
-            var sub = HwatuUI.MakeLabel(rt, new Vector2(0f, -66f), new Vector2(700f, 46f), 26f, new Color(1f, 0.65f, 0.35f));
+            var sub = HwatuUI.MakeLabel(rt, new Vector2(0f, -150f), new Vector2(1800f, 90f), 48f, new Color(1f, 0.65f, 0.35f));
             sub.text = "지금부터 배수 ×2!";
             sub.alignment = TextAlignmentOptions.Center;
             sub.raycastTarget = false;
@@ -2008,7 +2003,7 @@ public partial class GoStop3PGame : MonoBehaviour
         }
 
         int burstCount = tier switch { 1 => 8, 2 => 10, 3 => 14, 4 => 20, _ => 26 };
-        GoStopIcons.SpawnBurst(canvasRoot, local, mainColor, burstCount);
+        GoStopIcons.SpawnBurst(canvasRoot, Vector2.zero, mainColor, burstCount);
 
         var seq = DOTween.Sequence();
         seq.Append(rt.DOScale(flashy ? 1.15f : 1f, 0.18f).SetEase(Ease.OutBack));
@@ -2016,9 +2011,9 @@ public partial class GoStop3PGame : MonoBehaviour
         if (tense) seq.Append(rt.DOShakePosition(0.22f, strength: 10f, vibrato: 12));
         if (flashy)
         {
-            seq.Join(ring1.DOScale(2.4f, 0.55f).SetEase(Ease.OutCubic));
+            seq.Join(ring1.DOScale(4.5f, 0.55f).SetEase(Ease.OutCubic));
             seq.Join(ring1.GetComponent<CanvasGroup>().DOFade(0f, 0.55f));
-            seq.Join(ring2.DOScale(2.4f, 0.55f).SetEase(Ease.OutCubic).SetDelay(0.12f));
+            seq.Join(ring2.DOScale(4.5f, 0.55f).SetEase(Ease.OutCubic).SetDelay(0.12f));
             seq.Join(ring2.GetComponent<CanvasGroup>().DOFade(0f, 0.55f).SetDelay(0.12f));
         }
         seq.Append(rt.DOScale(1f, 0.10f));
@@ -2035,7 +2030,7 @@ public partial class GoStop3PGame : MonoBehaviour
         var rt = go.GetComponent<RectTransform>();
         rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
         rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.sizeDelta = new Vector2(140f, 140f);
+        rt.sizeDelta = new Vector2(260f, 260f);
         rt.localScale = Vector3.one * 0.6f;
         var img = go.AddComponent<Image>();
         img.sprite = UISkin.CircleLine;
@@ -2049,34 +2044,28 @@ public partial class GoStop3PGame : MonoBehaviour
     /// <summary>스톱을 외칠 때(나든 상대든) 뜨는 이펙트 — "스톱!" 텍스트 +
     /// 손으로 정지 신호를 보내는 아이콘(<see cref="GoStopComboIcons.StopHand"/>,
     /// 절차적으로 직접 그린 실루엣 — 위 GoStopComboIcons 클래스 문서의
-    /// "웹 SVG 대신 직접 그린다" 원칙을 그대로 따랐다).</summary>
-    void FireStopEffect(int seat)
+    /// "웹 SVG 대신 직접 그린다" 원칙을 그대로 따랐다). 화면 정중앙에
+    /// 크게 뜬다(고 이펙트와 같은 이유). <see cref="Coroutine"/>을 그대로
+    /// 반환한다 — 호출부가 "이 이펙트가 끝난 뒤에" 결과 화면(EndGame)을
+    /// 띄우고 싶을 때 `yield return FireStopEffect(seat);`로 이어붙일 수
+    /// 있게 하기 위해서다(2026-09-06 사용자 확인 — "결과화면이 스톱
+    /// 이펙트 끝난후에 떠야할거 같아").</summary>
+    Coroutine FireStopEffect(int seat)
     {
-        if (fieldArea == null) return;
-        // 2026-09-06 버그 수정 — "뻑 이펙트가 뻑난 카드 위가 아니라
-        // 한칸반정도 어긋나게 나온다" 신고로 발견. fieldArea가 가리키는
-        // 실제 오브젝트("FieldCards")는 예전에 이 계산이 쓰여질 때보다
-        // 한 단계 더 안쪽에 중첩됐다(필드 카드를 pos1~12 마커에 attach하는
-        // 리팩터 때 추가된 래퍼로 보인다) — 실제 계층은
-        // FieldCards→Field→ContentArea→SafeArea→GameUI(진짜 Canvas)로
-        // 4단계인데 3단계만 올라가 SafeArea에서 멈추고 있었다. SafeArea와
-        // 진짜 Canvas(GameUI)는 앵커/피벗 구성이 달라 InverseTransformPoint
-        // 결과가 어긋난다 — 실측으로 Y축이 약 112px 어긋나는 것까지
-        // 확인했다. 4단계로 정정.
-        var canvasRoot = fieldArea.parent.parent.parent.parent as RectTransform; // Canvas(GameUI) — Overlay와 같은 층
-        Vector2 local = canvasRoot.InverseTransformPoint(fieldArea.position);
-        StartCoroutine(StopEffectSeq(canvasRoot, local, seat));
+        var canvasRoot = GoStopCanvasRoot();
+        if (canvasRoot == null) return null;
+        return StartCoroutine(StopEffectSeq(canvasRoot, seat));
     }
 
-    IEnumerator StopEffectSeq(RectTransform canvasRoot, Vector2 local, int seat)
+    IEnumerator StopEffectSeq(RectTransform canvasRoot, int seat)
     {
         var goObj = new GameObject("StopEffect", typeof(RectTransform));
         goObj.transform.SetParent(canvasRoot, false);
         var rt = goObj.GetComponent<RectTransform>();
         rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
         rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.sizeDelta = new Vector2(500f, 220f);
-        rt.anchoredPosition = local;
+        rt.sizeDelta = new Vector2(1500f, 700f);
+        rt.anchoredPosition = Vector2.zero; // 화면 정중앙
         rt.localScale = Vector3.one * 0.5f;
 
         var group = goObj.AddComponent<CanvasGroup>();
@@ -2088,20 +2077,20 @@ public partial class GoStop3PGame : MonoBehaviour
         var iconRt = iconGo.GetComponent<RectTransform>();
         iconRt.anchorMin = iconRt.anchorMax = new Vector2(0.5f, 1f);
         iconRt.pivot = new Vector2(0.5f, 0.5f);
-        iconRt.sizeDelta = new Vector2(110f, 110f);
-        iconRt.anchoredPosition = new Vector2(0f, -55f);
+        iconRt.sizeDelta = new Vector2(260f, 260f);
+        iconRt.anchoredPosition = new Vector2(0f, -130f);
         var iconImg = iconGo.AddComponent<Image>();
         iconImg.sprite = GoStopComboIcons.StopHand;
         iconImg.preserveAspect = true;
         iconImg.raycastTarget = false;
 
-        var label = HwatuUI.MakeLabel(rt, new Vector2(0f, -140f), new Vector2(500f, 60f), 46f, stopRed);
+        var label = HwatuUI.MakeLabel(rt, new Vector2(0f, -330f), new Vector2(1500f, 140f), 100f, stopRed);
         label.text = $"{SeatName(seat)} 스톱!";
         label.fontStyle = FontStyles.Bold;
         label.alignment = TextAlignmentOptions.Center;
         label.raycastTarget = false;
 
-        GoStopIcons.SpawnBurst(canvasRoot, local, stopRed, 10);
+        GoStopIcons.SpawnBurst(canvasRoot, Vector2.zero, stopRed, 14);
 
         var seq = DOTween.Sequence();
         seq.Append(rt.DOScale(1f, 0.16f).SetEase(Ease.OutBack));
@@ -2111,6 +2100,22 @@ public partial class GoStop3PGame : MonoBehaviour
         seq.Append(group.DOFade(0f, 0.28f));
         seq.OnComplete(() => { if (goObj != null) Destroy(goObj); });
         yield return seq.WaitForCompletion();
+    }
+
+    /// <summary>고/스톱 이펙트가 항상 화면 정중앙에 떠야 하므로(카드 슬롯
+    /// 위치가 필요 없다) fieldArea 체인만 확인해 GameUI(Canvas)를 반환한다.
+    /// `ShowActionPopup`이 쓰는 것과 같은 4단계 체인(위 주석 참고).</summary>
+    RectTransform GoStopCanvasRoot() =>
+        fieldArea == null ? null : fieldArea.parent.parent.parent.parent as RectTransform;
+
+    /// <summary>2026-09-06(사용자 확인) — "결과화면이 스톱 이펙트 끝난후에
+    /// 떠야할거 같아". `FireStopEffect`가 돌려주는 Coroutine을 그대로
+    /// 기다린 뒤에야 `EndGame`(결과 오버레이)을 부른다 — 세 군데(로컬
+    /// 플레이어·AI·원격 좌석)의 스톱 결정이 전부 이 헬퍼 하나로 통일된다.</summary>
+    IEnumerator EndGameAfterStop(int seat)
+    {
+        yield return FireStopEffect(seat);
+        EndGame(seat);
     }
 
     /// <summary>파티클 버스트 색 — 텍스트 팝업(EffectJjok=하늘색 등)과 톤을
@@ -3570,6 +3575,19 @@ public partial class GoStop3PGame : MonoBehaviour
         // lastGoScore보다 실제로 더 올라갔을 때만 다시 묻는다 — 안 그러면
         // 아무것도 못 먹어 점수가 그대로인 턴에도 매번 고/스톱을 물어보게
         // 된다("점수 변동이 없어도 계속 팝업이 뜬다"는 신고).
+        //
+        // 2026-09-06 — 사용자가 이 게이트가 실제로는 안 지켜진다고
+        // 재신고했는데, 격리 테스트(AfterAction 직접 호출·실제 뻑-형성
+        // 재현) 둘 다로는 재현이 안 됐다. 정적 분석/제한된 재현으로는
+        // 더 못 찾겠어서, 다음에 실제로 재발할 때 근거를 남기려고
+        // 플레이어 좌석에 한해 매번 로그를 남긴다 — 게이트가 왜 걸리고
+        // 안 걸리는지 정확한 수치가 남는다.
+        if (seat == PLAYER_SEAT)
+        {
+            Debug.Log($"[GoStopGate] seat={seat} rawScore={rawScore} lastGoScore={lastGoScore[seat]} " +
+                $"willPrompt={rawScore >= CaptureLine && rawScore > lastGoScore[seat]} " +
+                $"capturedCount={captured[seat].Count} goCount={goCount[seat]} captureLine={CaptureLine}");
+        }
         if (rawScore >= CaptureLine && rawScore > lastGoScore[seat])
         {
             if (seat == PLAYER_SEAT)
@@ -3599,8 +3617,7 @@ public partial class GoStop3PGame : MonoBehaviour
                 return;
             }
             GoStopAudio.Instance?.Stop();
-            FireStopEffect(seat);
-            EndGame(seat);
+            StartCoroutine(EndGameAfterStop(seat));
             return;
         }
         AdvanceTurn();
@@ -3642,7 +3659,7 @@ public partial class GoStop3PGame : MonoBehaviour
         else
         {
             GoStopAudio.Instance?.Stop();
-            FireStopEffect(seat);
+            yield return FireStopEffect(seat); // 이미 코루틴 안이라 EndGameAfterStop 없이 직접 대기
             EndGame(seat);
         }
     }
@@ -3704,8 +3721,7 @@ public partial class GoStop3PGame : MonoBehaviour
             return;
         }
         GoStopAudio.Instance?.Stop();
-        FireStopEffect(PLAYER_SEAT);
-        EndGame(PLAYER_SEAT);
+        StartCoroutine(EndGameAfterStop(PLAYER_SEAT));
     }
 
     void AdvanceTurn()
