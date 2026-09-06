@@ -11569,9 +11569,31 @@ Play 모드를 나온 뒤에도 그 값이 유지되는 것까지 재확인했�
 누차 겪은 "money 관련 리플렉션 테스트는 끝나고 PlayerPrefs 오염 여부를
 반드시 다시 확인할 것"이라는 교훈을 그대로 따랐다).
 
-### 아직 손 안 댄 것 (14개 요청 중 나머지 6개)
+**후속 — 돈 변화 연출(`FlyMoneyFX`/`GoStopFX.FlyMoney`)이 잘 안 보이던
+문제.** 진짜 원인은 크기가 아니라 **z-order**였다 — 최종 정산(`EndGame`)에서
+이 함수가 불리는 시점은 그 직후(같은 프레임 안) 승패 오버레이가 뜨는
+바로 그 지점인데, 코인은 `ui.ContentArea`를 부모로 날아가고 있었다 —
+Overlay는 이 프로젝트가 여러 번 확립한 규칙대로 Canvas의 나중 sibling이라
+ContentArea보다 항상 위에 그려지므로, 코인이 뜨자마자 오버레이 뒤로
+가려 안 보였다. `PlayWinConfettiFX`가 이미 쓰던 해법(Canvas 레벨
+`canvasRoot`에 붙여서 Overlay보다도 위에 그리기)을 그대로 적용했다.
+겸사겸사 크기(30→44px)·지속시간(0.55→0.85초)·도착 파티클(6→12개)·
+"+N원" 폰트(24→32)도 키워서 눈에 더 잘 띄게 했다.
 
-- 스테이터스 박스 돈 변화 연출 강화(현재 잘 안 보임).
+검증(Play 모드 라이브): `FlyMoneyFX`를 직접 호출해 생성된 `MoneyFly`
+오브젝트의 부모가 `GameUI`(Canvas 루트, `ContentArea`가 아님)인 것,
+`sizeDelta=(44,44)`인 것, 0.85초 뒤 정상적으로 자기 자신을 정리하는
+것까지 확인했다. **함정 — 확인 스크립트 자체에서 두 번 연속 헛다리를
+짚었다.** `flyObj.transform.parent.parent.name`으로 조부모까지 확인하려
+했는데, `GameUI`는 씬의 최상위 루트라 `parent`가 `null`이라 `.name`
+접근이 `NullReferenceException`을 던졌다 — 게임 코드가 아니라 검증
+스크립트 자체의 버그였다(직전에 우연히 겪은 "No Unity Editor instances
+found" 파이프라인 일시 오류와 겹쳐서 처음엔 진짜 코드 버그로 오인할
+뻔했다). `parent.parent != null`을 먼저 확인하고 나서야 정확한 결과를
+얻었다.
+
+### 아직 손 안 댄 것 (14개 요청 중 나머지 5개)
+
 - 겹쳐있는 필드 카드를 마우스오버/터치로 확인하는 dim 툴팁.
 - GoEffect(고 이펙트) tense(3고 이상) 상태에서 텍스트 겹침.
 - GoEffect/StopEffect를 다른 이펙트처럼 코드생성 대신 프리팹화.

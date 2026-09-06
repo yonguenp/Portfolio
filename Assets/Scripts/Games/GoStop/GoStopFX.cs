@@ -163,7 +163,8 @@ public static class GoStopFX
         var rt = go.GetComponent<RectTransform>();
         rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
         rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.sizeDelta = new Vector2(30f, 30f);
+        // 2026-09-06 — "돈 변화 연출이 잘 안 보인다" 요청으로 30→44px 확대.
+        rt.sizeDelta = new Vector2(44f, 44f);
         rt.position = fromWorld;
 
         var img = go.AddComponent<Image>();
@@ -255,9 +256,12 @@ public class GoStopMoneyFly : MonoBehaviour
 
     IEnumerator Run(RectTransform rt, Image img, Vector3 from, Vector3 to, int amount, RectTransform stableParent)
     {
-        const float dur = 0.55f;
-        // 포물선처럼 보이게 중간 지점을 위로 띄운다.
-        Vector3 mid = Vector3.Lerp(from, to, 0.5f) + new Vector3(0f, 70f, 0f);
+        // 2026-09-06 — "돈 변화 연출이 잘 안 보인다" 요청으로 0.55→0.85초로
+        // 늘려서 눈이 따라갈 시간을 더 준다(위 크기 확대와 함께 적용).
+        const float dur = 0.85f;
+        // 포물선처럼 보이게 중간 지점을 위로 띄운다 — 지속시간이 늘어난
+        // 만큼 궤적도 더 크게 띄워서 밋밋해 보이지 않게 한다.
+        Vector3 mid = Vector3.Lerp(from, to, 0.5f) + new Vector3(0f, 100f, 0f);
 
         float t = 0f;
         while (t < dur)
@@ -283,7 +287,9 @@ public class GoStopMoneyFly : MonoBehaviour
         if (stableParent != null)
         {
             Vector2 localPos = stableParent.InverseTransformPoint(to);
-            GoStopIcons.SpawnBurst(stableParent, localPos, new Color(1f, 0.85f, 0.3f), count: 6);
+            // 2026-09-06 — "돈 변화 연출이 잘 안 보인다" 요청으로 파티클
+            // 6→12개로 늘려 도착 순간을 더 화려하게 했다.
+            GoStopIcons.SpawnBurst(stableParent, localPos, new Color(1f, 0.85f, 0.3f), count: 12);
             SpawnFloatText(stableParent, localPos, amount);
         }
         Destroy(gameObject);
@@ -291,7 +297,8 @@ public class GoStopMoneyFly : MonoBehaviour
 
     static void SpawnFloatText(RectTransform parent, Vector2 localPos, int amount)
     {
-        var lbl = HwatuUI.MakeLabel(parent, localPos + new Vector2(0f, 6f), new Vector2(240f, 44f), 24f,
+        // 2026-09-06 — 같은 요청으로 폰트 24→32로 확대.
+        var lbl = HwatuUI.MakeLabel(parent, localPos + new Vector2(0f, 6f), new Vector2(280f, 52f), 32f,
                                      new Color(1f, 0.85f, 0.3f));
         lbl.text = $"+{amount:N0}원";
         lbl.font = HwatuTheme.FontBold;

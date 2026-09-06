@@ -2772,7 +2772,17 @@ public partial class GoStop3PGame
         if (fromSlot < 0 || toSlot < 0) return;
         var fromLbl = moneyText[fromSlot]; var toLbl = moneyText[toSlot];
         if (fromLbl == null || toLbl == null) return;
-        GoStopFX.FlyMoney(ui.ContentArea, fromLbl.transform.position, toLbl.transform.position, amount);
+        // 2026-09-06 — "돈 변화 연출이 잘 안 보인다" 신고. 최종 정산
+        // (EndGame)에서 이 함수가 불릴 때는 그 직후(같은 프레임 안) 승패
+        // 오버레이가 뜬다 — 예전처럼 ui.ContentArea를 부모로 쓰면 Overlay가
+        // 나중 sibling이라 그 위에 그려져(이 프로젝트가 여러 번 확립한
+        // "Overlay는 ContentArea보다 나중에 그려진다" 규칙) 코인이 뜨자마자
+        // 오버레이에 가려 안 보였다. PlayWinConfettiFX와 같은 방식으로
+        // Canvas 레벨(canvasRoot)에 붙여서 Overlay보다도 위에 그려지게
+        // 한다 — 게임 중(오버레이가 없을 때)에도 더 위에 그려질 뿐이라
+        // 부작용은 없다.
+        var canvasRoot = ui.ContentArea.parent.parent as RectTransform;
+        GoStopFX.FlyMoney(canvasRoot != null ? canvasRoot : ui.ContentArea, fromLbl.transform.position, toLbl.transform.position, amount);
     }
 
     /// <summary>충격 지점에 흰 원이 확 퍼졌다 사라지는 짧은 플래시 + 작은
