@@ -516,9 +516,9 @@ public partial class GoStop3PGame
         dealerDrawPopup = HwatuUI.InstantiatePopup<DealerDrawPopupView>("DealerDrawPopup", canvasRoot);
     }
 
-    const float DRAW_CARD_W = 108f, DRAW_CARD_H = 176.4f;
+    const float DRAW_CARD_W = 120f, DRAW_CARD_H = 196f;
     const float DRAW_COL_PITCH = 150f;
-    const float DRAW_ROW_PITCH = 210f; // 카드(170)+태그(26)+여백 — 겹치지 않을 만큼
+    const float DRAW_ROW_PITCH = 236f; // 카드(170)+태그(26)+여백 — 겹치지 않을 만큼
 
     /// <summary>2026-08-26 재설계(사용자 확인 규칙) — 8장을 Dim 배경 위에
     /// 뒷면으로 깔아두고 좌석마다 한 장씩 순서대로 고르게 한다. 다 고르면
@@ -1344,6 +1344,18 @@ public partial class GoStop3PGame
         // 레이어와 비교해서 필요한 만큼만 늘리거나(즉시) 줄인다(애니메이션
         // 후 제거). 매턴 통째로 지우고 다시 그리면 "5장 이하로 떨어질 때
         // 한 장씩 실제로 제거되는 연출"이 불가능해진다.
+        // 2026-09-06 — "카드가 뚝뚝 끊긴다" 신고. 손패는 매턴 통째로 지우고
+        // 다시 그리는 구조라(pos1~12 마커처럼 카드만 갈아끼우는 게 아니다),
+        // 지우기 *직전*에 지금 화면에 남아있는 카드들의 실제 위치를
+        // handFlyFrom에 스냅샷해 둔다 — DrawPlayerHand가 그 카드를 다시
+        // 그릴 때 이 값이 있으면(=이미 손패에 그려져 있던 카드) 새 자리로
+        // 부드럽게 이어준다. 방금 새로 들어온 카드(지난 프레임엔 손패에
+        // 없었던)는 FindHandSlot이 null을 돌려주므로 자동으로 제외된다.
+        foreach (var c in hand[PLAYER_SEAT])
+        {
+            var existingSlot = FindHandSlot(c);
+            if (existingSlot != null) handFlyFrom[c] = existingSlot.position;
+        }
         HwatuUI.ClearChildren(handArea);
         // 2026-08-27(목업 LayoutGroup 반영) — playerCapArea/capAreaAI[slot]는
         // 이제 광/끗/띠/피 리프 존을 가진 고정 하위구조(HLG+VLG+GridLayoutGroup,
@@ -1478,6 +1490,7 @@ public partial class GoStop3PGame
         flyFrom.Clear();
         flyViaField.Clear();
         flyFromSize.Clear();
+        handFlyFrom.Clear();
 
         CheckEmergencies();
 
@@ -2192,6 +2205,18 @@ public partial class GoStop3PGame
             var go = HwatuUI.MakeCard(card, handArea, new Vector2(x, y), HAND_W, HAND_H,
                 () => OnPlayerPlay(card), playable, pivotBottom: true);
 
+            // 2026-09-06 — "카드가 뚝뚝 끊긴다" 신고. 이 카드가 지난
+            // 프레임에도 손패에 있었다면(handFlyFrom에 기록됨) 그 자리에서
+            // 방금 정해진 새 자리로 부드럽게 이어준다 — 캡처 비행(SlamIn)과
+            // 달리 임팩트 플래시·펀치 스케일 없이 조용히 미끄러진다(손 안에서
+            // 재배치되는 것뿐이지 "잡았다 놓는" 사건이 아니므로).
+            if (handFlyFrom.TryGetValue(card, out var handFrom))
+            {
+                var handRt = go.transform as RectTransform;
+                if ((handRt.position - handFrom).sqrMagnitude > 1f)
+                    StartCoroutine(SlideHandCard(handRt, handFrom));
+            }
+
             // 폭탄/흔들기/굳은자 가능 표시 — 카드 자체는 안 건드리고 작은
             // 아이콘을 모서리에 얹는다. 셋 다 손패 안에서만 조건이 갈리므로
             // (전통 규칙 (3,1) 폭탄, 3장 흔들기, 2장+필드매치0 굳은자) 서로
@@ -2352,6 +2377,29 @@ public partial class GoStop3PGame
     // 지속시간을 자동으로 늘리면 두 상황을 하나의 함수로 같이 만족시킬
     // 수 있다(짧으면 스냅, 길면 눈으로 좇을 수 있게).
     static float CaptureFlightDistanceT(float dist) => Mathf.Clamp01(dist / 500f);
+
+    /// <summary>손패 안에서의 재배치 전용(2026-09-06) — 캡처 비행(SlamIn)과
+    /// 달리 임팩트 플래시·펀치 스케일이 없는 순수 위치 이동이다. "잡았다
+    /// 놓는" 사건이 아니라 그냥 자리 이동(내 턴 전환 시 y=-50↔0, 카드를
+    /// 내서 나머지 카드들이 빈 자리를 메울 때 등)이라 타격감을 넣으면
+    /// 오히려 어색하다.</summary>
+    IEnumerator SlideHandCard(RectTransform rt, Vector3 from)
+    {
+        if (rt == null) yield break;
+        const float dur = 0.16f;
+        Vector3 to = rt.position;
+        float t = 0f;
+        while (t < dur)
+        {
+            if (rt == null) yield break;
+            t += Time.deltaTime;
+            float p = t / dur;
+            float ease = p * p * (3f - 2f * p); // smoothstep
+            rt.position = Vector3.Lerp(from, to, ease);
+            yield return null;
+        }
+        if (rt != null) rt.position = to;
+    }
 
     IEnumerator SlamIn(RectTransform rt, Vector3 fromWorld)
     {

@@ -542,6 +542,19 @@ public partial class GoStop3PGame : MonoBehaviour
     // BACK_W/H)만 각 등록 지점에서 명시적으로 채운다.
     readonly Dictionary<HwatuCard, Vector2> flyFromSize = new();
 
+    // 2026-09-06 — "카드가 뚝뚝 끊기게 움직인다" 신고(예: 내 턴이 아니다가
+    // 내 턴이 될 때 손패가 y=-50에서 0으로 순간이동, 카드를 내서 손패가
+    // 줄면 나머지 카드들이 그 자리를 메우려 순간이동). 손패는 매
+    // RebuildUI마다 통째로 지우고 다시 그리는 구조라(pos1~12 마커처럼
+    // "카드만 갈아끼우는" 방식이 아니다), flyFrom과 같은 원리를 손패
+    // 전용으로 하나 더 둔다 — 캡처 비행(flyFrom)은 임팩트 플래시+펀치
+    // 스케일이 붙는데, 손패 안에서의 재배치는 "잡았다 놓는" 사건이
+    // 아니라 그냥 자리 이동이라 그런 타격감은 안 어울린다. RebuildUI가
+    // handArea를 지우기 *직전*에 지금 화면에 있는 각 카드의 실제 위치를
+    // 여기 스냅샷해 두면, DrawPlayerHand가 새로 만든 카드를 그 위치에서
+    // 목표 위치로 부드럽게(펀치 없이) 이어준다.
+    readonly Dictionary<HwatuCard, Vector3> handFlyFrom = new();
+
     Coroutine toastHideCo;
 
     // ── 시작 ─────────────────────────────────────────────
@@ -2790,6 +2803,12 @@ public partial class GoStop3PGame : MonoBehaviour
         flyFromSize[joker] = seat == PLAYER_SEAT ? new Vector2(HAND_W, HAND_H)
             : (originSlotIdx == 1 || originSlotIdx == 3) ? new Vector2(BACK_W, BACK_H)
             : new Vector2(FIELD_W, FIELD_H);
+        // 2026-09-06 — PlaySeq의 손패→필드 경로에만 있던 "고스트가 뜨는
+        // 즉시 원본 손패 오브젝트를 숨긴다" 처리가 이 조커 경로엔 빠져
+        // 있었다 — RebuildUI가 정식으로 지울 때까지(Destroy 지연 실행)
+        // 옛 손패 카드가 남아있어, 날아가는 고스트와 잠깐 겹쳐 보이는
+        // "뚝뚝 끊기는" 원인이었다.
+        HideHandCardVisual(seat, joker);
 
         h.Remove(joker);
         cap.Add(joker);

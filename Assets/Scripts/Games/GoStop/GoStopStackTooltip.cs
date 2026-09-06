@@ -130,9 +130,21 @@ public class GoStopStackTooltip : MonoBehaviour
 }
 
 /// <summary>필드에서 카드가 여러 장 겹친 슬롯 하나를 통째로 덮는 투명
-/// 오버레이에 붙는 트리거 — 눌려 있는 동안 <see cref="GoStopStackTooltip"/>을
-/// 띄운다. 개별 카드가 아니라 슬롯 전체를 덮으므로, 맨 위에 어떤 카드가
-/// 그려져 있든 그 슬롯 안 아무 곳이나 누르면 똑같이 전체 목록이 뜬다.</summary>
+/// 오버레이에 붙는 트리거. 개별 카드가 아니라 슬롯 전체를 덮으므로, 맨
+/// 위에 어떤 카드가 그려져 있든 그 슬롯 안 아무 곳이나 가리키면 똑같이
+/// 전체 목록이 뜬다.
+/// <br/>2026-09-06 1차 정정(사용자 확인) — "터치나 마우스오버시에 툴팁이
+/// 올라왔다가 마우스오버해제나 터치아웃때 사라지는걸 생각했어"라는 요청으로
+/// Down/Up→Enter/Exit(호버)로 바꿨었다.
+/// <br/>2026-09-06 2차 정정(사용자 확인) — "마우스다운일때 띄우고
+/// 마우스업이면 닫아줘, 터치도 다운/업으로"로 다시 방향이 바뀌어 Down/Up
+/// (누르고 있는 동안만)으로 되돌렸다 — 마우스/터치 둘 다 Unity UGUI가
+/// PointerDown/PointerUp을 동일하게 합성해주므로 별도 분기 없이 한 쌍의
+/// 핸들러로 충분하다. Exit도 안전망으로 같이 둔다 — 손가락이 트리거
+/// 영역을 벗어난 채로 뗄 때 UGUI가 원래 눌렀던 오브젝트에 Up을 그대로
+/// 배달해주긴 하지만(포인터가 다른 곳으로 옮겨가도 "누른 대상"을 계속
+/// 추적), 혹시라도 그 경로가 안 걸리는 예외적 상황에서도 확실히 닫히게
+/// 이중으로 막아둔다.</summary>
 public class GoStopStackHoverTrigger : MonoBehaviour, IPointerDownHandler, IPointerUpHandler, IPointerExitHandler
 {
     List<HwatuCard> cards;
