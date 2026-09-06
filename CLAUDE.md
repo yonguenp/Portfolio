@@ -12196,3 +12196,113 @@ slot(`pos2`/`pos5`)으로 찍혀, 애니메이션이 시작하는 바로 그 순
 > 별도의 코드 경로(②)가 담당하고 있어서 안 고쳐진 채 남아 있었다.
 > 데이터 레이어 버그를 고쳤다고 해서 그 데이터를 만드는 과정에서 거치는
 > 모든 시각적 단계까지 자동으로 맞는다고 가정하면 안 된다.
+
+### 조커 애니메이션 버그 2차 — "완전 무매칭" 케이스는 여전히 빠져 있었다,
++ 그 김에 발견한 별개의 "고아 조커" 버그까지 (2026-09-06)
+
+바로 위 수정을 커밋한 직후 "방금도 조커 빈공간으로 애니메이션됬어" +
+정확한 재현 절차("뒷패에서 조커가 나와서 빈공간으로 이동. 슬램다운
+애니메이션 후 내가 낸 패 스택 포지션으로 순간이동")를 다시 받았다.
+조사해보니 위 수정이 커버한 건 `couldBePpeok`(손패가 필드 1장과
+매칭됐지만 대기 중인 상태) 하나뿐이었다 — 손패가 **아예 아무 데도
+안 붙어 필드에 그대로 혼자 남는**("완전 무매칭", `r1.captured.Count==0`)
+케이스는 별도의 조건이라 전혀 안 고쳐져 있었다. 이것도 뒷패 조커가
+그 카드 위에 파킹될 수 있는 정상적인 시나리오(`willDraw/drawn.isJoker`
+지점의 `anchor = r1.captured.Count == 0 ? card : null`)인데, "②"의
+사전 슬롯 배정 로직은 `couldBePpeok` 조건만 확인하고 있었다.
+
+**고침 1 — 데이터 레이어(`ResolveBonusJoker`) 재정리.** "죽은 무더기"
+버그를 막으려고 "③"에만 넣어뒀던 용량 가드(`jokerPileCanEverComplete`)
+를, 애초에 파킹 여부를 최종 결정하는 `ResolveBonusJoker` 자신의
+`parkOnAnchor` 판정으로 옮겼다 — `field.Count(그 달, 조커 제외)`로
+"지금 필드에 이미 쌓인 실카드 장수"를 직접 세면, couldBePpeok 대기
+페어(2장)든 완전 무매칭 anchor 혼자(1장)든 **같은 공식**
+(`예약장수 + 이미캡처된장수 < 4`)으로 두 케이스를 한 번에 커버할 수
+있다는 걸 깨달았다 — 어느 쪽이든 "이 달 카드가 전부 4장인데, 필드에
+이미 쌓인 것+캡처된 것을 더해 4장이 다 차 있으면 4번째 실카드가 세상에
+더 없다"는 같은 논리이기 때문이다.
+
+**고침 2 — 애니메이션 레이어("②") 확장.** couldBePpeok 전용이던 사전
+슬롯 배정을, "완전 무매칭"도 함께 커버하도록 통합했다 — 둘 다 anchor는
+`card`로 같고, 예약 슬롯 수만 다르다(couldBePpeok=2장, 완전 무매칭=1장).
+```csharp
+HwatuCard parkAnchor = null;
+int reservedSlots = 0;
+if (couldBePpeok) { parkAnchor = card; reservedSlots = 2; }
+else if (!bomb && r1.captured.Count == 0) { parkAnchor = card; reservedSlots = 1; }
+if (parkAnchor != null) {
+    int alreadyCapturedOfMonth = captured.Where(cap => cap != null).Sum(cap => cap.Count(c => c.month == parkAnchor.month));
+    if (reservedSlots + alreadyCapturedOfMonth < 4) fieldSlotAssign[drawn] = AssignFieldSlot(parkAnchor);
+}
+```
+
+**검증(라이브, `[GoStopJokerGhost]`/`[GoStopJoker]` 로그).** 손패에서
+Joker_1을 빼서 덱 맨 위로 옮기고, 필드에 없는 달(1월, January_Hikari)을
+실제로 플레이 — 로그에 `drawn=Joker_1 couldBePpeok=False target=pos6
+anchorTarget=pos6`(고스트 생성 시점부터 정확히 같은 슬롯)와 바로 이어서
+`anchor=January_Hikari anchorInField=True parkOnAnchor=True`(데이터
+레이어도 정확히 파킹 결정)를 확인했다 — **바로 직전(이 수정 전) 같은
+로그에 남아있던 `target=pos6 anchorTarget=pos2`(불일치)가 정확히 이
+버그의 증거였고, 수정 후엔 일치로 바뀐 것까지 같은 세션 안에서 전후
+비교로 확인했다.**
+
+**부수 발견 — 이 버그를 조사하다가 완전히 별개의 진짜 버그를 하나 더
+찾았다: "고아 조커".** 완전 무매칭 anchor에 조커가 정상적으로
+파킹됐다고 해도, 그 anchor가 **나중에 다른 사람의 평범한 1:1 매칭으로
+정상 캡처**되면(뻑 형성도 아니고 뒷패도 조커가 아닌, 그냥 흔한 경우)
+조커는 같이 못 딸려가고 필드에 혼자 남는다 — 조커는 월이 없어 아무도
+다시 못 잡으므로, **그 판이 끝날 때까지 영원히 못 먹는 카드**가 된다.
+`ppeokBonusPi`의 기존 소비 지점들(뻑 3장 스윕, 필드 2장 선택 등)은
+전부 "무더기에 2장 이상 쌓인" 시나리오만 다루고 있어서, "실카드 1장
++조커"라는 가장 단순한 파킹 형태에는 아무도 대응하고 있지 않았다 —
+이건 이번 세션의 애니메이션 수정과 무관하게 **파킹 기능 자체가 처음
+생겼을 때부터 있던 구조적 빈틈**이다(심각도는 낮다 — 크래시나 무한
+루프가 아니라 그 판에서 카드 한 장의 득점 기회를 잃는 정도, 다음
+판에서 자동으로 해소된다).
+
+**고침 3 — "③"에 형제 분기 추가.** `couldBePpeok`(=정확히 이 anchor가
+필드에 1장뿐일 때 성립)인데 뻑도 아니고 뒷패도 조커가 아니면, 그
+달에 `ppeokBonusPi` 항목이 있는지 확인해서 있으면 조커를 정상 캡처에
+같이 쓸어 담는다:
+```csharp
+else if (!ppeokFormed && ppeokBonusPi.TryGetValue(card.month, out var parkedJokerHere))
+{
+    var jokerGo = FieldSlotTransform(parkedJokerHere).Find(parkedJokerHere.spriteName);
+    if (jokerGo != null) flyFrom[parkedJokerHere] = jokerGo.position;
+    field.Remove(parkedJokerHere);
+    r1.captured.Add(parkedJokerHere);
+    ppeokBonusPi.Remove(card.month);
+}
+```
+`r1.captured`에 세 번째 카드로 얹기만 하고 `r1.matchCount`는 안 건드려서
+(`ApplyMatchBonus`의 "뻑 먹기" 대형 스윕 분기는 `matchCount==3`만 보고
+`captured.Count`는 안 본다 — 정직하게 확인함), 엉뚱한 보너스/토스트가
+안 붙는다. "④"의 `cap.AddRange(r1.captured)`가 손 안 대도 이 조커까지
+자동으로 같이 담긴다.
+
+**검증(라이브, 리플렉션으로 정확히 재현).** 3월 카드 1장(anchor)+조커를
+필드에 강제로 파킹해 두고(`ppeokBonusPi[3]=joker`), 손패에 다른 3월
+카드를, 덱 맨 위에 무관한 달(12월, 비조커) 카드를 세팅한 뒤 실제
+플레이 — 결과: `captured[0]`에 방금 낸 카드+anchor+조커가 **모두**
+정확히 들어가고(`[March_Tanzaku, March_Hikari, Joker_1, ...]`), 필드에서
+anchor·조커 둘 다 사라지고, `ppeokBonusPi`도 그 달 항목이 깨끗이
+지워지고, `fieldSlotAssign`에도 조커의 잔여 항목이 안 남는 것까지
+전부 확인했다. 콘솔 에러 0건.
+
+### 굳은자 표시 — "손 2장 + 필드 2장" 케이스 추가 (2026-09-06)
+
+"필드에 1월 2장이 깔려있고 내 손패에 2개의 1월이 있으면, 필드의 1월은
+전부 내가 먹는 패니까 굳은자"라는 요청 — 이 달 카드는 항상 정확히
+4장뿐이므로, 손 2장+필드 2장이면 그 자체로 이미 4장 전부의 소재가
+확정된다(다른 좌석 손/덱에 이 달 카드가 남아있을 수 없다는 뜻). 기존
+두 조건(손1+Cap2+필드1, 손2+Cap1+)과 같은 "4장 전부 소재 확정" 원리의
+세 번째 조합으로 추가했다:
+```csharp
+bool stuckPair = (sameMonthHand == 1 && capsCount == 2 && sameMonthField >= 1)
+               || (sameMonthHand == 2 && capsCount >= 1)
+               || (sameMonthHand == 2 && capsCount == 0 && sameMonthField == 2);
+```
+**검증(라이브, 리플렉션).** 손패에 6월 2장+필드에 6월 2장(캡처 0장)을
+강제로 채운 뒤 실제 손패 카드 GameObject 자식에서 "!" 텍스트 아이콘이
+정확히 뜨는 것을 확인, 대조군(손2+필드1+캡0 — 새 조건도 기존 두 조건도
+전부 불성립)에서는 뜨지 않는 것까지 확인해 오탐이 없음을 재확인했다.

@@ -3155,23 +3155,42 @@ public partial class GoStop3PGame : MonoBehaviour
             if (drawn.isJoker)
             {
                 // 2026-09-06 버그 수정("아직도 빈 공간에 슬램다운") — 조커가
-                // couldBePpeok 대기 중인 anchor 슬롯에 합류할 때(아래 "③ 뻑
-                // 판정"에서 파킹되는 경우), 그 슬롯 배정 자체는 ③에서야
-                // 이뤄졌다 — 그런데 이 애니메이션(②)은 ③보다 먼저 실행되므로,
-                // 배정이 아직 안 된 시점의 FieldSlotTransform(drawn)은 조커
-                // 전용 규칙(월이 없어 항상 새 빈 슬롯)을 그대로 따라 엉뚱한
-                // 빈 자리로 떨어졌다 — 데이터(최종 렌더)는 ③ 이후 올바르게
-                // 고쳐지지만, 그 사이의 착지 애니메이션만 틀린 자리를 보여준
-                // 것이었다. ③이 쓸 조건(파킹 가능 여부)을 여기서 미리
-                // 계산해서 슬롯을 먼저 배정해 두면, 애니메이션도 처음부터
-                // 정확한 자리로 떨어진다 — ③에서 같은 배정을 다시 시도해도
-                // fieldSlotAssign 캐시를 먼저 보므로 안전하게 멱등이다.
-                if (couldBePpeok)
+                // 필드의 anchor 슬롯에 합류할 때(couldBePpeok 대기 페어든,
+                // 완전 무매칭으로 혼자 남은 카드든 — 아래 "③ 뻑 판정"/
+                // ResolveBonusJoker에서 실제로 파킹되는 경우), 그 슬롯 배정
+                // 자체는 그 이후에야 이뤄졌다 — 그런데 이 애니메이션(②)은
+                // 그보다 먼저 실행되므로, 배정이 아직 안 된 시점의
+                // FieldSlotTransform(drawn)은 조커 전용 규칙(월이 없어 항상
+                // 새 빈 슬롯)을 그대로 따라 엉뚱한 빈 자리로 떨어졌다 —
+                // 데이터(최종 렌더)는 나중에 올바르게 고쳐지지만, 그 사이의
+                // 착지 애니메이션만 틀린 자리를 보여준 것이었다.
+                //
+                // 처음엔 couldBePpeok 케이스만 여기서 미리 계산해 뒀는데,
+                // "완전 무매칭"(손패가 아무 데도 안 붙어 그대로 필드에 혼자
+                // 남는 경우, r1.captured.Count==0)도 똑같이 뒷패 조커가
+                // 그 위에 파킹될 수 있다는 걸 놓쳤다 — anchor가 나중에
+                // ResolveBonusJoker에서 실제로 field에 있는지로 판정되는데
+                // (뒤에서 field.Contains(anchor)), couldBePpeok는 그
+                // 판정이 나기도 전인 "③"에서 anchor를 되돌려 넣지만
+                // 완전 무매칭은 애초에 "①"에서 이미 field에 그대로 남아
+                // 있다는 차이만 있을 뿐, "이 조커가 anchor와 함께 쌓일
+                // 것"이라는 결론 자체는 두 경우 다 여기서 미리 알 수 있다.
+                // 예약 슬롯 수(reservedSlots)만 다르다 — couldBePpeok는
+                // 카드+매칭필드패 2장, 완전 무매칭은 카드 1장뿐이라 "이
+                // 달 카드가 몇 장 더 남아야 완성 가능한지" 문턱값이 갈린다
+                // (ResolveBonusJoker의 parkOnAnchor 최종 판정과 같은 공식:
+                // reservedSlots + alreadyCapturedOfMonth < 4).
+                HwatuCard parkAnchor = null;
+                int reservedSlots = 0;
+                if (couldBePpeok) { parkAnchor = card; reservedSlots = 2; }
+                else if (!bomb && r1.captured.Count == 0) { parkAnchor = card; reservedSlots = 1; }
+
+                if (parkAnchor != null)
                 {
                     int alreadyCapturedOfMonth = captured.Where(cap => cap != null)
-                        .Sum(cap => cap.Count(c => c.month == card.month));
-                    if (alreadyCapturedOfMonth <= 1)
-                        fieldSlotAssign[drawn] = AssignFieldSlot(card);
+                        .Sum(cap => cap.Count(c => c.month == parkAnchor.month));
+                    if (reservedSlots + alreadyCapturedOfMonth < 4)
+                        fieldSlotAssign[drawn] = AssignFieldSlot(parkAnchor);
                 }
                 var target = FieldSlotTransform(drawn);
                 Debug.Log("[GoStopJokerGhost] drawn=" + drawn.spriteName + " couldBePpeok=" + couldBePpeok +
@@ -3270,6 +3289,24 @@ public partial class GoStop3PGame : MonoBehaviour
                 if (matchedFieldCard != null) field.Add(matchedFieldCard);
                 field.Add(card);
                 r1.captured.Clear();
+            }
+            // 2026-09-06 — 위와는 반대 방향의 구멍을 마저 막는다. "이번 매칭이
+            // 뻑도 아니고 뒷패도 조커가 아니어서" 정상 캡처(④)로 그냥
+            // 넘어가는 경우, 만약 이 anchor(card.month)에 예전 다른 턴부터
+            // 이미 조커가 파킹돼 있었다면(ppeokBonusPi) 그 조커는 anchor와
+            // 함께 딸려가지 못하고 field에 혼자 남는다 — 월이 없는 조커는
+            // 아무도 다시 못 잡으므로, 이 판이 끝날 때까지 영원히 못 먹는
+            // 카드가 된다. couldBePpeok는 "이 anchor가 field에 정확히 1장뿐인
+            // 상태에서 매칭됐다"는 뜻이라, ppeokBonusPi에 이 달 항목이
+            // 있으면 그 1장이 바로 파킹된 anchor라는 게 확정이다 — 정상
+            // 캡처에 조커까지 같이 쓸어 담는다.
+            else if (!ppeokFormed && ppeokBonusPi.TryGetValue(card.month, out var parkedJokerHere))
+            {
+                var jokerGo = FieldSlotTransform(parkedJokerHere).Find(parkedJokerHere.spriteName);
+                if (jokerGo != null) flyFrom[parkedJokerHere] = jokerGo.position;
+                field.Remove(parkedJokerHere);
+                r1.captured.Add(parkedJokerHere);
+                ppeokBonusPi.Remove(card.month);
             }
             if (ppeokFormed)
             {
@@ -3601,7 +3638,24 @@ public partial class GoStop3PGame : MonoBehaviour
     /// 적용된다(사용자 확인).</param>
     IEnumerator ResolveBonusJoker(int seat, HwatuCard joker, HwatuCard anchor, List<HwatuCard> cap, bool isLastHandCard, Vector3? revealFrom = null)
     {
-        bool parkOnAnchor = anchor != null && field.Contains(anchor);
+        // 2026-09-06 재정리 — "anchor가 필드에 살아있으면 무조건 파킹"이던
+        // 예전 조건에, couldBePpeok 전용으로 따로 두었던 "완성 가능성" 가드를
+        // 통합했다. 이 달 카드는 항상 정확히 4장 — 지금 field에 이미 쌓여
+        // 있는 실카드 장수(reservedInField, couldBePpeok가 되돌린 2장짜리
+        // 대기 페어든, 완전 무매칭으로 혼자 남은 anchor 1장이든 이 시점엔
+        // 이미 field에 반영돼 있다) + 다른 좌석이 이미 캡처한 장수를 더해
+        // 4장을 넘으면(=4번째 실카드가 세상에 더 없으면) 파킹하지 않고
+        // 즉시 캡처로 진행한다 — anchor가 field에 "혼자만" 있는 완전
+        // 무매칭 케이스에는 이 가드가 지금까지 아예 없어서, couldBePpeok
+        // 때와 똑같은 "영원히 못 먹는 죽은 무더기"가 만들어질 수 있었다.
+        bool parkOnAnchor = false;
+        if (anchor != null && field.Contains(anchor))
+        {
+            int reservedInField = field.Count(c => c.month == anchor.month && !c.isJoker);
+            int alreadyCapturedOfMonth = captured.Where(cap => cap != null)
+                .Sum(cap => cap.Count(c => c.month == anchor.month));
+            parkOnAnchor = reservedInField + alreadyCapturedOfMonth < 4;
+        }
         Debug.Log("[GoStopJoker] anchor=" + (anchor == null ? "null" : anchor.spriteName) +
             " anchorInField=" + (anchor != null && field.Contains(anchor)) + " parkOnAnchor=" + parkOnAnchor);
         if (parkOnAnchor)

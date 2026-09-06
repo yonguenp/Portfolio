@@ -2246,8 +2246,15 @@ public partial class GoStop3PGame
             //    상태와 무관하다(손에 쥔 페어 자체가 희소해지는 신호라서).
             int capsCount = 0;
             for (int s = 0; s < SEATS; s++) capsCount += captured[s].Count(c => c.month == card.month);
+            // 2026-09-06(사용자 확인) — "필드에 1월 2장, 손패에 1월 2장이면
+            // 필드의 1월은 전부 내가 먹는 패라 굳은자다"라는 신규 케이스.
+            // 이 달의 카드는 항상 정확히 4장뿐이라, 손 2장+필드 2장이면
+            // 그것만으로 이미 4장 전부 계산이 끝난다(다른 좌석 손/덱에 남은
+            // 카드가 없다는 뜻) — 기존 두 조건(1장+Cap2+필드1, 2장+Cap1+)과
+            // 같은 "4장 전부 계산 끝남" 원리의 세 번째 조합이다.
             bool stuckPair = (sameMonthHand == 1 && capsCount == 2 && sameMonthField >= 1)
-                           || (sameMonthHand == 2 && capsCount >= 1);
+                           || (sameMonthHand == 2 && capsCount >= 1)
+                           || (sameMonthHand == 2 && capsCount == 0 && sameMonthField == 2);
             // 2026-08-19: "아이콘이 겹친다"·"굳은자 아닌데 느낌표가 보인다"
             // 신고 — 실제로는 서로 다른 두 버그가 아니라 하나였다. 폭탄(우)·
             // 흔들기(좌)·굳은자(중앙)를 카드 하단에 나란히 흩어 놓았더니,
