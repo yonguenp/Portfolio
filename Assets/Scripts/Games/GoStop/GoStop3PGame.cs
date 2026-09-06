@@ -1808,9 +1808,20 @@ public partial class GoStop3PGame : MonoBehaviour
             if (names != null && seat >= 0 && seat < names.Length && !string.IsNullOrEmpty(names[seat]))
                 return names[seat];
         }
+        // 2026-09-06 버그 수정 — "채팅 로그에 내 이름이 'AI'라고 뜸" 신고.
+        // 채팅/토스트 호출부(AppendChatLine 등)는 전부 viewerSeat=-1(전역
+        // 방송용 — 네트워크에서 같은 문구를 여러 사람이 보므로 아무도
+        // "나"로 안 보여야 한다는 의도)로 이 함수를 부르는데, 오프라인은
+        // 로컬 뷰어가 항상 나 하나뿐이라 그 우려 자체가 성립하지 않는다.
+        // 그런데 seat==viewerSeat 검사가 seat=0(PLAYER_SEAT)과 viewerSeat=-1을
+        // 다르다고 보고 통과시켜, seatCharName[PLAYER_SEAT]가 애초에 채워진
+        // 적 없는 빈 문자열이라 맨 아래 "AI" 기본값으로 떨어졌다 — 상태박스는
+        // SeatName(seat)(viewerSeat=PLAYER_SEAT)을 써서 이 경로를 안 타므로
+        // "나"가 정상 표시되는 것과 대비돼 불일치가 두드러졌다.
+        if (!isNetworkHost && !isNetworkGuest && seat == PLAYER_SEAT) return "나";
         // 2026-09-06(사용자 확인) — "AI-A/B/C 대신 타짜 캐릭터 이름".
-        // 오프라인 전용 분기(네트워크는 위에서 이미 리턴)라 seat는 항상
-        // AI 좌석 — seatCharName이 세션 시작 때 뽑아둔 이름을 그대로 쓴다.
+        // 오프라인 AI 좌석 — seatCharName이 세션 시작 때 뽑아둔 이름을
+        // 그대로 쓴다.
         return !string.IsNullOrEmpty(seatCharName[seat]) ? seatCharName[seat] : "AI";
     }
 
