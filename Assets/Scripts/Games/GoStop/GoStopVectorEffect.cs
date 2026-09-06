@@ -602,21 +602,39 @@ public class GoStopVectorEffect : MonoBehaviour
     {
         shakeRow.Clear();
 
+        // 2026-09-06 — 이 싱글턴이 세션에서 처음 만들어진 바로 그 프레임에
+        // 흔들기/폭탄이 발동하면(다른 이펙트가 먼저 한 번도 안 뜬 채 첫
+        // 판 첫 턴에 3장이 모이는 경우 등) root.layout이 아직 NaN이다 —
+        // UI Toolkit 패널은 최소 한 프레임이 지나야 레이아웃이 계산된다.
+        // 한 프레임만 미뤄서 항상 유효한 값을 읽게 한다(육안으로 티 안 남).
+        if (float.IsNaN(root.layout.width)) yield return null;
+
         var panelSize = root.layout;
         float left = normalizedBox.x * panelSize.width;
         float top = normalizedBox.y * panelSize.height;
         float boxW = normalizedBox.width * panelSize.width;
         float boxH = normalizedBox.height * panelSize.height;
 
-        shakeRow.style.left = left; shakeRow.style.top = top;
-        shakeRow.style.width = boxW; shakeRow.style.height = boxH;
+        // 2026-09-06 — "svg 이펙트 이미지와 텍스트 겹침" 신고. 예전엔
+        // 라벨·카드 둘 다 박스 전체(boxH)를 그대로 차지해서, 박스가 작다
+        // 보니(165px 높이) 카드가 거의 꽉 채우는 상태에서 라벨까지 같은
+        // 영역에 겹쳐 그려졌다 — 완성/비상 이펙트(화면 넓게 차지, 카드
+        // 아래 별도 여백)와 달리 이 박스는 여유가 없어서 그대로 옮기면
+        // 안 됐다. 박스를 상단 텍스트 띠 + 하단 카드 영역으로 나눠서
+        // 겹치지 않게 한다.
+        float textH = boxH * 0.24f;
+        float cardAreaTop = top + textH;
+        float cardAreaH = boxH - textH;
+
+        shakeRow.style.left = left; shakeRow.style.top = cardAreaTop;
+        shakeRow.style.width = boxW; shakeRow.style.height = cardAreaH;
         shakeLabel.style.left = left; shakeLabel.style.top = top;
-        shakeLabel.style.width = boxW; shakeLabel.style.height = boxH;
+        shakeLabel.style.width = boxW; shakeLabel.style.height = textH;
         shakeLabel.text = "흔듬";
         shakeLabel.style.opacity = 0f;
 
         int n = cards.Count;
-        float cardH = boxH * 0.92f;
+        float cardH = cardAreaH * 0.92f;
         float cardW = cardH * 0.62f;
         const float angleStep = 18f;
         float startAngle = -(n - 1) * angleStep * 0.5f;
