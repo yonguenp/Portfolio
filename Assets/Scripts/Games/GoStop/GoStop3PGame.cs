@@ -3231,7 +3231,23 @@ public partial class GoStop3PGame : MonoBehaviour
             // 인식해(field에 다시 들어와 있으므로) 조커를 정확히 같은
             // 자리에 합류시킨다 — ResolveBonusJoker의 parkOnAnchor 로직을
             // 그대로 재사용할 뿐 새 코드가 아니다.
-            if (!ppeokFormed && drawn != null && drawn.isJoker)
+            // 2026-09-06 버그 수정("중대한 버그" 신고) — 위 파킹 로직이
+            // "이 달의 4번째 실카드가 앞으로 절대 나올 수 없는" 경우까지
+            // 무조건 보류시켜서, 필드에 카드가 영원히 죽은 채로 갇히는
+            // 사고가 났다(9월 카드 2장이 이미 한참 전에 다른 좌석에게
+            // 캡처된 상태 + 이번 페어 2장 = 4장 전부 계산이 끝나서, 남은
+            // "4번째 카드"가 세상에 더 없는데도 파킹해버려서 아무도
+            // 영원히 못 가져가는 죽은 무더기가 됐다). 이 달의 카드 총
+            // 4장 중 "이미 어딘가의 획득패에 들어간 장수"가 2장 이상이면
+            // (이번 페어가 나머지 2장을 쓰므로 4-2-2=0), 실카드가 더는
+            // 남아있을 수 없다는 뜻이라 파킹하지 않고 그냥 정상 캡처로
+            // 진행한다(else 분기 없이 그대로 두면 ④에서 r1.captured를
+            // 평소처럼 커밋한다).
+            int alreadyCapturedOfMonth = captured.Where(cap => cap != null)
+                .Sum(cap => cap.Count(c => c.month == card.month));
+            bool jokerPileCanEverComplete = alreadyCapturedOfMonth <= 1;
+
+            if (!ppeokFormed && drawn != null && drawn.isJoker && jokerPileCanEverComplete)
             {
                 if (matchedFieldCard != null) field.Add(matchedFieldCard);
                 field.Add(card);
