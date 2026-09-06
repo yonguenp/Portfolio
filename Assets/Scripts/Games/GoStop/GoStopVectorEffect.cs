@@ -574,49 +574,39 @@ public class GoStopVectorEffect : MonoBehaviour
     // 3초 정도로 넉넉하게." 예전엔 완성 이펙트(Play, 화면 전체)를 그대로
     // 재사용했는데, 이젠 이 이벤트 전용의 훨씬 작고 좁은 자리로 옮겼다.
     //
-    // UGUI 상태박스(RectTransform)의 화면 좌표를
-    // RuntimePanelUtils.ScreenToPanel로 이 UI Toolkit 패널 좌표계로
-    // 변환해서 그 자리·그 크기에 정확히 겹친다 — 두 패널이 같은 참조
-    // 해상도(1920x1080)+Expand로 맞춰져 있어 스케일이 대체로 일치하지만,
-    // 혹시 모를 오차까지 없애려고 "크기를 그대로 복제"하는 대신 매번
-    // 실제 화면 코너 2점을 변환해서 계산한다.
-    public void PlayShake(RectTransform anchorBox, IEnumerable<HwatuCard> cards)
+    // 2026-09-06 2차 수정 — 처음엔 GetWorldCorners → RectTransformUtility.
+    // WorldToScreenPoint → RuntimePanelUtils.ScreenToPanel로 UGUI 화면
+    // 좌표를 이 UI Toolkit 패널 좌표로 직접 변환했는데, "박스 위치가
+    // 아니라 한참 밑에서 나온다"는 재신고를 받았다. 에디터 Play 모드
+    // 격리 테스트에서는 정확히 일치했지만(같은 공식으로 만든 "정답값"과
+    // 비교했으니 자기 자신과 비교한 셈이라 이 방식으로 생긴 축척 오차는
+    // 애초에 못 잡는 검증이었다) — 실제 화면에서는 Screen.width/height
+    // 기반 픽셀 변환이 이 환경에서 반복적으로 어긋난 전례가 있다(다른
+    // 여러 이펙트 위치 버그가 같은 원인이었다). **원시 픽셀/DPI 변환을
+    // 아예 거치지 않는 방식으로 재설계했다** — UGUI 캔버스 안에서 박스가
+    // 차지하는 위치를 캔버스 전체 크기 대비 0~1 비율로만 계산해서
+    // (GoStop3PGame.NormalizedBoxOf가 계산해 여기로 넘겨준다) 넘겨받고,
+    // 여기서는 그 비율에 **이 패널 자신의 실제 레이아웃 크기**
+    // (root.layout, UI Toolkit이 스스로 보장하는 값)를 곱하기만 한다 —
+    // 두 시스템 다 자기 자신의 크기만 알면 되고, Screen.width/height나
+    // DPI처럼 둘 사이에서 어긋날 수 있는 값을 아예 안 거친다.
+    public void PlayShake(Rect normalizedBox, IEnumerable<HwatuCard> cards)
     {
         var list = cards?.Where(c => c != null).ToList() ?? new List<HwatuCard>();
-        if (list.Count == 0 || anchorBox == null) return;
-        // 2026-09-06 — "왼쪽 유저가 흔들었는데 내 상태박스 위에 표시됐다"는
-        // 신고가 있었는데, 격리된 리플렉션 재현(같은 프레임 안에서 좌석→
-        // 슬롯→박스를 계산해 곧바로 호출)으로는 재현이 안 됐다 — 다음에
-        // 재현되면 이 로그로 그 순간 실제로 어떤 박스가 넘어왔는지 확인할 것.
-        Debug.Log($"[GoStopShake] anchorBox={anchorBox.name} path={GetHierarchyPath(anchorBox)}");
+        if (list.Count == 0) return;
         if (playingShake != null) StopCoroutine(playingShake);
-        playingShake = StartCoroutine(PlayShakeSeq(anchorBox, list));
+        playingShake = StartCoroutine(PlayShakeSeq(normalizedBox, list));
     }
 
-    static string GetHierarchyPath(Transform tr)
-    {
-        var names = new List<string>();
-        while (tr != null) { names.Insert(0, tr.name); tr = tr.parent; }
-        return string.Join("/", names);
-    }
-
-    IEnumerator PlayShakeSeq(RectTransform anchorBox, List<HwatuCard> cards)
+    IEnumerator PlayShakeSeq(Rect normalizedBox, List<HwatuCard> cards)
     {
         shakeRow.Clear();
 
-        var corners = new Vector3[4]; // [0]BL [1]TL [2]TR [3]BR
-        anchorBox.GetWorldCorners(corners);
-        var panel = doc.rootVisualElement.panel;
-        Vector2 p1 = RuntimePanelUtils.ScreenToPanel(panel, RectTransformUtility.WorldToScreenPoint(null, corners[1]));
-        Vector2 p2 = RuntimePanelUtils.ScreenToPanel(panel, RectTransformUtility.WorldToScreenPoint(null, corners[3]));
-        // Screen space(Y-up, 원점 좌하단)와 UI Toolkit 패널 space(Y-down,
-        // 원점 좌상단)의 축 방향 관계를 가정하지 않고, 변환된 두 좌표
-        // 중 실제 최소/최대로 좌상단·우하단을 다시 정한다 — 실측으로
-        // 확인해보니 그 가정(TL corner→작은 panel Y)이 이 프로젝트/버전
-        // 조합에서는 반대로 나왔다(boxH가 음수로 나옴).
-        float left = Mathf.Min(p1.x, p2.x), right = Mathf.Max(p1.x, p2.x);
-        float top = Mathf.Min(p1.y, p2.y), bottom = Mathf.Max(p1.y, p2.y);
-        float boxW = right - left, boxH = bottom - top;
+        var panelSize = root.layout;
+        float left = normalizedBox.x * panelSize.width;
+        float top = normalizedBox.y * panelSize.height;
+        float boxW = normalizedBox.width * panelSize.width;
+        float boxH = normalizedBox.height * panelSize.height;
 
         shakeRow.style.left = left; shakeRow.style.top = top;
         shakeRow.style.width = boxW; shakeRow.style.height = boxH;

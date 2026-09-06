@@ -1987,7 +1987,7 @@ public partial class GoStop3PGame : MonoBehaviour
         if (tense)
         {
             var sub = HwatuUI.MakeLabel(rt, new Vector2(0f, -150f), new Vector2(1800f, 90f), 48f, new Color(1f, 0.65f, 0.35f));
-            sub.text = "지금부터 배수 ×2!";
+            sub.text = string.Format("배수 × {0}!", (tier - 2) * 2);
             sub.alignment = TextAlignmentOptions.Center;
             sub.raycastTarget = false;
         }
@@ -2107,6 +2107,34 @@ public partial class GoStop3PGame : MonoBehaviour
     /// `ShowActionPopup`이 쓰는 것과 같은 4단계 체인(위 주석 참고).</summary>
     RectTransform GoStopCanvasRoot() =>
         fieldArea == null ? null : fieldArea.parent.parent.parent.parent as RectTransform;
+
+    /// <summary>UGUI RectTransform 하나가 이 씬의 Canvas(GameUI) 전체 크기
+    /// 대비 어디에·얼마나 차지하는지를 0~1 비율(top-left 원점, Y는 아래로
+    /// 갈수록 증가 — UI Toolkit과 같은 방향)로 계산한다.
+    /// <see cref="GoStopVectorEffect.PlayShake"/>에 넘길 때 쓴다 — 화면
+    /// 픽셀·DPI 변환을 아예 안 거치고 "캔버스 대비 비율"만 넘기면, 받는
+    /// 쪽은 자기 패널의 실제 크기에 그 비율만 곱하면 되므로 두 렌더링
+    /// 시스템(UGUI Canvas / UI Toolkit 패널) 사이에서 어긋날 수 있는 값
+    /// (Screen.width/height, DPI 등) 자체가 계산에 안 들어간다.</summary>
+    Rect NormalizedBoxOf(RectTransform box)
+    {
+        var canvasRoot = GoStopCanvasRoot();
+        if (canvasRoot == null || box == null) return new Rect(0.4f, 0.4f, 0.2f, 0.2f); // 방어적 폴백(화면 중앙 근처)
+
+        var corners = new Vector3[4]; // [0]BL [1]TL [2]TR [3]BR
+        box.GetWorldCorners(corners);
+        Vector3 l1 = canvasRoot.InverseTransformPoint(corners[1]);
+        Vector3 l2 = canvasRoot.InverseTransformPoint(corners[3]);
+
+        var cRect = canvasRoot.rect;
+        float x0 = (Mathf.Min(l1.x, l2.x) - cRect.xMin) / cRect.width;
+        float x1 = (Mathf.Max(l1.x, l2.x) - cRect.xMin) / cRect.width;
+        // 캔버스 로컬 Y는 위로 갈수록 커진다(UGUI 관례) — UI Toolkit의
+        // "위로 갈수록 작아지는" Y와 방향이 반대라 여기서 뒤집는다.
+        float y0 = (cRect.yMax - Mathf.Max(l1.y, l2.y)) / cRect.height;
+        float y1 = (cRect.yMax - Mathf.Min(l1.y, l2.y)) / cRect.height;
+        return new Rect(x0, y0, x1 - x0, y1 - y0);
+    }
 
     /// <summary>2026-09-06(사용자 확인) — "결과화면이 스톱 이펙트 끝난후에
     /// 떠야할거 같아". `FireStopEffect`가 돌려주는 Coroutine을 그대로
@@ -2726,7 +2754,7 @@ public partial class GoStop3PGame : MonoBehaviour
             // 상태박스 자리에만 그 크기 그대로 표시하는 PlayShake로 교체.
             int shakeSlot = SlotOf(seat);
             if (shakeSlot >= 0)
-                GoStopVectorEffect.Ensure().PlayShake(statusBoxRefs[shakeSlot],
+                GoStopVectorEffect.Ensure().PlayShake(NormalizedBoxOf(statusBoxRefs[shakeSlot]),
                     h.Where(c => c.month == card.month).ToList());
         }
 
@@ -2803,7 +2831,7 @@ public partial class GoStop3PGame : MonoBehaviour
             // 교체(위 흔들기 분기 주석 참고).
             int bombSlot = SlotOf(seat);
             if (bombSlot >= 0)
-                GoStopVectorEffect.Ensure().PlayShake(statusBoxRefs[bombSlot], r1.captured.Take(3).ToList());
+                GoStopVectorEffect.Ensure().PlayShake(NormalizedBoxOf(statusBoxRefs[bombSlot]), r1.captured.Take(3).ToList());
         }
 
         bool willDraw = !bomb && drawPile.Count > 0;
