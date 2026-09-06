@@ -10910,6 +10910,70 @@ if (seat == PLAYER_SEAT)
 이펙트 오브젝트 소멸까지 확인해 지연 순서가 실제로 동작함을 확인했다.
 콘솔 에러·예외 0건.
 
+## 고스톱 — 흔들기/폭탄 이펙트를 발동 좌석 상태박스 자리로 축소 (2026-09-06)
+
+"흔듬 이펙트 화면 정중앙에 대문짝만하게 나오는게 좀 부담스럽고 게임화면을
+가려서 발동시킨 유저의 스테이터스박스 사이즈로 그 박스 꽉차게 표시되게,
+카드는 아래 앵커 두고 좌우로 부채처럼 펼쳐지면서 앞쪽에 텍스트로 '흔듬',
+연출시간은 3초 정도로 넉넉하게" 요청. 흔들기/폭탄은 그동안 족보 완성과
+같은 `GoStopVectorEffect.Play`(화면 정중앙 대문짝)를 그대로 재사용하고
+있었는데("폭탄도 흔들기의 즉시실행 버전이라 같은 이펙트를 띄운다"), 이걸
+이 이벤트 전용의 훨씬 작고 좁은 자리로 뗐다.
+
+**`GoStopVectorEffect.PlayShake(RectTransform anchorBox, IEnumerable<HwatuCard>
+cards)` — 신규.** UXML에 `ShakeRow`/`ShakeLabel` 요소를 추가하고(비상/실패의
+`AltRow`/`AltTitleLabel`과 같은 "정적 뼈대만 UXML, 좌표는 매번 코드가 덮어씀"
+패턴), `GoStop3PGame`의 흔들기 선언·폭탄 확정 두 호출부가 각각
+`statusBoxRefs[SlotOf(seat)]`(발동한 좌석의 실제 상태박스 RectTransform)를
+넘긴다.
+
+**UGUI 좌표 → UI Toolkit 패널 좌표 변환.** `GoStopVectorEffect`는 UGUI
+Canvas가 아니라 별도의 UI Toolkit 패널(`UIDocument`)이라, "이 UGUI
+RectTransform이 화면에서 차지하는 자리"를 그 패널의 좌표계로 옮겨야 했다 —
+`anchorBox.GetWorldCorners()` → `RectTransformUtility.WorldToScreenPoint(null,
+...)`(Screen Space Overlay라 카메라 null) → `RuntimePanelUtils.ScreenToPanel(panel,
+screenPos)`(UGUI 화면 좌표를 UI Toolkit 패널 좌표로 변환하는 표준 API) 순으로
+두 모서리(TL·BR)를 변환한 뒤, `ShakeRow`/`ShakeLabel`의 `left/top/width/height`를
+그 값으로 직접 덮어쓴다.
+
+> **함정 — 두 좌표계의 Y축 방향 관계를 가정했다가 박스 높이가 음수로
+> 나왔다.** "UGUI 화면 좌표(Y-up, 좌하단 원점) → UI Toolkit 패널 좌표
+> (Y-down, 좌상단 원점)로 뒤집힐 것"이라고 가정하고 TL 모서리는 항상 더
+> 작은 패널 Y, BR 모서리는 더 큰 패널 Y가 되리라 예상했는데, 실측해보니
+> (`h=-165`) 이 프로젝트/Unity 6.3 조합에서는 반대로 나왔다. 축 방향을
+> 가정하는 대신 **변환된 두 좌표 중 실제 최소/최대값으로 좌상단·우하단을
+> 다시 계산**(`Mathf.Min/Max`)하도록 고쳐서, 어느 쪽으로 뒤집히든 항상
+> 올바른 양수 width/height가 나오게 만들었다 — 축 방향을 문서·API
+> 설명만으로 추측하지 말고 실측해서 검증할 것.
+
+**부채 펼침 — 카드 전부를 절대 위치로 겹쳐 놓고 바닥 중앙 피벗으로만
+회전.** 3장(또는 n장)을 `flex` 정렬이 아니라 `Position.Absolute`로 컨테이너
+바닥 중앙에 전부 같은 자리에 겹쳐 놓고, `transformOrigin`을 카드 바닥
+중앙(`Length.Percent(50), Length.Percent(100)`)으로 고정한 뒤 카드마다
+다른 각도(±18°씩)로만 회전시킨다 — 회전 하나만으로 "한 지점에서 부챗살처럼
+펼쳐지는" 손패 모양이 자연히 나온다(따로 가로 이동을 더할 필요가 없었다).
+"흔듬" 텍스트(`ShakeLabel`)는 `ShakeRow`보다 나중 sibling이라 z-order상
+항상 카드 위(앞쪽)에 겹쳐 뜬다 — 비상/실패의 `AltTitleLabel`과 같은 원칙.
+
+**타이밍 — 접힌 부채(회전 0, 완전히 겹침) → 펼쳐짐(0.35s ease-out) →
+텍스트 페이드인(0.15s) → 홀드(2.1s) → 페이드아웃(0.4s), 총 3초.**
+
+**폭탄도 같은 함수로 통일.** 흔들기와 폭탄은 이미 "같은 사건의 즉시실행
+버전"이라는 게 확정 규칙이라(위 여러 섹션 참고), 화면 정중앙 텍스트("OO월
+폭탄!")도 걷어내고 똑같이 `PlayShake`(상태박스 자리, "흔듬" 텍스트)로
+통일했다 — 두 이벤트가 서로 다른 크기/위치로 나오면 오히려 일관성이
+깨진다고 판단했다.
+
+**검증(Play 모드 라이브, 리플렉션).** 4인 게임을 새로 시작해 seat0(하단
+좌석) 손패에 8월 카드 3장(필드에 매칭 없음)을 강제로 세팅 → 카드 재생 →
+흔들기 팝업 응답(흔들기 선언) → `PlayShake` 발동 직후(동기 구간) 상태
+확인: `childCount=3`(카드 3장), `label="흔듬"`, `left=30, top=170, w=400,
+h=165`(사용자가 지목한 상태박스 크기와 정확히 일치 — Y축 버그 수정 전엔
+`h=-165`로 나왔던 것을 이 값으로 재확인). 이후 충분한 시간이 지난 뒤
+재확인 → `childCount=0`, `label opacity=0`(전체 시퀀스가 예외 없이 끝까지
+돌고 스스로 정리됨). 이 테스트 세션 전체(설정·발동·완료 확인) 콘솔
+에러·예외 0건.
+
 ## 고스톱 — 뻑 이펙트 위치 버그, 실패 마스킹 절단 연출, 이펙트 큐잉,
 1~8고/스톱 텍스트 이펙트 (2026-09-06)
 

@@ -22,6 +22,12 @@
       (z-order 상 나중에 그려짐 = 위)에 텍스트가 바로 얹힌다.
     - SliceLine: 실패(Blocked) 전용 — 대각선으로 훑고 지나가는 슬래시.
       AltRow와 같은 영역에 겹친다.
+    - ShakeRow/ShakeLabel: 흔들기(흔듬)/폭탄 전용 — 화면 전체가 아니라
+      발동시킨 좌석의 상태박스 자리에만, 그 박스 크기 그대로 표시한다
+      (코드가 매 호출마다 left/top/width/height를 그 상태박스 좌표로
+      다시 계산해 덮어쓴다 — 여기 선언된 기본값은 의미 없는 placeholder).
+      ShakeLabel은 ShakeRow보다 나중 sibling이라 카드 위(z-order 앞)에
+      "흔듬" 텍스트가 겹쳐 보인다.
     -->
     <ui:VisualElement name="Dim" picking-mode="Ignore"
         style="position: absolute; left: 0; top: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0);" />
@@ -35,4 +41,8 @@
         style="position: absolute; left: 0; right: 0; top: 0; height: 220; -unity-text-align: middle-center; font-size: 46; -unity-font-style: bold; opacity: 0; -unity-text-outline-width: 3.5; -unity-text-outline-color: rgba(20, 14, 4, 0.9); color: rgb(255, 255, 255);" />
     <ui:VisualElement name="SliceLine" picking-mode="Ignore"
         style="position: absolute; left: 0; right: 0; top: 0; height: 220; background-color: rgba(255, 255, 255, 0);" />
+    <ui:VisualElement name="ShakeRow" picking-mode="Ignore"
+        style="position: absolute; left: 0; top: 0; width: 400; height: 165; overflow: visible;" />
+    <ui:Label name="ShakeLabel" picking-mode="Ignore"
+        style="position: absolute; left: 0; top: 0; width: 400; height: 165; -unity-text-align: upper-center; font-size: 40; -unity-font-style: bold; opacity: 0; -unity-text-outline-width: 3; -unity-text-outline-color: rgba(20, 14, 4, 0.9); color: rgb(255, 217, 130);" />
 </ui:UXML>

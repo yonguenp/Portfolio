@@ -58,6 +58,14 @@ public class GoStopVectorEffect : MonoBehaviour
     VisualElement sliceLine; // 실패 전용 — 대각선 슬래시
     Coroutine playingAlt;
 
+    // 2026-09-06 — 흔들기(흔듬)/폭탄 전용. 화면 전체(완성) 또는 화면
+    // 최상단 전체 폭(비상/실패)과 달리, 이건 발동시킨 좌석의 상태박스
+    // 자리에만 그 크기 그대로 겹쳐서 표시한다("화면 정중앙 대문짝이
+    // 부담스럽고 게임화면을 가린다"는 피드백).
+    VisualElement shakeRow;
+    Label shakeLabel;
+    Coroutine playingShake;
+
     /// <summary>2026-09-06(사용자 요청) — "한 턴에 청단비상+홍단비상처럼
     /// 이펙트가 여러 개 뜰 때는 큐에 쌓아 순차 재생하고, 대신 다음 유저의
     /// 이펙트가 등록되면 이전 유저 큐는 지우고 새 유저 것부터 우선
@@ -152,6 +160,8 @@ public class GoStopVectorEffect : MonoBehaviour
         altRow = root.Q<VisualElement>("AltRow");
         altTitleLabel = root.Q<Label>("AltTitleLabel");
         sliceLine = root.Q<VisualElement>("SliceLine");
+        shakeRow = root.Q<VisualElement>("ShakeRow");
+        shakeLabel = root.Q<Label>("ShakeLabel");
     }
 
     /// <summary>족보를 완성한 순간 부른다. <paramref name="cards"/>는 그 세트를
@@ -538,5 +548,131 @@ public class GoStopVectorEffect : MonoBehaviour
 
         altRow.Clear();
         altTitleLabel.style.opacity = 0f;
+    }
+
+    // ── 흔듬(흔들기/폭탄) — 발동시킨 유저의 상태박스 자리에만 표시 ──────
+    // 2026-09-06(사용자 확인): "화면 정중앙에 대문짝만하게 나오는 게
+    // 부담스럽고 게임화면을 가린다 — 발동시킨 유저의 스테이터스박스
+    // 사이즈/위치로 그 박스 꽉 차게 표시되게, 카드는 아래 앵커 두고
+    // 좌우로 부채처럼 펼쳐지면서 앞쪽에 '흔듬' 텍스트, 연출시간은
+    // 3초 정도로 넉넉하게." 예전엔 완성 이펙트(Play, 화면 전체)를 그대로
+    // 재사용했는데, 이젠 이 이벤트 전용의 훨씬 작고 좁은 자리로 옮겼다.
+    //
+    // UGUI 상태박스(RectTransform)의 화면 좌표를
+    // RuntimePanelUtils.ScreenToPanel로 이 UI Toolkit 패널 좌표계로
+    // 변환해서 그 자리·그 크기에 정확히 겹친다 — 두 패널이 같은 참조
+    // 해상도(1920x1080)+Expand로 맞춰져 있어 스케일이 대체로 일치하지만,
+    // 혹시 모를 오차까지 없애려고 "크기를 그대로 복제"하는 대신 매번
+    // 실제 화면 코너 2점을 변환해서 계산한다.
+    public void PlayShake(RectTransform anchorBox, IEnumerable<HwatuCard> cards)
+    {
+        var list = cards?.Where(c => c != null).ToList() ?? new List<HwatuCard>();
+        if (list.Count == 0 || anchorBox == null) return;
+        if (playingShake != null) StopCoroutine(playingShake);
+        playingShake = StartCoroutine(PlayShakeSeq(anchorBox, list));
+    }
+
+    IEnumerator PlayShakeSeq(RectTransform anchorBox, List<HwatuCard> cards)
+    {
+        shakeRow.Clear();
+
+        var corners = new Vector3[4]; // [0]BL [1]TL [2]TR [3]BR
+        anchorBox.GetWorldCorners(corners);
+        var panel = doc.rootVisualElement.panel;
+        Vector2 p1 = RuntimePanelUtils.ScreenToPanel(panel, RectTransformUtility.WorldToScreenPoint(null, corners[1]));
+        Vector2 p2 = RuntimePanelUtils.ScreenToPanel(panel, RectTransformUtility.WorldToScreenPoint(null, corners[3]));
+        // Screen space(Y-up, 원점 좌하단)와 UI Toolkit 패널 space(Y-down,
+        // 원점 좌상단)의 축 방향 관계를 가정하지 않고, 변환된 두 좌표
+        // 중 실제 최소/최대로 좌상단·우하단을 다시 정한다 — 실측으로
+        // 확인해보니 그 가정(TL corner→작은 panel Y)이 이 프로젝트/버전
+        // 조합에서는 반대로 나왔다(boxH가 음수로 나옴).
+        float left = Mathf.Min(p1.x, p2.x), right = Mathf.Max(p1.x, p2.x);
+        float top = Mathf.Min(p1.y, p2.y), bottom = Mathf.Max(p1.y, p2.y);
+        float boxW = right - left, boxH = bottom - top;
+
+        shakeRow.style.left = left; shakeRow.style.top = top;
+        shakeRow.style.width = boxW; shakeRow.style.height = boxH;
+        shakeLabel.style.left = left; shakeLabel.style.top = top;
+        shakeLabel.style.width = boxW; shakeLabel.style.height = boxH;
+        shakeLabel.text = "흔듬";
+        shakeLabel.style.opacity = 0f;
+
+        int n = cards.Count;
+        float cardH = boxH * 0.92f;
+        float cardW = cardH * 0.62f;
+        const float angleStep = 18f;
+        float startAngle = -(n - 1) * angleStep * 0.5f;
+
+        var wraps = new List<VisualElement>(n);
+        var angles = new List<float>(n);
+        foreach (var card in cards)
+        {
+            var wrap = new VisualElement();
+            wrap.style.position = Position.Absolute;
+            wrap.style.width = cardW; wrap.style.height = cardH;
+            wrap.style.left = (boxW - cardW) * 0.5f;
+            wrap.style.bottom = 0f;
+            wrap.style.opacity = 0f;
+            // 부채 회전 피벗을 카드 바닥 중앙에 둬서, 전부 같은 지점에서
+            // 부챗살처럼 펼쳐지게 한다("각 패가 아래 앵커 두고 좌우로
+            // 부채처럼 펼쳐지면서").
+            wrap.style.transformOrigin = new StyleTransformOrigin(new TransformOrigin(Length.Percent(50), Length.Percent(100)));
+
+            var img = new Image();
+            img.vectorImage = Resources.Load<VectorImage>(RES_PREFIX + card.spriteName);
+            img.scaleMode = ScaleMode.ScaleToFit;
+            img.style.width = Length.Percent(100);
+            img.style.height = Length.Percent(100);
+            wrap.Add(img);
+
+            shakeRow.Add(wrap);
+            wraps.Add(wrap);
+            angles.Add(startAngle + angles.Count * angleStep);
+        }
+
+        // 1) 접힌 부채(회전 0, 완전히 겹침) → 펼쳐진 부채(목표 각도)로
+        //    ease-out 펼침 + 페이드인.
+        float t = 0f;
+        const float fanDur = 0.35f;
+        while (t < fanDur)
+        {
+            t += Time.deltaTime;
+            float ease = 1f - Mathf.Pow(1f - Mathf.Clamp01(t / fanDur), 3f);
+            for (int i = 0; i < wraps.Count; i++)
+            {
+                wraps[i].style.rotate = new StyleRotate(new Rotate(angles[i] * ease));
+                wraps[i].style.opacity = ease;
+            }
+            yield return null;
+        }
+        for (int i = 0; i < wraps.Count; i++)
+        {
+            wraps[i].style.rotate = new StyleRotate(new Rotate(angles[i]));
+            wraps[i].style.opacity = 1f;
+        }
+
+        // 2) "흔듬" 텍스트 페이드인 — ShakeLabel이 ShakeRow보다 나중
+        //    sibling이라(z-order 뒤=화면 앞) 카드 위에 자연히 겹쳐 뜬다.
+        yield return Fade(a => shakeLabel.style.opacity = a, 0.15f);
+
+        // 3) 홀드 — 위 단계(0.35+0.15)+아래 페이드아웃(0.4)과 합쳐 총
+        //    3초 정도("넉넉하게").
+        yield return new WaitForSeconds(2.1f);
+
+        // 4) 페이드아웃
+        float ft = 0f;
+        const float outDur = 0.4f;
+        while (ft < outDur)
+        {
+            ft += Time.deltaTime;
+            float a = 1f - Mathf.Clamp01(ft / outDur);
+            foreach (var w in wraps) w.style.opacity = a;
+            shakeLabel.style.opacity = a;
+            yield return null;
+        }
+
+        shakeRow.Clear();
+        shakeLabel.style.opacity = 0f;
+        playingShake = null;
     }
 }
