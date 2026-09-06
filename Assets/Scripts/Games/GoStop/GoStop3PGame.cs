@@ -116,6 +116,27 @@ public partial class GoStop3PGame : MonoBehaviour
     /// 텍스트를 그대로 보여준다. 이름·머니만 미리 채운다 — 점수·배지는
     /// 아직 계산할 캡처 데이터가 없어(hand/captured가 이 시점엔 지난
     /// 판 것이거나 null) 비워두고 곧이어 RebuildUI가 정식으로 채운다.</summary>
+    /// <summary>2026-09-06 — "결과가 끝나고 돈이 바로 업데이트 안됨, 패가
+    /// 나눠지고 나서야 보유 돈이 업데이트됨" 신고. `EndGame`이 `money[]`를
+    /// 직접 mutate하고 승패 오버레이를 띄우기까지 하지만, 그 밑에 깔린
+    /// 상태박스의 <see cref="moneyText"/> 라벨 자체는 손대지 않는다 —
+    /// 다음에 이 값이 갱신되는 시점은 오직 <see cref="RebuildUI"/>인데,
+    /// 그건 다음 판 딜링이 끝난 뒤에야 다시 돈다. 그 사이(오버레이가 떠
+    /// 있는 동안, "다시 시작"을 누른 직후)엔 상태박스가 정산 전 잔액을
+    /// 그대로 보여주고 있었다. 이름·점수·배지는 안 건드리고 돈 숫자만
+    /// 즉시 갱신한다 — `EndGame`이 좌석을 재배치(`ApplyDowngrade`)할 수도
+    /// 있으므로, 그 이후(모든 분기가 합류하는 함수 맨 끝)에 한 번만
+    /// 부른다.</summary>
+    void RefreshMoneyLabelsOnly()
+    {
+        for (int slot = 0; slot < 4; slot++)
+        {
+            int seat = slot == 0 ? (slotSeat[0] < 0 ? PLAYER_SEAT : slotSeat[0]) : slotSeat[slot];
+            if (seat < 0 || moneyText[slot] == null) continue;
+            moneyText[slot].text = $"{money[seat]:N0}원";
+        }
+    }
+
     void RefreshStatusBoxIdentitiesBeforeDeal()
     {
         for (int slot = 0; slot < 4; slot++)
@@ -4335,6 +4356,11 @@ public partial class GoStop3PGame : MonoBehaviour
             // 막히지 않는다(이 한 줄로 정상 승부·리셋 양쪽을 다 커버한다).
             GoStopNetLobby.SaveNetworkMoney(GoStopNetLobby.Instance?.MyName, money[PLAYER_SEAT]);
         }
+
+        // 위 어느 분기를 탔든(ApplyDowngrade로 좌석이 재배치됐을 수도
+        // 있다) 최종적으로 이 시점의 money[]/slotSeat[]를 기준으로 돈
+        // 숫자만 즉시 반영한다.
+        RefreshMoneyLabelsOnly();
     }
 
     /// <summary>design.md 확장(2026-09-05, 사용자 확인) — 네트워크 대전에서는
