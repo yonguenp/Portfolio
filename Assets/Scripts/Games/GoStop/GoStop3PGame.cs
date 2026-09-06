@@ -1178,6 +1178,14 @@ public partial class GoStop3PGame : MonoBehaviour
                 }
             }
             UpdateOfflinePointPriceTier();
+            // 2026-09-06(사용자 확인) — "맨처음 게임시작할때 '~님이
+            // 입장하셨습니다'로 함께 플레이할 CPU나 플레이어 알려주기"
+            // — 채팅 패널은 이 시점(Start() 도중)엔 아직 안 지어졌지만
+            // AppendChatLine이 채운 chatEntries는 BuildStaticUI가 곧이어
+            // BuildChatUI에서 RedrawChatLog를 부를 때 그대로 표시되므로
+            // 순서 걱정 없이 여기서 바로 알린다.
+            foreach (var ch in drawnChars)
+                AppendChatLine($"{ch.name}님이 입장하셨습니다.");
         }
         else if (isNetworkHost)
         {
@@ -1191,6 +1199,12 @@ public partial class GoStop3PGame : MonoBehaviour
             money[PLAYER_SEAT] = GoStopNetLobby.LoadNetworkMoney(lobby?.MyName);
             for (int s = 1; s < SEATS_MAX; s++)
                 money[s] = lobby != null && lobby.GuestReportedMoney[s] > 0 ? lobby.GuestReportedMoney[s] : STARTING_MONEY;
+            // 위 오프라인과 같은 이유 — 호스트 자신의 화면에서 한 번만
+            // 알리면 AppendChatLine이 알아서 게스트들에게도 브로드캐스트
+            // 한다(게스트 쪽은 이 Start() 분기 자체를 안 타므로 중복 없음).
+            for (int s = 1; s < SEATS; s++)
+                if (lobby != null && !string.IsNullOrEmpty(lobby.PlayerNames[s]))
+                    AppendChatLine($"{lobby.PlayerNames[s]}님이 입장하셨습니다.");
         }
         else
         {
