@@ -261,12 +261,54 @@ public partial class GoStop3PGame
         ui?.SetHelp("고스톱 규칙", GoStopHelpBodyText, "확인");
 
         // 2026-09-04: "우측상단에 점당 얼마짜리 게임인지 표시 추가했어"
-        // — 사용자가 씬에 만든 Info(배경 Image) 밑에 "점당"/숫자/"원" 세
-        // 라벨이 있다. 숫자 칸(자동 생성된 두 번째 Label이라 이름이
-        // "Label (1)")만 캐싱해 두고 실제 값은 RebuildUI에서 채운다 — 씬에
-        // 없으면(다른 씬/구버전) pointPriceText가 null로 남아 아무 것도
-        // 안 하고 조용히 넘어간다(다른 재사용 UI들과 같은 방어 패턴).
-        pointPriceText = root.Find("Info/Label (1)")?.GetComponent<TextMeshProUGUI>();
+        // — 원래 사용자가 씬에 만든 "Info"(배경 Image) 밑에 "점당"/숫자/
+        // "원" 세 라벨이 있었다. 2026-09-06 재조사 — "점당 가격 표시가
+        // 사라졌다" 신고로 씬을 직접 훑어보니, "Info"라는 이름이 이제
+        // MySeat 밑의 **완전히 다른 오브젝트**(StatusBox0/PlayerCap을
+        // 묶는 레이아웃 컨테이너, 사용자가 이후 세션에 새로 만든 것)로
+        // 재활용돼 있었다 — 점당-가격 라벨을 담던 원래 "Info"는 그 과정에서
+        // 지워지거나 이름이 바뀐 것으로 보인다(이전 세션의 "Info가
+        // MySeat 밑으로 옮겨졌을 뿐"이라는 진단은 틀렸다 — 같은 이름의
+        // 다른 오브젝트였다). 이름 충돌을 다시 만들지 않도록 새 이름
+        // "PointPriceInfo"로 찾고, 없으면 코드로 직접 만든다(다른
+        // 재사용 UI들과 같은 "씬에 있으면 재사용, 없으면 생성" 원칙).
+        var existingPriceInfo = root.Find("PointPriceInfo");
+        if (existingPriceInfo != null)
+        {
+            pointPriceText = existingPriceInfo.Find("Label (1)")?.GetComponent<TextMeshProUGUI>();
+        }
+        else
+        {
+            var infoRT = HwatuUI.MakeRect("PointPriceInfo", root, new Vector2(210f, 48f), Vector2.zero);
+            infoRT.anchorMin = infoRT.anchorMax = new Vector2(1f, 1f);
+            infoRT.pivot = new Vector2(1f, 1f);
+            infoRT.anchoredPosition = new Vector2(-16f, -16f);
+            var bg = infoRT.gameObject.AddComponent<Image>();
+            UISkin.Apply(bg, UISkin.Panel);
+            bg.color = new Color(0.106f, 0.133f, 0.267f, 0.88f); // #1B2244 — 기존 상태박스와 같은 표면색
+            var hlg = infoRT.gameObject.AddComponent<HorizontalLayoutGroup>();
+            hlg.childAlignment = TextAnchor.MiddleCenter;
+            hlg.spacing = 4f;
+            hlg.padding = new RectOffset(10, 10, 6, 6);
+            hlg.childControlWidth = false;
+            hlg.childControlHeight = true;
+            hlg.childForceExpandWidth = false;
+            hlg.childForceExpandHeight = true;
+
+            var lblPrefix = HwatuUI.MakeLabel(infoRT, Vector2.zero, new Vector2(52f, 36f), 20f, HwatuTheme.CreamWhite);
+            lblPrefix.name = "Prefix";
+            lblPrefix.text = "점당";
+
+            var lblAmount = HwatuUI.MakeLabel(infoRT, Vector2.zero, new Vector2(88f, 36f), 22f, HwatuTheme.Gold);
+            lblAmount.name = "Label (1)";
+            lblAmount.fontStyle = FontStyles.Bold;
+
+            var lblSuffix = HwatuUI.MakeLabel(infoRT, Vector2.zero, new Vector2(28f, 36f), 20f, HwatuTheme.CreamWhite);
+            lblSuffix.name = "Suffix";
+            lblSuffix.text = "원";
+
+            pointPriceText = lblAmount;
+        }
         UpdatePointPriceLabel(); // 씬을 처음 여는 시점에도 기본값(WON_PER_POINT×1)을 바로 채워둔다
 
         // 상단 중앙(슬롯2) — 참고 이미지의 "MISSION" 배너 자리를 광팔이/쉬는
@@ -768,7 +810,7 @@ public partial class GoStop3PGame
     // 두 게임이 동일한 결과를 내게 했다. 2026-09-01: 하이라이트는 이제
     // CardFront 프리팹 내부의 Highlight 자식(스트레치 앵커)이 카드
     // 크기에 자동으로 맞춰지므로, 이 크기와 무관하게 항상 정확히 맞는다.
-    const float CHOICE_CARD_W = 94f, CHOICE_CARD_H = 154f;
+    const float CHOICE_CARD_W = 150f, CHOICE_CARD_H = 245f;
 
     void ShowFieldChoicePopup(List<HwatuCard> candidates)
     {
@@ -1635,8 +1677,17 @@ public partial class GoStop3PGame
 
     // 같은 pos 슬롯에 여러 장(뻑 무더기 등)이 쌓일 때 완전히 포개지지 않게
     // 살짝 밀어내는 간격 — 몇 장인지 한눈에 보이면서도 "한 자리에 쌓였다"는
-    // 느낌은 유지된다.
-    const float FIELD_STACK_OFFSET = 20f;
+    // 느낌은 유지된다. 2026-09-06(사용자 확인) — 장수가 늘수록 한 칸씩의
+    // 간격을 좁혀서(2장=30, 3장=15, 4장=10) 전체 퍼짐 폭이 너무 커지지
+    // 않게 했다(예전엔 장수와 무관하게 항상 20이라 4장이 쌓이면 3×20=60px
+    // 나 밀려나 옆 슬롯을 침범할 여지가 있었다).
+    static float FieldStackStep(int countInSlot) => countInSlot switch
+    {
+        2 => 30f,
+        3 => 15f,
+        >= 4 => 10f,
+        _ => 20f, // 1장뿐이면 i=0이라 어차피 안 쓰인다 — 안전한 기본값만 둔다
+    };
 
     /// <summary>필드 — 2026-09-02: "카드를 각 pos에 attach" 요청으로 카드를
     /// fieldArea가 아니라 배정받은 pos 슬롯 마커 그 자체의 자식으로 만든다
@@ -1653,10 +1704,11 @@ public partial class GoStop3PGame
         foreach (var group in field.GroupBy(AssignFieldSlot))
         {
             var cardsInSlot = group.ToList();
+            float step = FieldStackStep(cardsInSlot.Count);
             for (int i = 0; i < cardsInSlot.Count; i++)
             {
                 var c = cardsInSlot[i];
-                var offset = new Vector2(i * FIELD_STACK_OFFSET, -i * FIELD_STACK_OFFSET);
+                var offset = new Vector2(i * step, -i * step);
                 var target = FieldSlotTransform(c);
                 var go = HwatuUI.MakeCard(c, target, offset, FIELD_W, FIELD_H, null, false);
                 // 2026-09-02 버그 수정 — "뒷패가 깔린 패 pos에 들어갈 때 sibling이
@@ -2091,14 +2143,21 @@ public partial class GoStop3PGame
         {
             var card = h[i];
             float x = -total * 0.5f + HAND_W * 0.5f + i * pitch;
-            bool playable = state == State.Turn && currentSeat == PLAYER_SEAT && field.Any(f => f.month == card.month);
+            bool myTurnNow = state == State.Turn && currentSeat == PLAYER_SEAT;
+            bool playable = myTurnNow && field.Any(f => f.month == card.month);
             // 2026-08-27(목업 참고, 사용자 확인) — 목업(PlaceHand)은 강조할
             // 카드를 위로 34px 띄워서 표시한다. 기존 골드 링 강조는 그대로
             // 두고(둘 다 있는 게 더 눈에 띈다는 판단), 여기에 "낼 수 있는
             // 패는 위로 뜬다"를 더한다 — 링(highlightOffset)은 이 pos를
             // 그대로 이어받아 계산되므로(HwatuUI.MakeCard 참고) 카드와 함께
             // 자동으로 따라 올라간다.
-            float y = playable ? 34f : 0f;
+            // 2026-09-06(사용자 확인) — "내 턴이 돌아왔을 때 낼 차례라는
+            // 느낌이 약하다" — 내 턴이 아닐 땐 손패 전체를 -50px 내려서
+            // "지금은 못 낸다"는 느낌을 주고, 내 턴이 되는 순간 0으로
+            // 복귀시킨다. playable(카드별 +34 강조)은 정의상 내 턴일 때만
+            // true이므로(위 myTurnNow 조건 포함) 두 오프셋이 겹칠 일이 없다
+            // — 내 턴이 아니면 항상 -50, 내 턴이면 기존 그대로(0 또는 34).
+            float y = !myTurnNow ? -50f : (playable ? 34f : 0f);
             // 2026-09-01: 하이라이트가 CardFront 프리팹 내부의 Highlight
             // 자식(스트레치 앵커)으로 바뀌면서 카드 크기에 자동으로 맞춰져,
             // 손패 전용 크기를 따로 안 넘겨도 된다.
@@ -2418,7 +2477,8 @@ public partial class GoStop3PGame
     GameObject SpawnGhostCard(HwatuCard card, RectTransform target)
     {
         int existing = target.childCount;
-        var offset = new Vector2(existing * FIELD_STACK_OFFSET, -existing * FIELD_STACK_OFFSET);
+        float step = FieldStackStep(existing + 1); // +1 — 이 카드까지 포함한 최종 장수 기준(DrawField와 같은 규칙)
+        var offset = new Vector2(existing * step, -existing * step);
         var go = HwatuUI.MakeCard(card, target, offset, FIELD_W, FIELD_H, null, false);
         go.AddComponent<GhostMarker>();
         return go;

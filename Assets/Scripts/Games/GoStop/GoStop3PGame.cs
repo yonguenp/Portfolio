@@ -95,6 +95,49 @@ public partial class GoStop3PGame : MonoBehaviour
     // 오프라인(vs AI) 플레이는 이 UI 대상이 아니라서 계속 기본값(100원).
     int WON_PER_POINT = 100;
 
+    /// <summary>2026-09-06(사용자 확인) — 오프라인(vs AI) 전용 점당 가격
+    /// 자동 티어링. 내(플레이어) 보유 머니 구간에 따라 판이 알아서 커진다
+    /// — 0~99,999원=100원, 100,000~999,999원=500원, 100만원 이상=1000원.
+    /// 네트워크는 호스트가 로비에서 정한 값을 쓰므로(WON_PER_POINT =
+    /// lobby.PointPrice) 이 함수를 안 부른다. Start()(세션 첫 진입)와
+    /// 매 라운드 시작(NewGameSeq) 두 지점에서 그 시점의 money[PLAYER_SEAT]
+    /// 기준으로 다시 계산한다 — 판이 끝나 잔액이 구간을 넘나들면 다음
+    /// 판부터 바로 반영된다.</summary>
+    void UpdateOfflinePointPriceTier()
+    {
+        int m = money[PLAYER_SEAT];
+        WON_PER_POINT = m >= 1_000_000 ? 1000 : m >= 100_000 ? 500 : 100;
+    }
+
+    /// <summary>2026-09-06 — "게임에 입장하고 statusbox에 더미 정보가
+    /// 뜬다" 신고. RebuildUI()(실제 이름·점수·머니·배지를 채우는 곳)는
+    /// 딜링 애니메이션이 끝난 뒤에야 처음 호출되므로, 그 사이(특히 세션
+    /// 첫 판)엔 상태박스가 GoStopStatusBoxView 프리팹의 기본 placeholder
+    /// 텍스트를 그대로 보여준다. 이름·머니만 미리 채운다 — 점수·배지는
+    /// 아직 계산할 캡처 데이터가 없어(hand/captured가 이 시점엔 지난
+    /// 판 것이거나 null) 비워두고 곧이어 RebuildUI가 정식으로 채운다.</summary>
+    void RefreshStatusBoxIdentitiesBeforeDeal()
+    {
+        for (int slot = 0; slot < 4; slot++)
+        {
+            int seat = slot == 0 ? (slotSeat[0] < 0 ? PLAYER_SEAT : slotSeat[0]) : slotSeat[slot];
+            if (statusText[slot] == null) continue;
+            if (seat < 0)
+            {
+                statusText[slot].text = "";
+                if (moneyText[slot] != null) moneyText[slot].text = "";
+                if (goScoreText[slot] != null) goScoreText[slot].text = "";
+                statusBoxView[slot]?.HideAllBadges();
+                continue;
+            }
+            statusText[slot].text = seat == PLAYER_SEAT ? "나" : SeatName(seat);
+            if (moneyText[slot] != null) moneyText[slot].text = $"{money[seat]:N0}원";
+            if (goScoreText[slot] != null) goScoreText[slot].text = "";
+            statusBoxView[slot]?.HideAllBadges();
+            statusBoxView[slot]?.SetDim(false);
+        }
+    }
+
     // 2026-09-06(사용자 확인) — "AI-A/B/C 대신 타짜 등장인물 이름 + 난이도".
     // 좌석 인덱스가 아니라 "이름"으로 정체성이 이어져야 하므로(매 세션
     // 랜덤 배정이라 같은 사람이 다른 좌석에 앉을 수 있다) 좌석→캐릭터
@@ -1113,6 +1156,7 @@ public partial class GoStop3PGame : MonoBehaviour
                     allInCount[s] = 0; // AI 개인별 올인 횟수는 세션 내 표시용일 뿐 영구 저장 범위 밖
                 }
             }
+            UpdateOfflinePointPriceTier();
         }
         else if (isNetworkHost)
         {
@@ -1396,6 +1440,21 @@ public partial class GoStop3PGame : MonoBehaviour
         // 것처럼 보였다).
         ui?.HideOverlay();
 
+        // 2026-09-06(사용자 확인) — 나가리로 물들었던 테이블 배경을 다음
+        // 라운드 시작과 함께 원래 초록으로 되돌린다 — NagariRed는 "방금
+        // 그 판이 나가리였다"는 표시일 뿐, 새 판이 시작되면 의미가 없다.
+        ui?.SetBackground(HwatuTheme.DeepGreen);
+
+        // 2026-09-06(사용자 확인) — 오프라인은 매 라운드 시작 때마다 내
+        // 현재 잔액 구간으로 점당 가격을 다시 매긴다(판이 끝나 잔액이
+        // 구간을 넘나들면 다음 판부터 바로 반영). 네트워크는 호스트가
+        // 로비에서 이미 정한 값을 쓰므로 여기서 안 건드린다.
+        if (!isNetworkHost && !isNetworkGuest)
+        {
+            UpdateOfflinePointPriceTier();
+            UpdatePointPriceLabel();
+        }
+
         // 선(딜러)은 씬에 들어와서 딱 한 번만 화투 뽑기 연출로 정한다.
         // 그 이후 판부터는 EndGame이 승자를 dealerSeat에 그대로 옮겨 적어둔
         // 값을 쓴다("직전 판 승자가 선" — 사용자 확인 규칙, 매판 다시 뽑던
@@ -1506,6 +1565,14 @@ public partial class GoStop3PGame : MonoBehaviour
         currentSeat = -1;
         sittingOutSeat = -1;
         RecomputeSeatSlots(); // 아직 안 정해졌으니 기본 배치(1=좌,2=상,3=우)로 임시 표시
+        // 2026-09-06 — "게임에 입장하고 statusbox에 더미 정보가 뜬다"
+        // 신고. RebuildUI()(이름·점수·머니를 실제로 채우는 곳)는 딜링
+        // 애니메이션이 끝난 뒤에야 처음 호출된다 — 그 사이(특히 씬에
+        // 막 들어온 세션 첫 판)엔 상태박스가 GoStopStatusBoxView 프리팹의
+        // 기본 placeholder 텍스트를 그대로 보여주고 있었다. 이름·머니만
+        // 먼저 채워 넣는다(점수·배지는 아직 계산할 캡처 데이터가 없어
+        // 비워둔다 — 곧이어 RebuildUI가 정식으로 채운다).
+        RefreshStatusBoxIdentitiesBeforeDeal();
 
         // 딜링 연출 — 손패/필드가 아직 화면에 하나도 안 그려진 이 시점에만
         // 걸 수 있다(RebuildUI가 한 번이라도 돌면 실제 카드가 바로 보여서
@@ -2257,8 +2324,18 @@ public partial class GoStop3PGame : MonoBehaviour
                 var (state, have) = GoStopRules.CheckSet(mine, theirs, EmergencySets[i].pred);
                 if (needEmergency && state == GoStopRules.SetState.Alive && have == 2)
                 {
+                    // 2026-09-06(사용자 확인) — "청단패를 손패+뒷패로 같은
+                    // 턴에 한 번에 2장 획득해서 바로 완성되면, 비상과 완성이
+                    // 같이 뜨는 게 어색하다 — 이땐 완성만 떠야 한다." 문제는
+                    // RebuildUI()가 손패 결과(have==2)와 뒷패 결과(have==3)
+                    // 각각 따로(같은 턴 안에서 시차를 두고) 불려서, 여기
+                    // 도달한 시점엔 아직 뒷패 결과를 모른다 — "곧 3이 될지"를
+                    // 미리 알 방법이 없다. 대신 비상의 실제 화면 표시를 잠깐
+                    // 미루고, 그 사이 같은 세트가 achievedFired로 넘어가면
+                    // 조용히 취소한다 — emergencyFired 자체는 즉시 기록해서
+                    // (재검사 방지) 다음 RebuildUI에서 또 큐잉되지 않게 한다.
                     emergencyFired.Add((seat, i));
-                    FireEmergency(seat, EmergencySets[i].name, mine.Where(EmergencySets[i].pred).ToList());
+                    StartCoroutine(FireEmergencyDeferred(seat, i, EmergencySets[i].name, mine.Where(EmergencySets[i].pred).ToList()));
                 }
                 // 2026-08-25 — "완성" 이펙트는 비상과 완전히 독립적으로 판정한다.
                 // 뻑/폭탄처럼 한 번에 여러 장이 들어오면 have가 2를 거치지
@@ -2292,8 +2369,10 @@ public partial class GoStop3PGame : MonoBehaviour
                     var (state, have) = CheckGwangEmergency(mine, theirs);
                     if (needEmergency && state == GoStopRules.SetState.Alive && have == 2)
                     {
+                        // 위 EmergencySets 루프와 같은 이유(비상+완성 동시
+                        // 발생 시 완성만 보여준다) — FireEmergencyDeferred 참고.
                         emergencyFired.Add((seat, GwangEmergencyIdx));
-                        FireEmergency(seat, "3광", mine.Where(c => c.kind == HwatuKind.Gwang).ToList());
+                        StartCoroutine(FireEmergencyDeferred(seat, GwangEmergencyIdx, "3광", mine.Where(c => c.kind == HwatuKind.Gwang).ToList()));
                     }
                     if (needAchieve && state == GoStopRules.SetState.Achieved)
                     {
@@ -2308,6 +2387,19 @@ public partial class GoStop3PGame : MonoBehaviour
                 }
             }
         }
+    }
+
+    /// <summary>비상 이펙트의 실제 화면 표시를 잠깐 미룬 뒤, 그 사이 같은
+    /// (좌석,세트)가 완성(achievedFired)돼버렸으면 조용히 취소한다 — 손패로
+    /// have==2를 만들고 곧바로 뒷패로 3까지 채우는 "한 턴에 완성" 케이스를
+    /// 가려내기 위해서다. 이 지연(1초)은 손패 캡처 RebuildUI → 뒷패 캡처
+    /// RebuildUI 사이에 실제로 걸리는 카드 애니메이션 시간(PLAY_STEP_DELAY
+    /// 0.35초 + 슬램/서스펜스 연출)보다 넉넉하게 잡았다.</summary>
+    IEnumerator FireEmergencyDeferred(int seat, int setIdx, string setName, List<HwatuCard> cards)
+    {
+        yield return new WaitForSeconds(1.0f);
+        if (achievedFired.Contains((seat, setIdx))) yield break; // 그 사이 완성돼버렸다 — 비상은 생략, 완성 이펙트만 보여준다
+        FireEmergency(seat, setName, cards);
     }
 
     /// <summary>3광 비상 판정 — 광 5장 중 3장을 채우면 되므로, 상대가 광을
@@ -4023,6 +4115,11 @@ public partial class GoStop3PGame : MonoBehaviour
             // 멈추고 오버레이만 뜬다)에서도 점당 배율 표시가 그 즉시
             // 갱신되도록 직접 부른다.
             UpdatePointPriceLabel();
+            // 2026-09-06(사용자 확인) — "나가리판에 대한 인지를 더 강하게" —
+            // 테이블 배경을 짙은 적색으로 바꿔서 이번 판이 나가리였다는 걸
+            // 시각적으로 강조한다. 다음 라운드가 시작되면(NewGameSeq) 원래
+            // 초록으로 되돌아간다.
+            ui?.SetBackground(HwatuTheme.NagariRed);
             pendingPayout = null; // 나가리는 승자가 없어 분석할 점수 자체가 없다
             AppendChatLine($"나가리 — 다음 판 판돈 {stakeMultiplier}배");
             GoStopAudio.Instance?.Nagari();

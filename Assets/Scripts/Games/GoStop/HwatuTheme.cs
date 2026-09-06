@@ -12,6 +12,10 @@ using TMPro;
 public static class HwatuTheme
 {
     public static readonly Color DeepGreen     = Hex("#24452F"); // 테이블 배경
+    // 2026-09-06(사용자 확인) — "나가리판에 대한 인지를 더 강하게" 요청으로
+    // 나가리(무승부)로 끝난 판의 테이블 배경을 이 짙은 적색으로 바꾼다.
+    // 다음 라운드가 시작되면(NewGameSeq) 다시 DeepGreen으로 복귀한다.
+    public static readonly Color NagariRed     = Hex("#7B060F"); // 나가리 전용 테이블 배경
     public static readonly Color DarkGreen     = Hex("#193523"); // 중앙 필드/획득패 존
     public static readonly Color WarmCream     = Hex("#F3EBDD"); // 플레이어 패널/모달 표면
     public static readonly Color CreamWhite    = Hex("#FFFDF8"); // 밝은 텍스트/카드 프레임
