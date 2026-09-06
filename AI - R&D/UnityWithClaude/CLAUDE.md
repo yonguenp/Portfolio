@@ -11996,3 +11996,81 @@ svg/`에서 받아 `Assets/Art/OpenMoji/`(원본, 코드포인트 파일명)에 
 `error`/`exception` 0건 — warn만 있었고 전부 기존에 이미 있던 무관한
 노이즈(자동화 모드 경고, em-dash 폰트 폴백, PNG 렌더 헬퍼의 RenderTexture
 경고, 내 테스트 스크립트 자체의 콘솔 명령 파라미터 오류)였다.
+
+## 고스톱 — 뻑먹기 텍스트/아이콘 겹침, couldBePpeok+조커 보류(진짜 문제),
+딜링 시점 보너스피는 이미 정상이었음 (2026-09-06)
+
+바로 전 세션에서 만든 "조커가 anchor 위에 쌓인다" 기능에 이어진 3가지
+후속 신고 — "뻑먹기 label 겹침", "아직도 보너스패가 필드 pos빈공간으로
+애니메이팅됨", "처음 패나눠줄 때 보너스패가 필드에 깔린다면 특정패 위가
+아니라 선 플레이어한테 줘야 하는데 지금 그렇게 안 되는 것 같다".
+
+### 뻑먹기/자뻑 텍스트가 콤보 아이콘에 가려짐
+
+`ShowActionPopup`이 텍스트 팝업(`fx.root`, 500×140)과 콤보 아이콘
+(`SpawnComboIcon`, 300×300)을 **완전히 같은 `local` 좌표**에 겹쳐
+배치하고 있었다 — 뻑/쪽/쓸/따닥처럼 한 글자짜리 라벨은 아이콘에
+가려져도 덜 두드러졌지만, `EffectThanks`/`EffectThanksMore`의 기본
+문구("감사합니다"/"더 감사합니다", 5~7자)는 아이콘 폭(300px)만큼 넓게
+퍼져서 겹침이 뚜렷했다. 이 두 프리팹일 때만 텍스트를
+`local + (0, -250)`로 아이콘 아래에 띄워 뗐다(다른 이벤트는 신고
+없어서 안 건드림). 라이브 검증: `iconBottom - textTop = 30`(정확히
+의도한 30px 여백, 겹침 없음)까지 실측 확인.
+
+### "아직도 보너스패가 pos 빈 공간으로 감" — 진짜 원인은 couldBePpeok
+
+바로 전 세션의 `parkOnAnchor` 로직(`anchor = r1.captured.Count==0 ?
+card : null`)은 "손패가 아예 아무것도 안 맞았을 때"만 정상 작동했다.
+사용자가 예로 든 "필드에 1월패가 있었고 내가 1월패를 냈는데"는 실은
+**couldBePpeok**(손패가 필드 카드와 정확히 1장 매칭 — 다음 뒷패가
+같은 달이면 뻑, 아니면 그냥 캡처되는 대기 상태) 시나리오다 — 이 경우
+`r1.captured`는 **이미 [card, matchedFieldCard] 2장을 담고 있다**
+(couldBePpeok 표시를 위해, 아직 cap/field에 커밋은 안 됐지만).
+그래서 `r1.captured.Count==0`이 거짓이 되어 `anchor=null`로 떨어졌고,
+뒤이은 뒷패가 조커면 `ppeokFormed`(뻑 형성, `!drawn.isJoker` 조건이라
+조커는 절대 못 만족)도 거짓이라 그냥 "④ 손패 결과를 Cap에 배치"로
+곧장 정상 캡처(즉시 확정)되어 버렸다 — anchor가 필드에 남아있지 않으니
+조커도 붙을 자리가 없어 예전처럼 빈 슬롯에 즉시 캡처됐다.
+
+**고침 — "③ 뻑 판정" 섹션에 새 분기 추가.** `!ppeokFormed && drawn!=null
+&& drawn.isJoker`일 때, `ppeokFormed` 분기와 완전히 같은 방식으로
+`matchedFieldCard`+`card`를 다시 `field`에 되돌리고 `r1.captured.Clear()`
+한다(Toast/streak/판돈은 전혀 안 건드림 — 진짜 뻑이 아니므로). 이러면
+"④"가 아무것도 캡처 안 하고 넘어가고, 곧이어 `willDraw`/`ResolveBonusJoker`
+가 `anchor=card`를 정확히 field에 살아있는 카드로 인식해 조커를 같은
+슬롯에 합류시킨다 — `ResolveBonusJoker`의 기존 `parkOnAnchor` 로직을
+그대로 재사용할 뿐 새 코드가 아니다.
+
+**검증(라이브 리플렉션, 실제 4인 게임).** 필드에 7월 카드 1장, 손패에
+매칭되는 7월 카드 1장을 세팅하고 다음 뒷패를 조커로 리깅 → `OnPlayerPlay`
+실행 → 진단 로그(`[GoStopJoker]`, 이번에 영구 추가)로
+`anchor=July_Tane anchorInField=True parkOnAnchor=True` 확인. 이후 자연
+진행을 몇 초 그대로 뒀더니(다른 좌석들의 AI 턴이 자연스럽게 흘러가며)
+**seat3가 진짜 7월 4번째 카드로 그 무더기를 완성**해 `captured[3]`에
+`July_Kasu_2, July_Tane, July_Tane, Joker_1` **정확히 4장**(사용자가
+예로 든 "1월,1월,보너스패,1월" 패턴과 정확히 일치)이 한 번에 들어가는
+것까지 확인 — 조커를 나중에 스윕하는 소비 로직(`ppeokBonusPi`/
+`ResolveJokerPpeok`)은 전 세션에 만든 그대로 손 안 댔는데도 정확히
+작동했다. 전체 카드 보존(50장), 콘솔 에러 0건도 재확인.
+
+### "딜링 시점에 보너스패가 특정 카드 위에 깔린다" — 조사 결과 이미 정상,
+관련 코드는 이번 세션에서 전혀 손 안 댐
+
+`GoStopRules.DealNew3P/DealNew4PFull/DealNew`(2인) 전부 딜링 직후
+`d.jokersInField = d.field.Where(isJoker).ToList(); foreach(var j in
+jokersInField) d.field.Remove(j); RefillFieldFromDrawPile(...)`로 —
+필드에 우연히 떨어진 조커는 **애초에 `field` 리스트에 한 번도 남지
+않고** 즉시 제거되고 실카드로 리필된다. `GoStop3PGame.NewGameSeq()`도
+`foreach (var j in jokersInField) captured[dealerSeat].Add(j);`로 즉시
+선(딜러)에게 지급 — 사용자가 설명한 "올바른 동작"과 정확히 일치하는
+기존 코드였다. 딜링 카드-백 애니메이션(`DealRound`/`FlyDealCard`) 역시
+실제 카드 데이터 없이 장수만 세는 순수 연출이라 특정 카드 정체를
+표시할 방법 자체가 없다.
+
+라이브로 `GoStopRules.DealNew4PFull()`을 반복 호출해(자연 확률로
+조커가 실제로 필드에 배정된 케이스 3건을 만나) 매번 `jokerStillInFieldList
+=False, fieldCount=6`(정확히 리필됨)을 확인 — 이 경로는 버그가 없다.
+사용자가 관찰한 "필드에 특정패 위에 깔림"은 십중팔구 **딜링 시점이
+아니라 게임 시작 직후 첫 몇 턴에 벌어진 위 couldBePpeok+조커 시나리오**
+(막 고쳤던 그 버그)를 "카드 나눠줄 때"로 체감한 것으로 보인다 — 딜링
+로직 자체를 건드릴 필요가 없었다.

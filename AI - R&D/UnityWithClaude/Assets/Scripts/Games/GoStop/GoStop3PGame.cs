@@ -2003,7 +2003,19 @@ public partial class GoStop3PGame : MonoBehaviour
         // ContentArea는 Canvas 안에서 HUD만큼 오프셋돼 있을 수 있어(이 씬은
         // HUD를 꺼서 지금은 오프셋이 없지만, 좌표계 자체는 항상 이렇게
         // 다뤄야 안전하다) Canvas 정중앙(0,0)과 필드 위치가 다를 수 있다.
-        fx.root.anchoredPosition = local;
+        // 2026-09-06 버그 수정 — "뻑먹기 label 겹침" 신고. 콤보 아이콘
+        // (SpawnComboIcon, 300×300)과 이 텍스트 팝업(500×140)이 둘 다 같은
+        // `local`에 겹쳐 배치되고 있었다 — "뻑"/"쪽"/"쓸"처럼 한 글자짜리
+        // 라벨은 아이콘에 가려져도 덜 두드러졌지만, EffectThanks/
+        // ThanksMore의 기본 문구("감사합니다"/"더 감사합니다", 5~7자)는
+        // 아이콘 폭(300px)만큼 넓게 퍼져서 겹침이 뚜렷하게 보였다. 이
+        // 두 프리팹일 때만 텍스트를 아이콘 아래로 충분히(둘의 최대
+        // 반높이를 합친 것보다 크게) 떨어뜨린다 — 나머지 이벤트는 손
+        // 안 댐(신고 안 된 부분까지 건드릴 필요 없음).
+        Vector2 textOffset = (prefabName == "EffectThanks" || prefabName == "EffectThanksMore")
+            ? new Vector2(0f, -250f)
+            : Vector2.zero;
+        fx.root.anchoredPosition = local + textOffset;
 
         // "감사합니다"/"더 감사합니다"는 프리팹 기본 문구를 그대로 쓰고,
         // 나머지는 실제 라벨(첫뻑!/연뻑! 등 상황별 문구)을 덮어써서 보여준다.
@@ -3203,6 +3215,28 @@ public partial class GoStop3PGame : MonoBehaviour
         if (couldBePpeok)
         {
             bool ppeokFormed = drawn != null && !drawn.isJoker && drawn.month == card.month;
+            // 2026-09-06(사용자 확인) — "필드에 1월패가 있었고 내가 1월패를
+            // 냈는데 뒷패에서 보너스패가 나오면 1월패 위에 올라가고, 이후
+            // 진짜 1월패가 또 나오면 뻑 해소하는 쪽이 조커까지 한꺼번에
+            // 가져가야 한다." 조커는 월이 없어 뻑을 "완성"하지는 못하지만
+            // (ppeokFormed 조건이 !drawn.isJoker로 이미 배제), 진행 중인
+            // 매칭을 "보류"시킬 수는 있어야 한다는 요청 — 실제 카드 3번째
+            // 장이 뻑을 만드는 것과 같은 원리다. r1이 이미 이 매칭을
+            // 캡처한 것처럼 담아뒀던 걸(couldBePpeok는 항상 matchCount==1
+            // 이라 r1.captured=[card, matchedFieldCard]) ppeokFormed 분기와
+            // 완전히 같은 방식으로 field에 되돌린다 — 차이는 Toast/streak/
+            // 판돈을 전혀 안 건드리고(진짜 뻑이 아니므로), 곧이어 ④에서
+            // 또 캡처되지 않도록 r1.captured만 비운다는 것뿐이다. 그러면
+            // 바로 아래 willDraw/ResolveBonusJoker가 이 card를 anchor로
+            // 인식해(field에 다시 들어와 있으므로) 조커를 정확히 같은
+            // 자리에 합류시킨다 — ResolveBonusJoker의 parkOnAnchor 로직을
+            // 그대로 재사용할 뿐 새 코드가 아니다.
+            if (!ppeokFormed && drawn != null && drawn.isJoker)
+            {
+                if (matchedFieldCard != null) field.Add(matchedFieldCard);
+                field.Add(card);
+                r1.captured.Clear();
+            }
             if (ppeokFormed)
             {
                 DestroyGhosts(handGhosts);
@@ -3534,6 +3568,8 @@ public partial class GoStop3PGame : MonoBehaviour
     IEnumerator ResolveBonusJoker(int seat, HwatuCard joker, HwatuCard anchor, List<HwatuCard> cap, bool isLastHandCard, Vector3? revealFrom = null)
     {
         bool parkOnAnchor = anchor != null && field.Contains(anchor);
+        Debug.Log("[GoStopJoker] anchor=" + (anchor == null ? "null" : anchor.spriteName) +
+            " anchorInField=" + (anchor != null && field.Contains(anchor)) + " parkOnAnchor=" + parkOnAnchor);
         if (parkOnAnchor)
         {
             fieldSlotAssign[joker] = AssignFieldSlot(anchor); // anchor와 같은 pos에 쌓인다
