@@ -2103,57 +2103,42 @@ public partial class GoStop3PGame : MonoBehaviour
     /// `comboEffectWorldPos`류 타겟팅 없이 `Vector2.zero`(canvasRoot 자신의
     /// 피벗=중심)를 그대로 쓴다 — canvasRoot(GameUI)는 부모가 없는 루트
     /// Canvas라 자기 자신의 로컬 원점이 곧 화면 중심이다.</summary>
+    /// <summary>2026-09-06(2차, 사용자 확인) — "코드에서 생성하는 부분
+    /// 없애고 다른 이펙트처럼 프리팹으로" 요청 — 구조(메인/서브 라벨·링
+    /// 2개, tense 텍스트 겹침을 잡은 레이아웃까지 그대로)는 이제
+    /// <c>GoEffect.prefab</c>(<see cref="GoStopGoEffectView"/>)에 담겨
+    /// 있다. 여기서는 티어별 텍스트·색·크기·활성 여부만 채운다.</summary>
     IEnumerator GoEffectSeq(RectTransform canvasRoot, int seat, int goNumber)
     {
         int tier = Mathf.Min(goNumber, 5);
         bool tense = tier >= 3;
         bool flashy = tier >= 4;
 
-        var goObj = new GameObject("GoEffect", typeof(RectTransform));
-        goObj.transform.SetParent(canvasRoot, false);
-        var rt = goObj.GetComponent<RectTransform>();
-        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
-        rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.sizeDelta = new Vector2(1800f, 700f);
-        rt.anchoredPosition = Vector2.zero; // 화면 정중앙
+        var view = HwatuUI.InstantiateEffect<GoStopGoEffectView>("GoEffect", canvasRoot);
+        if (view == null) yield break;
+        var rt = view.root;
         rt.localScale = Vector3.one * 0.5f;
-
-        var group = goObj.AddComponent<CanvasGroup>();
+        var group = view.group;
         group.alpha = 0f;
 
-        // 2026-09-06(사용자 확인) — "GoEffect tense상태일때 글씨가 겹침".
-        // 예전엔 메인 라벨 박스가 340px나 되는데 그 안에서 텍스트가
-        // 세로 중앙 정렬돼(TextAlignmentOptions.Center) 실제 글자는 박스
-        // 아래쪽 절반 근처에 찍히고, 서브 라벨("배수 ×N!")은 그 박스
-        // *안쪽*(-150~-240) 좌표에 겹쳐 놓여 있었다 — 박스 자체가 서로
-        // 겹치니 글자도 겹칠 수밖에 없었다. 메인 라벨 박스를 한 줄만 딱
-        // 담기게 줄이고(220px — 가장 큰 170pt 폰트도 한 줄이면 충분),
-        // 서브 라벨을 메인 박스 *아래*(겹치지 않는 좌표)로 확실히
-        // 떨어뜨렸다 — 두 박스 자체가 안 겹치면 폰트 메트릭을 정확히
-        // 몰라도 글자가 겹칠 수 없다.
         Color mainColor = flashy ? new Color(1f, 0.45f, 0.10f) : tense ? new Color(1f, 0.55f, 0.20f) : HwatuTheme.Gold;
-        var label = HwatuUI.MakeLabel(rt, new Vector2(0f, 60f), new Vector2(1800f, 220f), flashy ? 170f : tense ? 140f : 110f, mainColor);
-        label.text = $"{SeatName(seat)} {goNumber}고!";
-        label.fontStyle = FontStyles.Bold;
-        label.alignment = TextAlignmentOptions.Center;
-        label.raycastTarget = false;
+        view.mainLabel.text = $"{SeatName(seat)} {goNumber}고!";
+        view.mainLabel.color = mainColor;
+        view.mainLabel.fontSize = flashy ? 170f : tense ? 140f : 110f;
 
-        if (tense)
-        {
-            var sub = HwatuUI.MakeLabel(rt, new Vector2(0f, -190f), new Vector2(1800f, 80f), 48f, new Color(1f, 0.65f, 0.35f));
-            sub.text = string.Format("배수 × {0}!", (tier - 2) * 2);
-            sub.alignment = TextAlignmentOptions.Center;
-            sub.raycastTarget = false;
-        }
+        view.subLabel.gameObject.SetActive(tense);
+        if (tense) view.subLabel.text = string.Format("배수 × {0}!", (tier - 2) * 2);
 
-        // 확장 링 — 4~5고에서만, 텍스트보다 먼저 그려지게 맨 뒤로 보낸다.
-        RectTransform ring1 = null, ring2 = null;
+        // 확장 링 — 4~5고에서만.
+        view.ring1.gameObject.SetActive(flashy);
+        view.ring2.gameObject.SetActive(flashy);
         if (flashy)
         {
-            ring1 = MakeExpandingRing(rt, mainColor);
-            ring2 = MakeExpandingRing(rt, mainColor);
-            ring1.SetAsFirstSibling();
-            ring2.SetAsFirstSibling();
+            view.ring1Image.color = mainColor;
+            view.ring2Image.color = mainColor;
+            view.ring1.localScale = Vector3.one * 0.6f;
+            view.ring2.localScale = Vector3.one * 0.6f;
+            view.ring1Group.alpha = view.ring2Group.alpha = 0.8f;
         }
 
         int burstCount = tier switch { 1 => 8, 2 => 10, 3 => 14, 4 => 20, _ => 26 };
@@ -2165,34 +2150,17 @@ public partial class GoStop3PGame : MonoBehaviour
         if (tense) seq.Append(rt.DOShakePosition(0.22f, strength: 10f, vibrato: 12));
         if (flashy)
         {
-            seq.Join(ring1.DOScale(4.5f, 0.55f).SetEase(Ease.OutCubic));
-            seq.Join(ring1.GetComponent<CanvasGroup>().DOFade(0f, 0.55f));
-            seq.Join(ring2.DOScale(4.5f, 0.55f).SetEase(Ease.OutCubic).SetDelay(0.12f));
-            seq.Join(ring2.GetComponent<CanvasGroup>().DOFade(0f, 0.55f).SetDelay(0.12f));
+            seq.Join(view.ring1.DOScale(4.5f, 0.55f).SetEase(Ease.OutCubic));
+            seq.Join(view.ring1Group.DOFade(0f, 0.55f));
+            seq.Join(view.ring2.DOScale(4.5f, 0.55f).SetEase(Ease.OutCubic).SetDelay(0.12f));
+            seq.Join(view.ring2Group.DOFade(0f, 0.55f).SetDelay(0.12f));
         }
         seq.Append(rt.DOScale(1f, 0.10f));
         seq.AppendInterval(flashy ? 0.65f : tense ? 0.5f : 0.4f);
         seq.Append(group.DOFade(0f, 0.28f));
+        var goObj = view.gameObject;
         seq.OnComplete(() => { if (goObj != null) Destroy(goObj); });
         yield return seq.WaitForCompletion();
-    }
-
-    RectTransform MakeExpandingRing(RectTransform parent, Color color)
-    {
-        var go = new GameObject("GoRing", typeof(RectTransform));
-        go.transform.SetParent(parent, false);
-        var rt = go.GetComponent<RectTransform>();
-        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
-        rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.sizeDelta = new Vector2(260f, 260f);
-        rt.localScale = Vector3.one * 0.6f;
-        var img = go.AddComponent<Image>();
-        img.sprite = UISkin.CircleLine;
-        img.color = color;
-        img.raycastTarget = false;
-        var group = go.AddComponent<CanvasGroup>();
-        group.alpha = 0.8f;
-        return rt;
     }
 
     /// <summary>스톱을 외칠 때(나든 상대든) 뜨는 이펙트 — "스톱!" 텍스트 +
@@ -2203,7 +2171,9 @@ public partial class GoStop3PGame : MonoBehaviour
     /// 반환한다 — 호출부가 "이 이펙트가 끝난 뒤에" 결과 화면(EndGame)을
     /// 띄우고 싶을 때 `yield return FireStopEffect(seat);`로 이어붙일 수
     /// 있게 하기 위해서다(2026-09-06 사용자 확인 — "결과화면이 스톱
-    /// 이펙트 끝난후에 떠야할거 같아").</summary>
+    /// 이펙트 끝난후에 떠야할거 같아"). 2026-09-06(2차, 사용자 확인) —
+    /// GoEffect와 같은 이유로 구조는 <c>StopEffect.prefab</c>(<see
+    /// cref="GoStopStopEffectView"/>)에 담겨 있다.</summary>
     Coroutine FireStopEffect(int seat)
     {
         var canvasRoot = GoStopCanvasRoot();
@@ -2213,45 +2183,24 @@ public partial class GoStop3PGame : MonoBehaviour
 
     IEnumerator StopEffectSeq(RectTransform canvasRoot, int seat)
     {
-        var goObj = new GameObject("StopEffect", typeof(RectTransform));
-        goObj.transform.SetParent(canvasRoot, false);
-        var rt = goObj.GetComponent<RectTransform>();
-        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
-        rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.sizeDelta = new Vector2(1500f, 700f);
-        rt.anchoredPosition = Vector2.zero; // 화면 정중앙
+        var view = HwatuUI.InstantiateEffect<GoStopStopEffectView>("StopEffect", canvasRoot);
+        if (view == null) yield break;
+        var rt = view.root;
         rt.localScale = Vector3.one * 0.5f;
-
-        var group = goObj.AddComponent<CanvasGroup>();
+        var group = view.group;
         group.alpha = 0f;
 
-        var stopRed = new Color(0.90f, 0.28f, 0.24f);
-        var iconGo = new GameObject("StopHand", typeof(RectTransform));
-        iconGo.transform.SetParent(rt, false);
-        var iconRt = iconGo.GetComponent<RectTransform>();
-        iconRt.anchorMin = iconRt.anchorMax = new Vector2(0.5f, 1f);
-        iconRt.pivot = new Vector2(0.5f, 0.5f);
-        iconRt.sizeDelta = new Vector2(260f, 260f);
-        iconRt.anchoredPosition = new Vector2(0f, -130f);
-        var iconImg = iconGo.AddComponent<Image>();
-        iconImg.sprite = GoStopComboIcons.StopHand;
-        iconImg.preserveAspect = true;
-        iconImg.raycastTarget = false;
+        view.label.text = $"{SeatName(seat)} 스톱!";
 
-        var label = HwatuUI.MakeLabel(rt, new Vector2(0f, -330f), new Vector2(1500f, 140f), 100f, stopRed);
-        label.text = $"{SeatName(seat)} 스톱!";
-        label.fontStyle = FontStyles.Bold;
-        label.alignment = TextAlignmentOptions.Center;
-        label.raycastTarget = false;
-
-        GoStopIcons.SpawnBurst(canvasRoot, Vector2.zero, stopRed, 14);
+        GoStopIcons.SpawnBurst(canvasRoot, Vector2.zero, view.label.color, 14);
 
         var seq = DOTween.Sequence();
         seq.Append(rt.DOScale(1f, 0.16f).SetEase(Ease.OutBack));
         seq.Join(group.DOFade(1f, 0.12f));
-        seq.Join(iconRt.DOPunchRotation(new Vector3(0, 0, 8f), 0.3f, 8, 0.6f));
+        seq.Join(view.icon.DOPunchRotation(new Vector3(0, 0, 8f), 0.3f, 8, 0.6f));
         seq.AppendInterval(0.55f);
         seq.Append(group.DOFade(0f, 0.28f));
+        var goObj = view.gameObject;
         seq.OnComplete(() => { if (goObj != null) Destroy(goObj); });
         yield return seq.WaitForCompletion();
     }
