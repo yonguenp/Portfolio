@@ -3154,10 +3154,28 @@ public partial class GoStop3PGame : MonoBehaviour
 
             if (drawn.isJoker)
             {
-                // 조커는 자기만의 pos 슬롯에 착지한다(월이 없어 매칭 개념
-                // 자체가 없다 — ResolveBonusJoker가 곧 즉시 캡처하거나
-                // 뻑에 편입시킨다).
+                // 2026-09-06 버그 수정("아직도 빈 공간에 슬램다운") — 조커가
+                // couldBePpeok 대기 중인 anchor 슬롯에 합류할 때(아래 "③ 뻑
+                // 판정"에서 파킹되는 경우), 그 슬롯 배정 자체는 ③에서야
+                // 이뤄졌다 — 그런데 이 애니메이션(②)은 ③보다 먼저 실행되므로,
+                // 배정이 아직 안 된 시점의 FieldSlotTransform(drawn)은 조커
+                // 전용 규칙(월이 없어 항상 새 빈 슬롯)을 그대로 따라 엉뚱한
+                // 빈 자리로 떨어졌다 — 데이터(최종 렌더)는 ③ 이후 올바르게
+                // 고쳐지지만, 그 사이의 착지 애니메이션만 틀린 자리를 보여준
+                // 것이었다. ③이 쓸 조건(파킹 가능 여부)을 여기서 미리
+                // 계산해서 슬롯을 먼저 배정해 두면, 애니메이션도 처음부터
+                // 정확한 자리로 떨어진다 — ③에서 같은 배정을 다시 시도해도
+                // fieldSlotAssign 캐시를 먼저 보므로 안전하게 멱등이다.
+                if (couldBePpeok)
+                {
+                    int alreadyCapturedOfMonth = captured.Where(cap => cap != null)
+                        .Sum(cap => cap.Count(c => c.month == card.month));
+                    if (alreadyCapturedOfMonth <= 1)
+                        fieldSlotAssign[drawn] = AssignFieldSlot(card);
+                }
                 var target = FieldSlotTransform(drawn);
+                Debug.Log("[GoStopJokerGhost] drawn=" + drawn.spriteName + " couldBePpeok=" + couldBePpeok +
+                    " target=" + target.name + " anchorTarget=" + FieldSlotTransform(card).name);
                 deckGhost = SpawnGhostCard(drawn, target);
                 // 위 손패 슬램과 같은 이유(2026-09-02) — target.position이
                 // 아니라 고스트의 실제 착지 자리를 flyFrom에 기록한다.
