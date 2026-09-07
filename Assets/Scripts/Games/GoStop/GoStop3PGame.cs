@@ -3234,10 +3234,17 @@ public partial class GoStop3PGame : MonoBehaviour
                 GoStopVectorEffect.Ensure().PlayShake(NormalizedBoxOf(statusBoxRefs[bombSlot]), r1.captured.Take(3).ToList());
         }
 
-        bool willDraw = !bomb && drawPile.Count > 0;
+        // 2026-09-07(사용자 확인·정정) — 폭탄도 이번 턴의 덱 뒷패를
+        // 정상적으로 넘긴다. 폭탄=손패 3장을 한 번에 낸 것뿐이지 "이번
+        // 턴 자체가 없어지는" 게 아니다 — 덱은 항상 넘기고, 그 위에
+        // "다음 손패 대신 나중에 쓸 크레딧 2장"이 추가로 적립될 뿐이다.
+        // (예전엔 !bomb을 여기 끼워 폭탄 턴엔 덱을 통째로 안 넘겼는데,
+        // 이게 "폭탄을 했는데 뒷패를 안 깐다"는 신고의 정체였다.)
+        bool willDraw = drawPile.Count > 0;
         // 뻑 감지: 뒷패 공개로 뒤집힐 수 있는 건 순수 1:1 매칭(선택도
-        // 폭탄도 아님)뿐이다 — 이 조건 하나로 "결과를 아직 확정 지으면
-        // 안 되는" 카드를 가려낸다(2026-08-22 결정 그대로 유지).
+        // 폭탄도 아님)뿐이다 — 폭탄은 그 달 4장을 한 번에 다 가져가므로
+        // 뒤에 남는 카드 자체가 없어 애초에 뻑이 성립할 수 없다(위 willDraw
+        // 수정과 별개로 이 조건은 그대로 맞다).
         bool couldBePpeok = !bomb && !r1HadChoice && r1.matchCount == 1;
 
         var dualPiPending = new List<HwatuCard>();
@@ -3367,6 +3374,12 @@ public partial class GoStop3PGame : MonoBehaviour
         if (willDraw)
         {
             drawn = drawPile[0]; drawPile.RemoveAt(0);
+            // 2026-09-08 — "로그에 손패 낸 것만 나온다" 요청. 위 손패
+            // 로그(AppendChatLine, 이 함수 앞부분)와 대칭되는 이벤트라
+            // 같은 방식으로 채팅 로그에 남긴다.
+            AppendChatLine(drawn.isJoker
+                ? $"{SeatNameFor(seat, -1)}님의 뒷패로 보너스패가 나왔습니다"
+                : $"{SeatNameFor(seat, -1)}님의 뒷패로 {drawn.month}월 패가 나왔습니다");
 
             if (drawn.isJoker)
             {
@@ -3569,7 +3582,12 @@ public partial class GoStop3PGame : MonoBehaviour
         // --- ⑤ 피 뺏기는 Cap 배치가 끝난 뒤 별도 비트로 ---
         if (r1.captured.Count > 0)
         {
-            bool stole = ApplyMatchBonus(seat, r1, bomb, allowSweep: bomb || !willDraw, wasFirstHandPlay: wasFirstPlay);
+            // 2026-09-07 — willDraw가 이제 bomb와 무관해졌으니(위 수정)
+            // "폭탄이면 무조건 이번이 마지막 이벤트"라는 가정도 같이
+            // 없앴다 — 덱을 마저 넘길 거면(willDraw=true) 그 결과까지
+            // 보고 나서 싹쓸이를 판정해야 한다(일반 손패 플레이와 동일한
+            // 규칙, bomb 여부와 무관).
+            bool stole = ApplyMatchBonus(seat, r1, bomb, allowSweep: !willDraw, wasFirstHandPlay: wasFirstPlay);
             if (stole)
             {
                 RebuildUI();
@@ -3577,15 +3595,12 @@ public partial class GoStop3PGame : MonoBehaviour
             }
         }
 
-        if (bomb)
-        {
-            bombCredits[seat] += 2;
-            foreach (var dual in dualPiPending)
-                yield return StartCoroutine(PromptDualPiChoice(dual, seat));
-            actionBusy = false;
-            onDone?.Invoke();
-            yield break;
-        }
+        // 2026-09-07 — 크레딧만 적립하고 끝(더미 뒷패는 바로 아래 willDraw
+        // 블록이 이제 폭탄과 무관하게 정상적으로 처리한다). dualPi 프롬프트도
+        // 여기서 따로 안 돌린다 — 함수 맨 끝(line ~3755)의 통합 dualPiPending
+        // 처리가 이제 이 실행 경로에도 그대로 이어지므로, 여기서 미리
+        // 돌리면 같은 카드가 두 번 물어봐지는 버그가 된다.
+        if (bomb) bombCredits[seat] += 2;
 
         if (willDraw)
         {
@@ -3761,6 +3776,11 @@ public partial class GoStop3PGame : MonoBehaviour
         if (drawPile.Count == 0) { RebuildUI(); actionBusy = false; onDone?.Invoke(); yield break; }
 
         var drawn = drawPile[0]; drawPile.RemoveAt(0);
+        // 2026-09-08 — PlaySeq의 뒷패 로그와 동일(손패 없이 덱만 넘기는
+        // 턴에도 똑같이 남긴다).
+        AppendChatLine(drawn.isJoker
+            ? $"{SeatNameFor(seat, -1)}님의 뒷패로 보너스패가 나왔습니다"
+            : $"{SeatNameFor(seat, -1)}님의 뒷패로 {drawn.month}월 패가 나왔습니다");
 
         if (drawn.isJoker)
         {

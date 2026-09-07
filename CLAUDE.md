@@ -13112,3 +13112,56 @@ handArea.active=False`(같은 자리에서 서로 안 부딪히는 것 확인),
 5. 이어서 고를 선택(`OnPlayerGo`, 새로 게이팅된 `FireGoEffect`/
    `AdvanceTurn` 경로를 실제로 태움) → 이후 5턴 이상 자연 진행(조커
    처리 포함) → 콘솔 `error`/`exception` 0건.
+
+## 고스톱 4인판 — 폭탄이 그 턴 덱을 통째로 건너뛰던 버그 (2026-09-07)
+
+"폭탄을 했는데 뒷패를 안까고 턴이 넘어갔어" 신고 — 처음엔 이걸 "폭탄은
+그 턴 덱을 안 넘기고 대신 크레딧 2장을 적립한다"는 기존 문서화된 설계
+그대로라고 답했는데, 사용자가 정확히 정정했다: **"폭탄을 내면 3장을
+한 번에 낸 거니까 나중에 쓸 크레딧 2장이 생기는 건 맞는데, 덱은
+그 자리에서 정상적으로 넘기고 턴도 넘어가야 한다"** — 크레딧은 "이번
+턴 덱 넘기기의 대체"가 아니라 "나중에 손패가 없을 때 대신 쓸 별도
+보너스"였다. 예전 구현(`willDraw = !bomb && drawPile.Count > 0`)은
+폭탄이면 그 턴의 덱 뒤집기 자체를 통째로 건너뛰어서, `drawn = drawPile[0];
+drawPile.RemoveAt(0);`가 아예 안 불리고 더미 맨 위 카드가 조금도 안
+줄어들었다 — "뒷패를 안 깐다"는 신고와 정확히 일치하는 원인이었다.
+
+**고침 — `willDraw`를 bomb과 완전히 분리했다.** `willDraw = drawPile.Count
+> 0;`(더미가 있으면 폭탄이든 아니든 항상 넘긴다). `couldBePpeok = !bomb
+&& ...`는 그대로 뒀다 — 폭탄은 그 달 4장을 한 번에 다 가져가므로 뻑이
+성립할 카드 자체가 안 남는다, 이건 원래도 맞는 조건이었다. `ApplyMatchBonus`의
+`allowSweep: bomb || !willDraw`도 `allowSweep: !willDraw`로 정리했다 —
+`willDraw`가 이제 bomb와 무관해졌으니 "폭탄이면 무조건 이번이 마지막
+이벤트"라는 낡은 가정도 같이 걷어냈다(덱을 마저 넘길 거면 그 결과까지
+보고 나서 싹쓸이를 판정해야 한다, 일반 손패 플레이와 동일한 규칙).
+
+`if (bomb) { bombCredits[seat] += 2; foreach(dualPiPending) ...;
+actionBusy=false; onDone?.Invoke(); yield break; }`이던 조기 종료 분기를
+`if (bomb) bombCredits[seat] += 2;`(크레딧만 적립) 한 줄로 줄이고, 그
+뒤를 `yield break` 없이 그대로 흘려보내 이어지는 `if (willDraw) { ... }`
+(더미 카드 매칭·선택·뻑먹기·조커 등 일반 뒷패 처리 전체)를 폭탄 턴에도
+똑같이 타게 했다. **부수적으로 없앤 이중 프롬프트 위험** — 예전 폭탄
+분기 안의 `foreach (var dual in dualPiPending) yield return
+StartCoroutine(PromptDualPiChoice(dual, seat));`은 함수 맨 끝(line ~3755)에
+있는 통합 dualPi 소비 루프의 대체용이었다(폭탄이 거기 도달하기 전에
+`yield break`했으므로) — 이제 폭탄도 그 지점까지 정상적으로 흘러가므로,
+폭탄 분기 안의 중복 루프를 지우지 않았다면 같은 카드를 두 번 물어보는
+버그가 새로 생겼을 것이다.
+
+**검증(Play 모드 라이브, 리플렉션) — 두 시나리오로 정확히 격리해서
+확인했다.**
+- **일반 폭탄(7월, dualPi 카드 없음)**: 손 3장+필드 1장 세팅 →
+  `OnPlayerPlay` → 4장 전부 정상 캡처, `bombCredits[0]=2`, 이후 여러 초
+  자연 진행되며 `currentSeat`가 실제로 다른 좌석들을 거쳐 순환하고
+  `drawPile.Count`가 폭탄 턴 자신의 몫을 포함해 계속 줄어드는 것까지
+  확인 — "턴이 다른 좌석으로 넘어간다"를 간접적으로도 확실히 입증했다.
+- **dualPi 포함 폭탄(9월, September_Tane 포함)**: 같은 방식으로 세팅 →
+  `OnPlayerPlay` **직후(짧은 대기, 1.5초)** 확인 — `drawPile.Count`가
+  세팅 시점 대비 정확히 **-1**(이 턴 자신의 덱 뒤집기 딱 한 장만 소비된
+  단일-턴 격리 확인), `dualPiPopup`이 정확히 한 번 뜬 상태(`pendingDualPiChoice=
+  null`, 아직 응답 전)로 대기 중인 것 확인 → 응답(`pendingDualPiChoice=false`)
+  → 팝업이 정상적으로 닫히고(재프롬프트 없음), `bombCredits[0]`이 4로
+  누적(7월 폭탄의 2 + 이번 9월 폭탄의 2, 정상 누적), 4장 전부 정상 캡처,
+  `currentSeat`가 다음 좌석으로 정상 전환된 것까지 확인.
+- 이 두 테스트 전체(콘솔 53개 항목) 중 `error`/`exception` **0건**(파이프라인
+  자체의 "자동화 모드 아님" 경고만 있었을 뿐).
