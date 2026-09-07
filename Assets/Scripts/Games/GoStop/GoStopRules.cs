@@ -519,19 +519,17 @@ public static class GoStopRules
 
     /// <summary>멍박 실시간 위험 판정 — 정식 "멍따"(동물 그림 열끗) 점수
     /// 규칙 자체는 이 프로젝트가 의도적으로 안 넣었지만(2인판 문서 참고),
-    /// "열끗 5장부터 1점씩"(<see cref="CalcScore"/>의 <c>yeolkkeut</c> 항목)과
-    /// "고도리 3장(5점)"은 실제로 구현돼 있다 — 상대가 <b>열끗 관련으로
-    /// 실제 점수를 낸 상태</b>(그 둘 중 하나라도 &gt;0)면 "멍박" 위험으로
-    /// 본다. 2026-09-04 정정(사용자 확인) — 예전엔 "열끗 5장 이상"만
-    /// 봐서, 고도리 3장을 전부 모았지만 총 열끗이 5장 미만인(예: 정확히
-    /// 3장, 전부 고도리) 드문 경우를 놓쳤다 — 실제로는 고도리만으로도
-    /// 5점을 내는 상태인데 위험 표시가 안 됐다. 이제 두 조건을 OR로
-    /// 묶어서 어느 쪽으로든 점수가 나면 잡는다(기존에 잡던 경우를 못
-    /// 잡게 되는 회귀는 없다 — 순수하게 더 넓게 잡을 뿐이다).</summary>
+    /// "열끗 5장부터 1점씩"(<see cref="CalcScore"/>의 <c>yeolkkeut</c> 항목)은
+    /// 실제로 구현돼 있다 — 상대가 <b>열끗으로 실제 점수를 낸 상태</b>면
+    /// "멍박" 위험으로 본다. 2026-09-08 정정(사용자 확인) — 고도리는 멍박과
+    /// 별개의 독립된 세트 보너스라 이 판정에서 뺐다(한때 "고도리 3장을
+    /// 전부 모았지만 총 열끗이 5장 미만인 경우를 놓친다"는 이유로 OR로
+    /// 묶었던 적이 있는데, 그건 멍박이 아니라 고도리 완성/비상 이펙트가
+    /// 따로 담당해야 할 신호였다).</summary>
     public static bool IsLiveMeongBakRisk(List<HwatuCard> mine, IEnumerable<List<HwatuCard>> others)
     {
         if (mine.Count(c => c.EffectiveKind == HwatuKind.Yeolkkeut) > 0) return false;
-        return others.Any(o => { var s = CalcScore(o, 0); return s.yeolkkeut > 0 || s.godori > 0; });
+        return others.Any(o => CalcScore(o, 0).yeolkkeut > 0);
     }
 
     /// <summary>총통 — 딜 받은 손패에 같은 달 4장(그 달 전부)이 통째로 있는가.
