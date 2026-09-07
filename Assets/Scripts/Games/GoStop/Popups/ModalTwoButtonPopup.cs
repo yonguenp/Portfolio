@@ -21,8 +21,28 @@ public class ModalTwoButtonPopup : MonoBehaviour
     public Button primaryButton;
     public Button secondaryButton;
 
+    // 2026-09-08 — ShakeConfirmPopup 전용(Cards/card1~3). 이 컴포넌트를
+    // 공유하는 다른 팝업(9월 열끗 선택·참가 선언·나가기 확인)의 프리팹엔
+    // 이 GameObject 자체가 없어서 인스펙터에서 못 채우면 그냥 null로
+    // 남는다 — SetCardSprites는 그 경우 조용히 아무것도 안 한다.
+    public Image[] cardImages;
+
     public void Show() => dim.gameObject.SetActive(true);
     public void Hide() => dim.gameObject.SetActive(false);
+
+    /// <summary>흔들기 확인창의 카드 3장을 실제 흔든 패의 스프라이트로
+    /// 채운다. cardImages가 없는(=이 구조가 없는 다른 팝업) 인스턴스에서는
+    /// 아무것도 안 한다.</summary>
+    public void SetCardSprites(System.Collections.Generic.IReadOnlyList<HwatuCard> cards)
+    {
+        if (cardImages == null) return;
+        for (int i = 0; i < cardImages.Length; i++)
+        {
+            if (cardImages[i] == null) continue;
+            cardImages[i].sprite = i < cards.Count ? Resources.Load<Sprite>("Hwatu/" + cards[i].spriteName) : null;
+            cardImages[i].gameObject.SetActive(i < cards.Count);
+        }
+    }
 
     public void SetPrimary(UnityEngine.Events.UnityAction onClick)
     {

@@ -2937,6 +2937,10 @@ public partial class GoStop3PGame : MonoBehaviour
         {
             pendingShakeCard = card;
             shakePopup.messageText.text = $"{card.month}월 흔들기 선언하시겠습니까?";
+            // 2026-09-08 — "Cards 안 card1/2/3을 흔드는 패 3장 스프라이트로"
+            // 요청. 이 시점의 hand[PLAYER_SEAT]엔 아직 card가 그대로 있으므로
+            // (아직 안 냄) 같은 달 3장을 그대로 뽑으면 정확히 흔든 패 3장이다.
+            shakePopup.SetCardSprites(hand[PLAYER_SEAT].Where(c => c.month == card.month).ToList());
             shakePopup.Show();
             // design.md §50.1 — 무응답 10초면 안전한 기본값(흔들기 포기)으로
             // 강제 처리. 버튼 클릭 이벤트라 WaitUntil 리팩터가 아니라

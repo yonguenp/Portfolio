@@ -13238,3 +13238,32 @@ StartCoroutine(PromptDualPiChoice(dual, seat));`은 함수 맨 끝(line ~3755)�
 완전히 같은 패턴으로 짜여 있어 코드 리뷰 수준으로는 확신하지만, 이번
 세션에서 개별 라이브 클릭 검증까지는 다 못 돌렸다 — 다음에 하나씩
 눌러보며 문제가 있으면 바로 알려줄 것.
+
+## 고스톱 — 흔들기 확인 팝업 카드를 실제 흔든 패 스프라이트로 (2026-09-08)
+
+사용자가 팝업들 스타일을 에디터에서 직접 다시 다듬은 뒤(`ShakeConfirmPopup`
+등 여러 프리팹 diff — 이번엔 그대로 커밋에 포함, 손대지 않고 유지), "Cards
+안 card1/2/3 이미지를 흔드는 패 3장의 스프라이트로 교체해달라" 요청 —
+지금까지 `m_Sprite: {fileID: 0}`로 비어 있었다.
+
+`ModalTwoButtonPopup`(흔들기·9월열끗·참가선언·나가기확인이 공유하는 범용
+2버튼 팝업 컴포넌트)에 `public Image[] cardImages`를 추가하고
+`SetCardSprites(IReadOnlyList<HwatuCard>)`를 새로 넣었다 — `cardImages`가
+null이면(=이 구조가 없는 다른 팝업 인스턴스) 조용히 아무것도 안 하므로,
+같은 컴포넌트를 공유하는 나머지 3개 팝업은 전혀 영향이 없다. 흔들기 트리거
+지점(`OnPlayerPlay`, `tripleInHand` 확인 직후·`shakePopup.Show()` 직전)에서
+`hand[PLAYER_SEAT].Where(c => c.month == card.month)`로 정확히 그 3장을
+뽑아 넘긴다 — 이 시점엔 아직 손패에서 card를 안 뺀 상태라 그대로 3장이다.
+
+프리팹 필드 와이어링은 `PrefabUtility.LoadPrefabContents` +
+`root.transform.Find("ShakePanel/Body/Cards")`에서 card1/2/3의 `Image`
+컴포넌트를 찾아 배열로 연결 → `SaveAsPrefabAsset`(이 프로젝트가 여러 번
+써 온 패턴).
+
+**검증(Play 모드 라이브).** 디버그 패널의 `Shake` 시나리오(10월 카드 3장,
+필드 매칭 없음)로 정확한 흔들기 조건을 만든 뒤 실제 `OnPlayerPlay`로 카드를
+클릭 — `shakePopup.cardImages`의 스프라이트가 정확히
+`[October_Tane, October_Tanzaku, October_Kasu_1]`(손패에 있던 그 3장과
+정확히 일치)로 채워지는 것 확인. `OnShakeChoice(false)`로 정상 응답·정상
+종료까지 확인. 콘솔 `error`/`exception` 0건(기존 스테일 컴파일 에러 로그
+1건 제외).
