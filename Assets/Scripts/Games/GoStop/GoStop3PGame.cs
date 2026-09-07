@@ -1472,7 +1472,14 @@ public partial class GoStop3PGame : MonoBehaviour
             // design.md §50.1 — 무응답(타임아웃) 시 불참(죽기) 처리.
             wantsIn = declMsg?.boolValue ?? false;
         }
-        else wantsIn = GoStopAI.WantsToPlay(hand[candidate], seatTier[candidate]);
+        else
+        {
+            // 2026-09-07(사용자 요청, "게임포기" 패턴) — 시드머니 대비 현재
+            // 잔액 비율을 넘겨서, 돈이 얼마 안 남았을 때 패가 나빠도
+            // 더 쉽게 참가를 포기하게 한다(등급별 반영은 GoStopAI 쪽 문서 참고).
+            float moneyRatio = (float)money[candidate] / GoStopCharacters.StartingMoney(seatTier[candidate]);
+            wantsIn = GoStopAI.WantsToPlay(hand[candidate], seatTier[candidate], moneyRatio);
+        }
         onResult(wantsIn);
     }
 
@@ -2419,6 +2426,45 @@ public partial class GoStop3PGame : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// CPU 행동 패턴 "밀어주기"(2026-09-07 사용자 요청) — 이번 판 고를 부른
+    /// 좌석이 있고 내(seat)가 그 사람이 아니면, 나를 뺀 다른 비-고 좌석
+    /// ("동맹")이 홍단/초단/청단/고도리 중 하나라도 비상(2/3) 상태인지
+    /// <b>공개 정보(captured[])만으로</b> 확인한다. 그 세트를 이루는 카드는
+    /// 표준 48장 덱에 정확히 3장뿐이라, 동맹이 2장을 이미 모았고 그 3장 중
+    /// 내 손에 있는 카드가 있으면 그건 항상 그 동맹이 놓친 "정확히 그
+    /// 마지막 한 장"이다 — 동맹의 손패를 몰래 들여다보지 않고도(치팅 없이)
+    /// 알 수 있는 유일한 정보라 이것만 판단 근거로 쓴다.
+    /// <br/>
+    /// 왜 밀어주는가(사용자 설명 그대로): 고를 부른 좌석이 이번 판을 먼저
+    /// 이기면 그 사람 혼자 큰 배수를 다 챙긴다 — 반대로 고를 안 부른
+    /// 좌석들 중 <i>누가</i> 이기든(꼭 나일 필요 없음) 고 콜러를 견제하는
+    /// 결과는 똑같으므로, 동맹에게 카드를 하나 양보해도 나한테는 손해가
+    /// 아니다. 실제 적용은 <see cref="GoStopAI.ChooseCard"/>의 "못 먹는 턴"
+    /// 분기에서만(밀어주기 때문에 내가 먹을 수 있는 걸 포기하지는 않는다).
+    /// </summary>
+    HwatuCard FindBackingCard(int seat)
+    {
+        if (calledGo[seat]) return null; // 내가 이미 고를 불렀으면 내가 견제 대상 — 밀어줄 이유가 없다
+        bool anyGoCaller = ActiveSeats().Any(s => s != seat && calledGo[s]);
+        if (!anyGoCaller) return null;
+
+        foreach (int ally in ActiveSeats().Where(s => s != seat && !calledGo[s]))
+        {
+            var mine = captured[ally];
+            if (mine.Count == 0) continue;
+            var theirs = ActiveSeats().Where(s => s != ally).SelectMany(s => captured[s]).ToList();
+            for (int i = 0; i < EmergencySets.Length; i++)
+            {
+                var (state, have) = GoStopRules.CheckSet(mine, theirs, EmergencySets[i].pred);
+                if (state != GoStopRules.SetState.Alive || have != 2) continue;
+                var mySetCard = hand[seat].FirstOrDefault(EmergencySets[i].pred);
+                if (mySetCard != null) return mySetCard;
+            }
+        }
+        return null;
+    }
+
     /// <summary>비상 이펙트의 실제 화면 표시를 잠깐 미룬 뒤, 그 사이 같은
     /// (좌석,세트)가 완성(achievedFired)돼버렸으면 조용히 취소한다 — 손패로
     /// have==2를 만들고 곧바로 뒷패로 3까지 채우는 "한 턴에 완성" 케이스를
@@ -2900,7 +2946,7 @@ public partial class GoStop3PGame : MonoBehaviour
             {
                 if (seat != PLAYER_SEAT && !IsRemoteSeat(seat))
                 {
-                    var next = GoStopAI.ChooseCard(h, field, seatTier[seat]);
+                    var next = GoStopAI.ChooseCard(h, field, seatTier[seat], FindBackingCard(seat));
                     yield return StartCoroutine(PlaySeq(seat, next, GoStopAI.ShouldShake(seatTier[seat]), onDone));
                 }
                 else if (IsRemoteSeat(seat))
@@ -4271,7 +4317,7 @@ public partial class GoStop3PGame : MonoBehaviour
             StartCoroutine(DeckOnlySeq(seat, () => AfterAction(seat)));
         else
         {
-            var card = GoStopAI.ChooseCard(hand[seat], field, seatTier[seat]);
+            var card = GoStopAI.ChooseCard(hand[seat], field, seatTier[seat], FindBackingCard(seat));
             // 2026-08-23: 플레이어 쪽과 같은 이유 — 이 카드가 폭탄으로
             // 터질 조건(손 3장+필드 1장)이면 흔들기 배수까지 같이 주면
             // 안 된다(OnPlayerPlay 주석 참고). AI도 예외 없이 같은 규칙을
@@ -4361,6 +4407,41 @@ public partial class GoStop3PGame : MonoBehaviour
     }
 
     /// <param name="winnerSeat">-1이면 나가리.</param>
+    // 2026-09-07 — 승패 오버레이 요약용. FinalScoreMulti가 이미 계산해 둔
+    // payout(고/흔들기/폭탄/총통 등 공통 배수 + 패자별 광박/피박)을 그대로
+    // 읽어 "배율이 왜 이렇게 됐는지" 한 줄로 압축한다. 특별한 요소가 아무것도
+    // 없으면(고 0회·흔들기 0회·추가배수 없음) null을 돌려줘 그 줄 자체를 뺀다.
+    string BuildOverlayMultiplierLine(GoStopRules.MultiPayout payout)
+    {
+        int commonMult = payout.goMultiplier;
+        for (int i = 0; i < payout.heundeulCount; i++) commonMult *= 2;
+        commonMult *= payout.extraMultiplier;
+        var parts = new List<string>();
+        if (payout.goCount > 0) parts.Add($"고 {payout.goCount}회(+{payout.goBonus}점)");
+        if (payout.heundeulCount > 0) parts.Add($"흔들기/폭탄 {payout.heundeulCount}회");
+        if (payout.extraMultiplier > 1) parts.Add("총통/쓰리뻑");
+        if (parts.Count == 0 && commonMult <= 1) return null;
+        return $"{string.Join(" · ", parts)}{(parts.Count > 0 ? " → " : "")}배율 ×{commonMult}";
+    }
+
+    // "누가 왜 얼마 냈는지" — 실제로 돈을 낸(amount>0) 패자만 나열한다.
+    // 이번 판 한 장도 못 먹어 정산에서 빠진 패자(amount==0)는 표시할 근거
+    // 자체가 없으므로 조용히 건너뛴다.
+    string BuildOverlayBreakdownLine(GoStopRules.MultiPayout payout, List<int> loserSeats)
+    {
+        var parts = new List<string>();
+        for (int i = 0; i < loserSeats.Count; i++)
+        {
+            int amount = payout.amounts[i];
+            if (amount <= 0) continue;
+            string tag = "";
+            if (i < payout.gwangBakPerLoser.Count && payout.gwangBakPerLoser[i]) tag += "광박";
+            if (i < payout.piBakPerLoser.Count && payout.piBakPerLoser[i]) tag += (tag.Length > 0 ? "·피박" : "피박");
+            parts.Add($"{SeatName(loserSeats[i])} -{amount:N0}원{(tag.Length > 0 ? $"({tag})" : "")}");
+        }
+        return parts.Count > 0 ? string.Join(" · ", parts) : null;
+    }
+
     void EndGame(int winnerSeat, int? fixedBaseScore = null, int extraMultiplier = 1)
     {
         state = State.GameOver;
@@ -4439,11 +4520,13 @@ public partial class GoStop3PGame : MonoBehaviour
         pendingLoserSeats = loserSeats;
 
         for (int s = 0; s < SEATS_MAX; s++) pendingMoneyBefore[s] = money[s];
+        int actualTotalReceived = 0; // 오버레이의 "OO 총 +N원 획득" 줄용 — 잔액 부족으로 clamp된 실지급 총액
         for (int i = 0; i < loserSeats.Count; i++)
         {
             int amount = Mathf.Min(payout.amounts[i], money[loserSeats[i]]);
             money[loserSeats[i]] -= amount;
             money[winnerSeat] += amount;
+            actualTotalReceived += amount;
             FlyMoneyFX(loserSeats[i], winnerSeat, amount);
         }
         stakeMultiplier = 1;
@@ -4521,7 +4604,20 @@ public partial class GoStop3PGame : MonoBehaviour
         int myDelta = money[PLAYER_SEAT] - pendingMoneyBefore[PLAYER_SEAT];
         string myDeltaStr = myDelta == 0 ? "변동 없음" : (myDelta > 0 ? $"+{myDelta:N0}원" : $"{myDelta:N0}원");
         string moneyLine = $"이번 판 {myDeltaStr} · 내 머니 {money[PLAYER_SEAT]:N0}원";
-        string sub = dokbakIdx >= 0 ? $"{SeatName(loserSeats[dokbakIdx])} 독박 · {moneyLine}" : moneyLine;
+        // 2026-09-07(사용자 요청) — "누가 왜 얼마 냈는지, 누가 얼마를 받았는지"가
+        // 안 보인다는 지적으로 sub를 여러 줄로 확장했다. ScoreDetailPopup(점수
+        // 상세 버튼)이 이미 항목별 전체 근거를 카드 실물까지 보여주므로, 여기서는
+        // 그걸 중복하지 않고 한눈에 훑을 압축 요약만 담는다 — 이 sub 문자열
+        // 하나를 6개 ShowOverlay 호출부(나가리 없는 승리 분기 전부)가 공유한다.
+        var subLines = new List<string>();
+        if (dokbakIdx >= 0) subLines.Add($"{SeatName(loserSeats[dokbakIdx])} 독박");
+        string multiplierLine = BuildOverlayMultiplierLine(payout);
+        if (!string.IsNullOrEmpty(multiplierLine)) subLines.Add(multiplierLine);
+        string breakdownLine = BuildOverlayBreakdownLine(payout, loserSeats);
+        if (!string.IsNullOrEmpty(breakdownLine)) subLines.Add(breakdownLine);
+        if (winnerSeat != PLAYER_SEAT) subLines.Add($"{SeatName(winnerSeat)} 총 +{actualTotalReceived:N0}원 획득");
+        subLines.Add(moneyLine);
+        string sub = string.Join("\n", subLines);
 
         ui?.SetScore(money[PLAYER_SEAT]); // 상단 HUD의 SCORE는 판점이 아니라 내 보유 머니를 보여준다(사용자 요청)
         if (permaGoneSeats.Count > 0 && !networkDowngrade)

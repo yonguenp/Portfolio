@@ -14,8 +14,19 @@ using System.Linq;
 /// </summary>
 public static class GoStopAI
 {
-    /// <summary>손패 중 낼 카드를 고른다. 먹을 수 있는 수가 있으면 가장 값진 것을 우선한다.</summary>
-    public static HwatuCard ChooseCard(List<HwatuCard> hand, List<HwatuCard> field, GoStopTier tier = GoStopTier.B)
+    /// <summary>
+    /// 손패 중 낼 카드를 고른다. 먹을 수 있는 수가 있으면 가장 값진 것을 우선한다.
+    /// </summary>
+    /// <param name="backingCard">
+    /// 2026-09-07(사용자 요청) — "밀어주기" 패턴. 못 먹는 턴(아래 discard
+    /// 분기)에 한해서만 적용된다 — 실제로 먹을 수 있는 수가 있으면 밀어주기
+    /// 때문에 내 이득을 포기하지 않는다(호출부가 "누군가 고를 불렀고
+    /// 동맹이 그 세트의 비상 상태라 이 카드가 동맹이 놓친 마지막 한 장"인
+    /// 경우에만 값을 채워 넘긴다 — 판단 자체는 호출부 책임, 여기선 "쓸지
+    /// 말지"만 tier로 가른다).
+    /// </param>
+    public static HwatuCard ChooseCard(List<HwatuCard> hand, List<HwatuCard> field, GoStopTier tier = GoStopTier.B,
+        HwatuCard backingCard = null)
     {
         // 2026-08-23: "조커도 손패로 나와야 한다" 요청으로 손패에 조커가
         // 실제로 있을 수 있게 됐다 — 조커는 필드 상태와 무관하게 항상
@@ -48,6 +59,16 @@ public static class GoStopAI
             if (value > bestValue) { bestValue = value; best = card; }
         }
         if (best != null) return best;
+
+        // 밀어주기 — 못 먹는 턴에만 적용(먹을 수 있으면 위에서 이미 return됨).
+        // 등급이 높을수록 이 기회를 더 확실히 살린다: A(잘함)는 항상,
+        // B(보통)는 대부분, C(호구)는 어쩌다 한 번 — "능력 좋게 활용"이라는
+        // 요청을 확률로 반영했다.
+        if (backingCard != null && hand.Contains(backingCard))
+        {
+            float backingChance = tier switch { GoStopTier.A => 1f, GoStopTier.C => 0.2f, _ => 0.7f };
+            if (UnityEngine.Random.value < backingChance) return backingCard;
+        }
 
         // 못 먹는다면 가장 안 아까운(낮은 가치) 카드를 내서 손해를 최소화한다.
         // C는 가끔(30%) 하위 3장 중 아무거나 내서 실수로 좀 더 아까운 걸
@@ -116,11 +137,24 @@ public static class GoStopAI
     /// 기존 기준, C(호구)는 손패가 안 좋아도 거의 항상 낀다 — 위험을
     /// 못 가리는 게 호구의 정의다.
     /// </summary>
-    public static bool WantsToPlay(List<HwatuCard> hand, GoStopTier tier = GoStopTier.B)
+    /// <param name="moneyRatio">
+    /// 2026-09-07(사용자 요청) — "게임포기" 패턴. 시드머니 대비 현재 잔액
+    /// 비율(0~1). 낮을수록(잔액이 얼마 안 남았을수록) 참가를 더 사린다 —
+    /// 등급이 높을수록(A) 이 위험 관리를 더 적극적으로 반영하고, C(호구)는
+    /// 돈이 없어도 거의 그대로 들어간다(여기서도 "위험을 못 가리는 게
+    /// 호구"라는 같은 특성을 유지). 기본값 1(가득 참)이면 기존 동작과
+    /// 완전히 동일 — 이 매개변수를 안 넘기는 호출부는 영향 없다.
+    /// </param>
+    public static bool WantsToPlay(List<HwatuCard> hand, GoStopTier tier = GoStopTier.B, float moneyRatio = 1f)
     {
         int gwang = hand.Count(c => c.kind == HwatuKind.Gwang);
         if (gwang > 0) return true;
         float chance = tier switch { GoStopTier.A => 0.35f, GoStopTier.C => 0.9f, _ => 0.6f };
+        if (moneyRatio < 0.3f)
+        {
+            float extraCaution = tier switch { GoStopTier.A => 0.5f, GoStopTier.C => 0.05f, _ => 0.25f };
+            chance *= 1f - extraCaution;
+        }
         return UnityEngine.Random.value < chance;
     }
 
