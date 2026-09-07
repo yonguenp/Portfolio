@@ -12918,3 +12918,72 @@ FindBackingCard/ShouldUseBombCredit가 전부 실전 호출 경로로 실행됨)
   몰빵/보수"와 "연패 심리"도 `StakeRiskAwareness`/`TiltResistance`로
   함께 구현됐다. "동맹 관찰형 방어 스톱"은 `PressureDetection`으로
   구현. 사실상 7개 전부 반영됐다.
+
+## 고스톱 4인판 — "결과 넘기기" 버튼(광팔이/참가포기로 쉬는 판 전용,
+오프라인 한정) (2026-09-07)
+
+"로컬 게임에서 내가 광파는 역할, 혹은 쉬는 역할이 되었을 때 가만히 CPU
+플레이를 보고 있는 게 무료한데. '결과넘기기' 버튼을 둬서 해당 경기를
+결과만 보고 건너뛸 수 있으면 좋겠어. 결과넘기기버튼은 내 Hand영역에
+보여주면 좋을거같아. 네트워크대전시엔 나오지않는 버튼으로해서." 요청.
+
+**구현 방식 — `Time.timeScale` 배속.** 이 게임의 애니메이션(카드 슬램·
+펀치스케일·DOTween 이펙트)과 턴 진행 간격(`PLAY_STEP_DELAY` 등, 두 파일
+합쳐 37곳의 `yield return new WaitForSeconds(...)`)이 전부 별도의
+"빨리감기 분기" 없이 **기본 시간 스케일을 그대로 따르는** 구조였다
+(`SetUpdate(true)`로 실시간 갱신을 쓰는 DOTween 트윈도, `Time.timeScale`을
+건드리는 코드도 이 프로젝트 전체에 단 한 곳도 없었다 — grep으로 확인) —
+그래서 37곳 전부를 개별로 고치는 대신 **버튼을 누르면 `Time.timeScale =
+12f`로 올리는 것 하나**로 대기 시간과 애니메이션 전부가 동시에 빨라진다.
+`RunLocalInputTimeout`/`TurnPlayTimeoutSeq`(네트워크 전용 입력 타임아웃)는
+전부 `isNetworkHost || isNetworkGuest`로만 걸리는 코드라, 이 버튼이 뜨는
+조건(오프라인 한정)과 애초에 겹치지 않아 영향이 없다.
+
+**배치 — Hand 영역과 같은 자리에 겹쳐서.** `handArea`는 쉬는 판엔
+`RebuildUI`가 `SetActive(false)`로 완전히 꺼버리므로, `handArea`의 자식이
+아니라 **`mySeatT`의 별도 형제 오브젝트**(`SkipResultBtn`, 같은
+`anchoredPosition`)로 만들어서 handArea의 활성 상태 토글과 안 부딪히게
+했다. 다른 버튼들과 같은 "씬에 있으면 재사용, 없으면 생성" 원칙
+(`mySeatT.Find("SkipResultBtn")`)을 그대로 따랐다.
+
+**표시 조건 — `iAmSittingOut && !isNetworkHost && !isNetworkGuest`.**
+`RebuildUI`가 매턴 다시 판단해서 `SetActive`한다 — 다음 판에 다시 쉬게
+되면 자동으로 재활성화되고, 그 시점에 `interactable`/라벨도
+"결과 넘기기"로 원상복구된다(클릭 시 잠갔던 것을 되돌리는 지점이 별도로
+필요 없다).
+
+**Time.timeScale 리셋 지점 4곳** — `Screen.orientation` 리셋과 정확히
+같은 자리에 같은 원칙으로 추가했다(이 씬이 가로 강제/세로 복귀를 이미
+`OnDestroy`/`GoToTitle`에서 안전망으로 관리하고 있던 것과 동일 패턴):
+1. `EndGame()` 맨 앞(`state = State.GameOver;` 직후) — 결과가 나온 그
+   즉시 정상 속도로 복귀해서, 승패 오버레이·컨페티 이펙트는 배속 없이
+   정상적으로 보인다. 나가리·다운그레이드·총통·쓰리뻑 등 `EndGame`으로
+   들어오는 모든 경로가 이 한 줄로 커버된다.
+2. `NewGameSeq()` 맨 앞 — 다음 판은 항상 정상 속도로 시작(방어적
+   리셋), 동시에 `skipResultBtn`도 딜링 중엔 꺼서 지난 판 표시 잔상을
+   없앤다.
+3. `GoToTitle()` — 배속 중에 타이틀로 나가면 씬을 넘어서도
+   `Time.timeScale`이 안 풀려 다른 게임까지 빨라지는 사고를 막는다.
+4. `OnDestroy()` — 뒤로가기 제스처 등 버튼을 안 거치고 씬이 파괴되는
+   경로에 대한 안전망(기존 `Screen.orientation` 리셋과 같은 이유).
+
+**검증(Play 모드 라이브, 리플렉션).** ①`sittingOutSeat=0`으로 강제한 뒤
+`RebuildUI()` 직접 호출 → `skipResultBtn.active=True, interactable=True,
+handArea.active=False`(같은 자리에서 서로 안 부딪히는 것 확인),
+`timeScale=1`(아직 안 누름). ②`skipResultBtn.onClick.Invoke()` →
+`timeScale=12, interactable=False, label="결과로 넘기는 중..."`
+정확히 확인. ③`EndGame(0, null, 1)` 직접 호출 → `timeScale=1`로 즉시
+복귀 확인. ④`isNetworkHost=true`로 강제한 채(같은 `sittingOutSeat=0`)
+`RebuildUI()` 재호출 → `skipResultBtn.active=False`(네트워크면 쉬는
+중이어도 절대 안 뜨는 것 확인). ⑤`Time.timeScale=12f`로 강제해 둔 뒤
+`GoToTitle()` 직접 호출 → `timeScale=1`로 정확히 리셋 확인. ⑥회귀
+확인 — 새 Play 세션에서 정상적으로(강제 조작 없이) 4인 게임을 딜링부터
+여러 턴 자연 진행시켜(조커·고/스톱 포함) 콘솔 `error`/`exception`이
+전혀 없는 것까지 확인(순수 Pipeline exec 타임아웃 노이즈만 있었음).
+
+> 실제로 쉬는 판까지 자연 진행시켜(참가 포기 3연속 등을 유도) 화면에서
+> 버튼이 뜨는 걸 육안으로 확인하지는 못했다 — 이 환경은 스크린샷을
+> 신뢰할 수 없어 이 프로젝트가 항상 그래왔듯 리플렉션으로 상태를 직접
+> 읽는 방식으로 검증했다(위 ①~⑤). 표시 조건·클릭 동작·리셋 지점 4곳
+> 전부 정확히 설계대로 동작하는 것을 확인했으니 기능 자체는 완성됐다고
+> 판단한다.

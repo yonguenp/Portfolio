@@ -487,6 +487,25 @@ public partial class GoStop3PGame
         float handY = -878f;
         handArea = GetOrCreateContainer(handAreaRef, mySeatT, "Hand", new Vector2(1000f, HAND_H), new Vector2(0f, handY), out _);
 
+        // 2026-09-07 — "결과 넘기기" 버튼. handArea와 같은 자리(같은 부모·
+        // 같은 anchoredPosition)에 겹쳐서 만든다 — 쉬는 판엔 handArea 자체가
+        // 비활성화되므로(RebuildUI의 iAmSittingOut 분기) 서로 부딪히지
+        // 않는다. 씬에 이미 있으면 재사용(다른 버튼들과 같은 원칙).
+        var existingSkipBtn = mySeatT.Find("SkipResultBtn");
+        if (existingSkipBtn != null)
+        {
+            skipResultBtn = existingSkipBtn.GetComponent<Button>();
+            skipResultBtn.onClick.RemoveAllListeners();
+            skipResultBtn.onClick.AddListener(OnSkipToResultClicked);
+        }
+        else
+        {
+            skipResultBtn = UISkin.MakeKenneyButton(mySeatT, "SkipResultBtn", new Vector2(280f, 90f),
+                new Vector2(0f, handY), UISkin.Accent.Blue, "결과 넘기기", OnSkipToResultClicked);
+        }
+        skipResultBtnLabel = skipResultBtn.transform.Find("Label")?.GetComponent<TextMeshProUGUI>();
+        skipResultBtn.gameObject.SetActive(false); // 매턴 RebuildUI가 실제 표시 여부를 판단
+
         // 팝업(딤+패널)은 전부 ContentArea가 아니라 Canvas 바로 밑(Overlay와
         // 같은 층)에 붙인다 — ContentArea 밑에 두면 게임오버 Overlay(Canvas
         // 자식 중 나중 순번이라 항상 위에 그려진다)가 팝업을 덮어버릴 수
@@ -1512,6 +1531,21 @@ public partial class GoStop3PGame
         bool iAmSittingOut = sittingOutSeat == PLAYER_SEAT;
         handArea.gameObject.SetActive(!iAmSittingOut);
         playerCapArea.gameObject.SetActive(!iAmSittingOut);
+
+        // 2026-09-07 — "결과 넘기기"는 오프라인에서 내가 쉬는 판에만 보인다
+        // (네트워크 대전엔 절대 안 보이는 버튼으로 요청받음). 새 턴이 갱신될
+        // 때마다 다시 판단하므로, 다음 판에 다시 쉬게 되면 자동으로 재활성화된다
+        // (버튼 자체의 interactable/라벨은 클릭 시 잠갔던 걸 여기서 원상복구).
+        if (skipResultBtn != null)
+        {
+            bool showSkip = iAmSittingOut && !isNetworkHost && !isNetworkGuest;
+            skipResultBtn.gameObject.SetActive(showSkip);
+            if (showSkip)
+            {
+                skipResultBtn.interactable = true;
+                if (skipResultBtnLabel != null) skipResultBtnLabel.text = "결과 넘기기";
+            }
+        }
 
         DrawPlayerCaptured();
         DrawPlayerHand();

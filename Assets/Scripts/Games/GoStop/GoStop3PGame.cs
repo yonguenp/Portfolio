@@ -436,6 +436,12 @@ public partial class GoStop3PGame : MonoBehaviour
     RectTransform[] backArea = new RectTransform[SEATS_MAX];   // [0] 안 씀(플레이어는 실물 손패)
     RectTransform[] capAreaAI = new RectTransform[SEATS_MAX];  // [0] 안 씀(플레이어는 playerCapArea)
 
+    // 2026-09-07 — "결과 넘기기" 버튼(광팔이/참가포기로 쉬는 판, 오프라인
+    // 전용). Hand 영역과 같은 자리에 겹쳐 두고, 쉬는 동안만 보이게 한다.
+    Button skipResultBtn;
+    TextMeshProUGUI skipResultBtnLabel;
+    const float SKIP_TIME_SCALE = 12f;
+
     // 2026-09-01: "깔린 패는 pos1~12 중 빈 자리에" 요청 — 씬에 미리 박아둔
     // pos1~pos12(FieldCards 밑) 마커를 참조하고, 카드마다(월 무관) 가장
     // 낮은 번호의 빈 슬롯을 배정한다. GoStopIcons/GoStopRules 등 규칙
@@ -1322,6 +1328,7 @@ public partial class GoStop3PGame : MonoBehaviour
     void GoToTitle()
     {
         Screen.orientation = ScreenOrientation.Portrait;
+        Time.timeScale = 1f; // "결과 넘기기"로 배속 중이었다면 타이틀로 나가기 전에 반드시 되돌린다
         // 네트워크 판이었으면 세션을 확실히 접는다 — 안 그러면 호스트는
         // 타이틀로 돌아간 뒤에도 계속 방을 열어둔 채 UDP 광고를 쏘고
         // 있고(다음에 이 기기로 다시 호스트/게스트 어느 쪽을 눌러도
@@ -1330,12 +1337,28 @@ public partial class GoStop3PGame : MonoBehaviour
         ui?.GoBack();
     }
 
+    /// <summary>2026-09-07 — "결과 넘기기" 버튼(광팔이/참가포기로 쉬는
+    /// 오프라인 판 전용, RebuildUI가 <see cref="skipResultBtn"/>을 이 조건일
+    /// 때만 보여준다). <see cref="Time.timeScale"/>을 올려서 대기 중인 모든
+    /// WaitForSeconds 코루틴·DOTween 애니메이션을 한꺼번에 빨리 감는다 —
+    /// 이 프로젝트 어디에도 timeScale을 건드리는 코드가 없고(SetUpdate(true)로
+    /// 실시간 갱신을 쓰는 트윈도 없다) 전부 기본값(스케일 적용)이라, 개별
+    /// 지연 지점을 하나하나 고칠 필요 없이 이 한 줄로 전부 빨라진다.
+    /// <see cref="EndGame"/> 진입 시점에 자동으로 1로 되돌아간다.</summary>
+    void OnSkipToResultClicked()
+    {
+        Time.timeScale = SKIP_TIME_SCALE;
+        if (skipResultBtn != null) skipResultBtn.interactable = false;
+        if (skipResultBtnLabel != null) skipResultBtnLabel.text = "결과로 넘기는 중...";
+    }
+
     /// <summary>안드로이드 뒤로가기 제스처 등 버튼을 안 거치고 씬이 파괴되는
     /// 경로에 대한 안전망 — OnDestroy는 다음 씬의 Start()보다 먼저 불린다
     /// (SceneManager.LoadScene 동기 호출 안에서 이전 씬 정리가 먼저 끝난다).</summary>
     void OnDestroy()
     {
         Screen.orientation = ScreenOrientation.Portrait;
+        Time.timeScale = 1f; // 결과 넘기기 배속 중 씬이 갑자기 파괴돼도(뒤로가기 제스처 등) 새지 않게
         // 로비는 DontDestroyOnLoad라 이 오브젝트보다 오래 산다 — 구독을
         // 안 풀면 다음 판/씬에서도 이미 파괴된 이 인스턴스를 계속
         // 호출하려 들어 조용한 메모리 누수 + 예외 위험이 된다.
@@ -1520,6 +1543,8 @@ public partial class GoStop3PGame : MonoBehaviour
         // 그 사이 뒤에서 뜬 팝업이 오버레이에 가려 아무 반응이 없는
         // 것처럼 보였다).
         ui?.HideOverlay();
+        Time.timeScale = 1f; // 새 판은 항상 정상 속도로 시작(결과 넘기기 배속 잔여 방지)
+        if (skipResultBtn != null) skipResultBtn.gameObject.SetActive(false); // 딜링 중엔 지난 판 표시 잔상 없이(RebuildUI가 새로 판단해서 켠다)
 
         // 2026-09-06(사용자 확인) — 나가리로 물들었던 테이블 배경을 다음
         // 라운드 시작과 함께 원래 초록으로 되돌린다 — NagariRed는 "방금
@@ -4538,6 +4563,9 @@ public partial class GoStop3PGame : MonoBehaviour
     void EndGame(int winnerSeat, int? fixedBaseScore = null, int extraMultiplier = 1)
     {
         state = State.GameOver;
+        Time.timeScale = 1f; // "결과 넘기기"로 배속 중이었다면 결과가 나온 이 시점에 정상 속도로 복귀
+
+
 
         // 다음 판 선(딜러)은 이번 판 승자다(사용자 확인 규칙) — 승패가 갈리는
         // 모든 경로(일반 승리·총통·쓰리뻑)가 이 한 줄로 커버된다. 나가리
