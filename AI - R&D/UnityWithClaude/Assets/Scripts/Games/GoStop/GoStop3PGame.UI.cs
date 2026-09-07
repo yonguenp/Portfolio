@@ -487,6 +487,25 @@ public partial class GoStop3PGame
         float handY = -878f;
         handArea = GetOrCreateContainer(handAreaRef, mySeatT, "Hand", new Vector2(1000f, HAND_H), new Vector2(0f, handY), out _);
 
+        // 2026-09-07 — "결과 넘기기" 버튼. handArea와 같은 자리(같은 부모·
+        // 같은 anchoredPosition)에 겹쳐서 만든다 — 쉬는 판엔 handArea 자체가
+        // 비활성화되므로(RebuildUI의 iAmSittingOut 분기) 서로 부딪히지
+        // 않는다. 씬에 이미 있으면 재사용(다른 버튼들과 같은 원칙).
+        var existingSkipBtn = mySeatT.Find("SkipResultBtn");
+        if (existingSkipBtn != null)
+        {
+            skipResultBtn = existingSkipBtn.GetComponent<Button>();
+            skipResultBtn.onClick.RemoveAllListeners();
+            skipResultBtn.onClick.AddListener(OnSkipToResultClicked);
+        }
+        else
+        {
+            skipResultBtn = UISkin.MakeKenneyButton(mySeatT, "SkipResultBtn", new Vector2(280f, 90f),
+                new Vector2(0f, handY), UISkin.Accent.Blue, "결과 넘기기", OnSkipToResultClicked);
+        }
+        skipResultBtnLabel = skipResultBtn.transform.Find("Label")?.GetComponent<TextMeshProUGUI>();
+        skipResultBtn.gameObject.SetActive(false); // 매턴 RebuildUI가 실제 표시 여부를 판단
+
         // 팝업(딤+패널)은 전부 ContentArea가 아니라 Canvas 바로 밑(Overlay와
         // 같은 층)에 붙인다 — ContentArea 밑에 두면 게임오버 Overlay(Canvas
         // 자식 중 나중 순번이라 항상 위에 그려진다)가 팝업을 덮어버릴 수
@@ -990,11 +1009,18 @@ public partial class GoStop3PGame
         scoreDetailPopup.summaryText.text = $"[{SeatName(pendingWinnerSeat)} 획득패 기준]  기본 소계 {p.baseScore.Total}점" +
             (p.goCount > 0 ? $"  ·  고 {p.goCount}회(+{p.goBonus}) → {p.subtotal}점" : "");
 
-        float rowsY = BuildScoreDetailRows(scoreDetailPopup.rowsContent, captured[pendingWinnerSeat], p.baseScore);
+        float rowsY = BuildScoreDetailRows(scoreDetailPopup.rowsSubContainer, captured[pendingWinnerSeat], p.baseScore);
         var allSeats = new List<int> { pendingWinnerSeat };
         allSeats.AddRange(pendingLoserSeats);
-        rowsY = AppendAllCapsSection(scoreDetailPopup.rowsContent, rowsY, allSeats);
-        scoreDetailPopup.rowsContent.sizeDelta = new Vector2(scoreDetailPopup.rowsContent.sizeDelta.x, Mathf.Max(rowsY, 420f));
+        rowsY = AppendAllCapsSection(scoreDetailPopup.rowsSubContainer, rowsY, allSeats);
+        // 2026-09-07(사용자 신고: "마지막 label과 BadgeStripArea영역이 겹침,
+        // 팝업이 화면 밖으로 넘어감") — footerText는 패자 수·독박 여부에 따라
+        // 줄 수가 크게 달라지는데, 예전엔 고정 150px 박스에 Overflow로 그냥
+        // 흘려보내서 실제 텍스트가 그 아래 BadgeStripArea까지 침범했다.
+        // footerText·BadgeStripArea를 rowsContent(스크롤 콘텐츠) 안으로
+        // 옮기고, rows/AllCaps와 같은 rowsY 커서 방식으로 실측 높이만큼만
+        // 차지하게 했다 — 내용이 아무리 길어도 스크롤 안에서 해결되므로
+        // Panel 자체가 화면 밖으로 자랄 일이 없다.
 
         var mult = new List<string>();
         if (p.goMultiplier > 1) mult.Add($"고배수 ×{p.goMultiplier}");
@@ -1047,31 +1073,53 @@ public partial class GoStop3PGame
             if (i < allSeatsForMoney.Count - 1) foot.AppendLine(line); else foot.Append(line);
         }
         scoreDetailPopup.footerText.text = foot.ToString();
+        // footerText는 이제 rowsContent 안의 커서 위치에 놓인다 — 실제 줄 수
+        // (패자 수·독박 여부에 따라 크게 달라짐)만큼만 정확히 차지하도록
+        // GetPreferredValues로 실측 높이를 재서 그 자리에 딱 맞게 배치한다.
+        var footerRt = scoreDetailPopup.footerText.rectTransform;
+        rowsY += 16f;
+        footerRt.anchoredPosition = new Vector2(0f, -rowsY);
+        float footerWidth = footerRt.sizeDelta.x > 0f ? footerRt.sizeDelta.x : 900f;
+        float footerHeight = Mathf.Max(scoreDetailPopup.footerText.GetPreferredValues(footerWidth, 0f).y, 40f);
+        footerRt.sizeDelta = new Vector2(footerWidth, footerHeight);
+        rowsY += footerHeight;
 
         // 패자별 광박/멍박/피박 아이콘 — footerText 각 줄 옆에 정확히 맞추기
         // 어려우므로(멀티라인 자동 줄바꿈), 별도 컨테이너에 패자 수만큼 행을
-        // 새로 그린다. footerText 바로 아래, panel 폭에 맞춘 가로 스트립.
-        if (scoreDetailPopup.badgeStripArea == null) { scoreDetailPopup.Show(); return; }
-        HwatuUI.ClearChildren(scoreDetailPopup.badgeStripArea);
-        for (int i = 0; i < pendingLoserSeats.Count; i++)
+        // 새로 그린다. 2026-09-07: footerText와 마찬가지로 rowsContent 안의
+        // 커서 바로 아래에 놓여서 실제 footerText 길이와 무관하게 항상
+        // 정확히 이어붙는다(예전엔 둘 다 고정 위치라 footerText가 길어지면
+        // 겹쳤다).
+        if (scoreDetailPopup.badgeStripArea != null)
         {
-            int seat = pendingLoserSeats[i];
-            float y = -i * 34f;
-            var nameLbl = HwatuUI.MakeLabel(scoreDetailPopup.badgeStripArea, new Vector2(-140f, y), new Vector2(160f, 28f), 16f, new Color(0.16f, 0.14f, 0.06f, 1f));
-            nameLbl.text = SeatName(seat);
-            nameLbl.alignment = TextAlignmentOptions.MidlineLeft;
-            float bx = 0f;
-            void PlaceMini(bool on, string label, Color col)
+            HwatuUI.ClearChildren(scoreDetailPopup.badgeStripArea);
+            rowsY += 12f;
+            scoreDetailPopup.badgeStripArea.anchoredPosition = new Vector2(0f, -rowsY);
+            for (int i = 0; i < pendingLoserSeats.Count; i++)
             {
-                if (!on) return;
-                GoStopIcons.MakeTextIcon(scoreDetailPopup.badgeStripArea, new Vector2(bx, y), 24f, label, col, Color.white);
-                bx += 30f;
+                int seat = pendingLoserSeats[i];
+                float y = -i * 34f;
+                var nameLbl = HwatuUI.MakeLabel(scoreDetailPopup.badgeStripArea, new Vector2(-140f, y), new Vector2(160f, 28f), 16f, new Color(0.16f, 0.14f, 0.06f, 1f));
+                nameLbl.text = SeatName(seat);
+                nameLbl.alignment = TextAlignmentOptions.MidlineLeft;
+                float bx = 0f;
+                void PlaceMini(bool on, string label, Color col)
+                {
+                    if (!on) return;
+                    GoStopIcons.MakeTextIcon(scoreDetailPopup.badgeStripArea, new Vector2(bx, y), 24f, label, col, Color.white);
+                    bx += 30f;
+                }
+                PlaceMini(p.gwangBakPerLoser[i], "광", new Color(0.69f, 0.37f, 0.86f));
+                PlaceMini(GoStopRules.IsLiveMeongBakRisk(captured[seat], new[] { captured[pendingWinnerSeat] }), "멍", new Color(0.55f, 0.42f, 0.30f));
+                PlaceMini(p.piBakPerLoser[i], "피", new Color(0.88f, 0.32f, 0.32f));
             }
-            PlaceMini(p.gwangBakPerLoser[i], "광", new Color(0.69f, 0.37f, 0.86f));
-            PlaceMini(GoStopRules.IsLiveMeongBakRisk(captured[seat], new[] { captured[pendingWinnerSeat] }), "멍", new Color(0.55f, 0.42f, 0.30f));
-            PlaceMini(p.piBakPerLoser[i], "피", new Color(0.88f, 0.32f, 0.32f));
+            float badgeHeight = Mathf.Max(pendingLoserSeats.Count * 34f, 1f);
+            scoreDetailPopup.badgeStripArea.sizeDelta = new Vector2(scoreDetailPopup.badgeStripArea.sizeDelta.x, badgeHeight);
+            rowsY += badgeHeight;
         }
 
+        rowsY += 20f; // 콘텐츠 하단 여백
+        scoreDetailPopup.rowsContent.sizeDelta = new Vector2(scoreDetailPopup.rowsContent.sizeDelta.x, Mathf.Max(rowsY, 420f));
         scoreDetailPopup.Show(); // dim 활성화 + SetAsLastSibling까지 컴포넌트가 처리
     }
 
@@ -1483,6 +1531,21 @@ public partial class GoStop3PGame
         bool iAmSittingOut = sittingOutSeat == PLAYER_SEAT;
         handArea.gameObject.SetActive(!iAmSittingOut);
         playerCapArea.gameObject.SetActive(!iAmSittingOut);
+
+        // 2026-09-07 — "결과 넘기기"는 오프라인에서 내가 쉬는 판에만 보인다
+        // (네트워크 대전엔 절대 안 보이는 버튼으로 요청받음). 새 턴이 갱신될
+        // 때마다 다시 판단하므로, 다음 판에 다시 쉬게 되면 자동으로 재활성화된다
+        // (버튼 자체의 interactable/라벨은 클릭 시 잠갔던 걸 여기서 원상복구).
+        if (skipResultBtn != null)
+        {
+            bool showSkip = iAmSittingOut && !isNetworkHost && !isNetworkGuest;
+            skipResultBtn.gameObject.SetActive(showSkip);
+            if (showSkip)
+            {
+                skipResultBtn.interactable = true;
+                if (skipResultBtnLabel != null) skipResultBtnLabel.text = "결과 넘기기";
+            }
+        }
 
         DrawPlayerCaptured();
         DrawPlayerHand();
@@ -2246,8 +2309,15 @@ public partial class GoStop3PGame
             //    상태와 무관하다(손에 쥔 페어 자체가 희소해지는 신호라서).
             int capsCount = 0;
             for (int s = 0; s < SEATS; s++) capsCount += captured[s].Count(c => c.month == card.month);
+            // 2026-09-06(사용자 확인) — "필드에 1월 2장, 손패에 1월 2장이면
+            // 필드의 1월은 전부 내가 먹는 패라 굳은자다"라는 신규 케이스.
+            // 이 달의 카드는 항상 정확히 4장뿐이라, 손 2장+필드 2장이면
+            // 그것만으로 이미 4장 전부 계산이 끝난다(다른 좌석 손/덱에 남은
+            // 카드가 없다는 뜻) — 기존 두 조건(1장+Cap2+필드1, 2장+Cap1+)과
+            // 같은 "4장 전부 계산 끝남" 원리의 세 번째 조합이다.
             bool stuckPair = (sameMonthHand == 1 && capsCount == 2 && sameMonthField >= 1)
-                           || (sameMonthHand == 2 && capsCount >= 1);
+                           || (sameMonthHand == 2 && capsCount >= 1)
+                           || (sameMonthHand == 2 && capsCount == 0 && sameMonthField == 2);
             // 2026-08-19: "아이콘이 겹친다"·"굳은자 아닌데 느낌표가 보인다"
             // 신고 — 실제로는 서로 다른 두 버그가 아니라 하나였다. 폭탄(우)·
             // 흔들기(좌)·굳은자(중앙)를 카드 하단에 나란히 흩어 놓았더니,

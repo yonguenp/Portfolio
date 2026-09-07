@@ -14,6 +14,15 @@ public class ScoreDetailPopup : MonoBehaviour
     public RectTransform dim;
     public TextMeshProUGUI summaryText;
     public RectTransform rowsContent;   // HwatuUI.MakeScrollBody가 만든 스크롤 콘텐츠
+    // 2026-09-07: rowsContent 밑에 footerText·badgeStripArea까지 같이 넣어
+    // 스크롤로 묶었는데, BuildScoreDetailRows가 매번 rowsContent를 통째로
+    // ClearChildren하는 걸 몰라서 footerText/badgeStripArea까지 파괴하는
+    // 버그가 있었다(같은 프레임 안에서는 Destroy()가 지연 실행돼서 안
+    // 걸리다가, 다음에 팝업을 다시 열면 그제서야 MissingReferenceException).
+    // 실제로 매번 지우고 다시 그리는 대상(항목별 점수 줄·전체 획득패)만
+    // 이 하위 컨테이너에 넣어서, footerText/badgeStripArea는 rowsContent의
+    // 직계 자식으로 남아 절대 안 지워지게 분리했다.
+    public RectTransform rowsSubContainer;
     public TextMeshProUGUI footerText;
     // 2026-08-18: 4인판 패자별 광박/멍박/피박 아이콘 줄 — footerText는 여러
     // 줄 자동 텍스트라 그 옆에 아이콘을 정확히 맞추기 어려워서 별도

@@ -20,27 +20,91 @@ public readonly struct GoStopCharacter
 {
     public readonly string name;
     public readonly GoStopTier tier;
-    public GoStopCharacter(string name, GoStopTier tier) { this.name = name; this.tier = tier; }
+    public readonly GoStopSkillProfile skills;
+    public GoStopCharacter(string name, GoStopTier tier, GoStopSkillProfile skills)
+    {
+        this.name = name; this.tier = tier; this.skills = skills;
+    }
 }
 
 public static class GoStopCharacters
 {
     // 사용자가 직접 확정한 이름·티어 목록. A=잘함, B=보통, C=호구.
+    //
+    // 2026-09-07 — 스킬 프로필(GoStopSkillProfile) 추가. 각 캐릭터가 영화
+    // "타짜" 시리즈(2006/신의 손 2014/원 아이드 잭 2019)와 원작 만화·드라마의
+    // 실제 캐릭터성에서 근거를 찾아 "이 캐릭터가 유독 잘하는/못하는" 축만
+    // 골라 덮어썼다(나머지는 GoStopSkillProfile.Base의 티어 기본값). 근거:
+    //
+    //   고니(조승우) — 평경장의 제자, 배짱+승부욕+깊은 의리로 그려진다.
+    //     hand 정확도·밀어주기(의리)·세트완성 가중치를 최상급으로.
+    //   평경장(백윤식) — "도박판의 전설" 타짜, 냉철한 통찰력의 노장.
+    //     패흐름카운팅·폭탄크레딧전략·판돈위험인지·독박회피·연패저항 전부 최상급,
+    //     대신 무리한 고는 안 부른다(goAggression 낮게).
+    //   정마담(김혜수) — 화려하고 계산적인 심리전의 대가.
+    //     동맹타겟팅(누굴 밀어줄지)·압박감지(견제당하는 걸 눈치챔)·쌍피
+    //     최적화가 특기.
+    //   고광렬(유해진) — 우스꽝스럽지만 정 많은 서포터 캐릭터.
+    //     밀어주기(정)는 있지만 실행력(정확도)은 전반적으로 서투르다.
+    //   아귀(김윤석) — 잔혹·탐욕적인 최상위 포식자, 수단방법 안 가림.
+    //     go 공격성 최고, 독박도 안 두려워하고 판돈이 커져도 안 사림
+    //     (StakeRiskAwareness 낮게=몰빵형), 연패에도 안 흔들림. 대신 협력
+    //     (밀어주기)은 거의 안 한다 — 자기밖에 모른다.
+    //   곽철용 — "묻고 더블로가"로 유명한 허세·자신감 과잉 조직 두목.
+    //     go 공격성·기본 참가 최고, 대신 판돈 감각·연패 저항은 최악(계속
+    //     본전 생각에 몰빵).
+    //   화란(신의 손) — 능글맞고 대담한 동업자 타짜.
+    //     동맹타겟팅·밀어주기는 있지만 잔액 걱정은 거의 안 한다(대담함).
+    //   짝귀 — 경상도 지역 최고수로 불리는 우직한 실력파 타짜.
+    //     패흐름카운팅·필드선택 정확도·hand 정확도가 특기. 정치질(동맹
+    //     타겟팅)은 서투르다 — 우직한 성격.
+    //   호구 — 이름 자체가 "잘 속는 사람"이라는 뜻의 도박 은어.
+    //     정확도 계열 전반 최저, 잔액 걱정 없이 계속 들어가고 무모하게
+    //     고를 부른다 — 이름 그대로.
+    //   무석(박무석) — 고니를 처음 등쳐먹은 하수인/사기꾼, 기회주의적.
+    //     눈치 빠르게 발 빼는 감각(잔액 자제·필드선택)은 있지만 의리
+    //     (밀어주기)·독박 각오는 없다 — 자기 살길만 챙긴다.
+    //   세란(신의 손, 고광렬의 반려) — 순박하게 정착한 인물.
+    //     밀어주기(정)는 있지만 공격적인 승부(go)는 낮다.
+    //   너구리(평경장의 죽음을 조사하는 탐정) — 관찰력·추리가 본업.
+    //     티어는 C지만 패흐름카운팅·압박감지만은 예외적으로 날카롭다.
+    //   점박이 교수 — 지적·분석형 도박꾼 아키타입.
+    //     세트완성 가중치·쌍피 최적화 등 "이론"에 강하지만, 독박 각오·
+    //     연패 저항 같은 실전 배짱은 약하다.
     public static readonly GoStopCharacter[] All =
     {
-        new("김고니",   GoStopTier.A),
-        new("정마담", GoStopTier.B),
-        new("평경장", GoStopTier.A),
-        new("고광렬", GoStopTier.B),
-        new("아귀",   GoStopTier.A),
-        new("곽철용", GoStopTier.B),
-        new("화란",   GoStopTier.C),
-        new("짝귀",   GoStopTier.A),
-        new("호구",   GoStopTier.C),
-        new("무석",   GoStopTier.B),
-        new("세란이", GoStopTier.C),
-        new("너구리", GoStopTier.C),
-        new("교수",   GoStopTier.C),
+        new("고니", GoStopTier.A, GoStopSkillProfile.Base(GoStopTier.A,
+            handAccuracy: 1f, goAggression: 0.75f, backingChance: 0.95f, setCompletionWeight: 0.85f,
+            moneyCaution: 0.2f)),
+        new("정마담", GoStopTier.B, GoStopSkillProfile.Base(GoStopTier.B,
+            allyTargetingSkill: 0.95f, pressureDetection: 0.85f, dualPiSkill: 0.95f, fieldSetAwareness: 0.75f)),
+        new("평경장", GoStopTier.A, GoStopSkillProfile.Base(GoStopTier.A,
+            cardCountingSkill: 0.95f, bombCreditStrategy: 0.9f, stakeRiskAwareness: 0.9f,
+            dokbakCaution: 0.85f, tiltResistance: 0.95f, goAggression: 0.35f)),
+        new("고광렬", GoStopTier.B, GoStopSkillProfile.Base(GoStopTier.B,
+            backingChance: 0.8f, handAccuracy: 0.55f, discardPrecision: 0.5f, goAggression: 0.4f)),
+        new("아귀", GoStopTier.A, GoStopSkillProfile.Base(GoStopTier.A,
+            goAggression: 0.95f, dokbakCaution: 0.1f, stakeRiskAwareness: 0.1f, tiltResistance: 0.9f,
+            backingChance: 0.05f)),
+        new("곽철용", GoStopTier.B, GoStopSkillProfile.Base(GoStopTier.B,
+            goAggression: 0.9f, baseParticipation: 0.95f, moneyCaution: 0.05f, stakeRiskAwareness: 0.1f,
+            tiltResistance: 0.2f)),
+        new("화란", GoStopTier.C, GoStopSkillProfile.Base(GoStopTier.C,
+            allyTargetingSkill: 0.7f, backingChance: 0.6f, moneyCaution: 0.15f, dokbakCaution: 0.2f)),
+        new("짝귀", GoStopTier.A, GoStopSkillProfile.Base(GoStopTier.A,
+            cardCountingSkill: 0.85f, fieldChoiceSkill: 0.9f, handAccuracy: 0.9f, allyTargetingSkill: 0.3f)),
+        new("호구", GoStopTier.C, GoStopSkillProfile.Base(GoStopTier.C,
+            handAccuracy: 0.35f, discardPrecision: 0.3f, shakeReliability: 0.4f, moneyCaution: 0.05f,
+            goAggression: 0.8f, baseParticipation: 0.95f)),
+        new("무석", GoStopTier.B, GoStopSkillProfile.Base(GoStopTier.B,
+            moneyCaution: 0.7f, fieldChoiceSkill: 0.7f, backingChance: 0.1f, dokbakCaution: 0.1f)),
+        new("세란", GoStopTier.C, GoStopSkillProfile.Base(GoStopTier.C,
+            backingChance: 0.85f, goAggression: 0.3f, stakeRiskAwareness: 0.3f)),
+        new("너구리", GoStopTier.C, GoStopSkillProfile.Base(GoStopTier.C,
+            cardCountingSkill: 0.9f, pressureDetection: 0.7f, handAccuracy: 0.4f, goAggression: 0.3f)),
+        new("점박이 교수", GoStopTier.C, GoStopSkillProfile.Base(GoStopTier.C,
+            setCompletionWeight: 0.9f, fieldSetAwareness: 0.9f, dualPiSkill: 0.85f,
+            dokbakCaution: 0.2f, tiltResistance: 0.3f, goAggression: 0.25f)),
     };
 
     /// <summary>티어별 최초 시드머니(사용자 확인) — A=100만, B=50만, C=10만.</summary>

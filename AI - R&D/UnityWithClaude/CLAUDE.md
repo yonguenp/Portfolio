@@ -12196,3 +12196,919 @@ slot(`pos2`/`pos5`)으로 찍혀, 애니메이션이 시작하는 바로 그 순
 > 별도의 코드 경로(②)가 담당하고 있어서 안 고쳐진 채 남아 있었다.
 > 데이터 레이어 버그를 고쳤다고 해서 그 데이터를 만드는 과정에서 거치는
 > 모든 시각적 단계까지 자동으로 맞는다고 가정하면 안 된다.
+
+### 조커 애니메이션 버그 2차 — "완전 무매칭" 케이스는 여전히 빠져 있었다,
++ 그 김에 발견한 별개의 "고아 조커" 버그까지 (2026-09-06)
+
+바로 위 수정을 커밋한 직후 "방금도 조커 빈공간으로 애니메이션됬어" +
+정확한 재현 절차("뒷패에서 조커가 나와서 빈공간으로 이동. 슬램다운
+애니메이션 후 내가 낸 패 스택 포지션으로 순간이동")를 다시 받았다.
+조사해보니 위 수정이 커버한 건 `couldBePpeok`(손패가 필드 1장과
+매칭됐지만 대기 중인 상태) 하나뿐이었다 — 손패가 **아예 아무 데도
+안 붙어 필드에 그대로 혼자 남는**("완전 무매칭", `r1.captured.Count==0`)
+케이스는 별도의 조건이라 전혀 안 고쳐져 있었다. 이것도 뒷패 조커가
+그 카드 위에 파킹될 수 있는 정상적인 시나리오(`willDraw/drawn.isJoker`
+지점의 `anchor = r1.captured.Count == 0 ? card : null`)인데, "②"의
+사전 슬롯 배정 로직은 `couldBePpeok` 조건만 확인하고 있었다.
+
+**고침 1 — 데이터 레이어(`ResolveBonusJoker`) 재정리.** "죽은 무더기"
+버그를 막으려고 "③"에만 넣어뒀던 용량 가드(`jokerPileCanEverComplete`)
+를, 애초에 파킹 여부를 최종 결정하는 `ResolveBonusJoker` 자신의
+`parkOnAnchor` 판정으로 옮겼다 — `field.Count(그 달, 조커 제외)`로
+"지금 필드에 이미 쌓인 실카드 장수"를 직접 세면, couldBePpeok 대기
+페어(2장)든 완전 무매칭 anchor 혼자(1장)든 **같은 공식**
+(`예약장수 + 이미캡처된장수 < 4`)으로 두 케이스를 한 번에 커버할 수
+있다는 걸 깨달았다 — 어느 쪽이든 "이 달 카드가 전부 4장인데, 필드에
+이미 쌓인 것+캡처된 것을 더해 4장이 다 차 있으면 4번째 실카드가 세상에
+더 없다"는 같은 논리이기 때문이다.
+
+**고침 2 — 애니메이션 레이어("②") 확장.** couldBePpeok 전용이던 사전
+슬롯 배정을, "완전 무매칭"도 함께 커버하도록 통합했다 — 둘 다 anchor는
+`card`로 같고, 예약 슬롯 수만 다르다(couldBePpeok=2장, 완전 무매칭=1장).
+```csharp
+HwatuCard parkAnchor = null;
+int reservedSlots = 0;
+if (couldBePpeok) { parkAnchor = card; reservedSlots = 2; }
+else if (!bomb && r1.captured.Count == 0) { parkAnchor = card; reservedSlots = 1; }
+if (parkAnchor != null) {
+    int alreadyCapturedOfMonth = captured.Where(cap => cap != null).Sum(cap => cap.Count(c => c.month == parkAnchor.month));
+    if (reservedSlots + alreadyCapturedOfMonth < 4) fieldSlotAssign[drawn] = AssignFieldSlot(parkAnchor);
+}
+```
+
+**검증(라이브, `[GoStopJokerGhost]`/`[GoStopJoker]` 로그).** 손패에서
+Joker_1을 빼서 덱 맨 위로 옮기고, 필드에 없는 달(1월, January_Hikari)을
+실제로 플레이 — 로그에 `drawn=Joker_1 couldBePpeok=False target=pos6
+anchorTarget=pos6`(고스트 생성 시점부터 정확히 같은 슬롯)와 바로 이어서
+`anchor=January_Hikari anchorInField=True parkOnAnchor=True`(데이터
+레이어도 정확히 파킹 결정)를 확인했다 — **바로 직전(이 수정 전) 같은
+로그에 남아있던 `target=pos6 anchorTarget=pos2`(불일치)가 정확히 이
+버그의 증거였고, 수정 후엔 일치로 바뀐 것까지 같은 세션 안에서 전후
+비교로 확인했다.**
+
+**부수 발견 — 이 버그를 조사하다가 완전히 별개의 진짜 버그를 하나 더
+찾았다: "고아 조커".** 완전 무매칭 anchor에 조커가 정상적으로
+파킹됐다고 해도, 그 anchor가 **나중에 다른 사람의 평범한 1:1 매칭으로
+정상 캡처**되면(뻑 형성도 아니고 뒷패도 조커가 아닌, 그냥 흔한 경우)
+조커는 같이 못 딸려가고 필드에 혼자 남는다 — 조커는 월이 없어 아무도
+다시 못 잡으므로, **그 판이 끝날 때까지 영원히 못 먹는 카드**가 된다.
+`ppeokBonusPi`의 기존 소비 지점들(뻑 3장 스윕, 필드 2장 선택 등)은
+전부 "무더기에 2장 이상 쌓인" 시나리오만 다루고 있어서, "실카드 1장
++조커"라는 가장 단순한 파킹 형태에는 아무도 대응하고 있지 않았다 —
+이건 이번 세션의 애니메이션 수정과 무관하게 **파킹 기능 자체가 처음
+생겼을 때부터 있던 구조적 빈틈**이다(심각도는 낮다 — 크래시나 무한
+루프가 아니라 그 판에서 카드 한 장의 득점 기회를 잃는 정도, 다음
+판에서 자동으로 해소된다).
+
+**고침 3 — "③"에 형제 분기 추가.** `couldBePpeok`(=정확히 이 anchor가
+필드에 1장뿐일 때 성립)인데 뻑도 아니고 뒷패도 조커가 아니면, 그
+달에 `ppeokBonusPi` 항목이 있는지 확인해서 있으면 조커를 정상 캡처에
+같이 쓸어 담는다:
+```csharp
+else if (!ppeokFormed && ppeokBonusPi.TryGetValue(card.month, out var parkedJokerHere))
+{
+    var jokerGo = FieldSlotTransform(parkedJokerHere).Find(parkedJokerHere.spriteName);
+    if (jokerGo != null) flyFrom[parkedJokerHere] = jokerGo.position;
+    field.Remove(parkedJokerHere);
+    r1.captured.Add(parkedJokerHere);
+    ppeokBonusPi.Remove(card.month);
+}
+```
+`r1.captured`에 세 번째 카드로 얹기만 하고 `r1.matchCount`는 안 건드려서
+(`ApplyMatchBonus`의 "뻑 먹기" 대형 스윕 분기는 `matchCount==3`만 보고
+`captured.Count`는 안 본다 — 정직하게 확인함), 엉뚱한 보너스/토스트가
+안 붙는다. "④"의 `cap.AddRange(r1.captured)`가 손 안 대도 이 조커까지
+자동으로 같이 담긴다.
+
+**검증(라이브, 리플렉션으로 정확히 재현).** 3월 카드 1장(anchor)+조커를
+필드에 강제로 파킹해 두고(`ppeokBonusPi[3]=joker`), 손패에 다른 3월
+카드를, 덱 맨 위에 무관한 달(12월, 비조커) 카드를 세팅한 뒤 실제
+플레이 — 결과: `captured[0]`에 방금 낸 카드+anchor+조커가 **모두**
+정확히 들어가고(`[March_Tanzaku, March_Hikari, Joker_1, ...]`), 필드에서
+anchor·조커 둘 다 사라지고, `ppeokBonusPi`도 그 달 항목이 깨끗이
+지워지고, `fieldSlotAssign`에도 조커의 잔여 항목이 안 남는 것까지
+전부 확인했다. 콘솔 에러 0건.
+
+### 굳은자 표시 — "손 2장 + 필드 2장" 케이스 추가 (2026-09-06)
+
+"필드에 1월 2장이 깔려있고 내 손패에 2개의 1월이 있으면, 필드의 1월은
+전부 내가 먹는 패니까 굳은자"라는 요청 — 이 달 카드는 항상 정확히
+4장뿐이므로, 손 2장+필드 2장이면 그 자체로 이미 4장 전부의 소재가
+확정된다(다른 좌석 손/덱에 이 달 카드가 남아있을 수 없다는 뜻). 기존
+두 조건(손1+Cap2+필드1, 손2+Cap1+)과 같은 "4장 전부 소재 확정" 원리의
+세 번째 조합으로 추가했다:
+```csharp
+bool stuckPair = (sameMonthHand == 1 && capsCount == 2 && sameMonthField >= 1)
+               || (sameMonthHand == 2 && capsCount >= 1)
+               || (sameMonthHand == 2 && capsCount == 0 && sameMonthField == 2);
+```
+**검증(라이브, 리플렉션).** 손패에 6월 2장+필드에 6월 2장(캡처 0장)을
+강제로 채운 뒤 실제 손패 카드 GameObject 자식에서 "!" 텍스트 아이콘이
+정확히 뜨는 것을 확인, 대조군(손2+필드1+캡0 — 새 조건도 기존 두 조건도
+전부 불성립)에서는 뜨지 않는 것까지 확인해 오탐이 없음을 재확인했다.
+
+### 보너스피(조커) 전면 재설계 — "일단 파킹 후 무기한 대기" → "즉시 확정"
+(2026-09-06, 사용자 확정 명세)
+
+바로 위 "ddadakWatch" 수정 커밋 직후 "조커패는 정상적으로 애니메이팅됬는데.
+또 중대한 이슈 발견했어"라는 신고 — 필드에 9월 2장이 깔린 상태에서
+9월 손패를 냈고, 뒷패에서 조커가 나와 정상적으로 착지했는데, **"여기서
+내가 뒷패를 한번 더 까서 내 턴이 끝나야 했는데 안 끝나고 다음 사람으로
+바로 넘어갔다"** — 그리고 그 이후 다른 사람이 뻑도 아닌 9월을 "뻑 먹기"로
+가져갔다는 두 가지 증상이었다. "지금 계속 비슷한 이슈가 폭발중"이라는
+지적과 함께, 사용자가 조커 처리 전체를 직접 명세해줬다(원문 그대로):
+
+> 패 나눠주다가 필드에 조커발생 -> 선플레이어한테 조커 주고 뒷패에서
+> 조커 준 수만큼 다시 채운다.
+> 손패에서 조커 선택 -> 캡으로 조커를 이동시키고 뒷패에서 한장 손패로
+> 가져온다.
+> 뒷패에서 조커 -> 플레이어 현재턴에 낸 패 위에 일단 붙여놓는다. 그리고
+> 뒷패를 하나 더까서 뻑이 아니면 유저 소유. 뻑이나면 필드에 묻어놓는다.
+> 해당 뻑을가져가는사람이 조커도 가져간다.
+> 조커가 연속적으로 나오는 케이스에도 위 규칙을 동일하게 적용하면됨.
+
+앞 두 규칙(딜링 중 발생/손패에서 직접 냄)은 이미 정확히 구현돼 있었다 —
+새로 손댈 게 없었다. **세 번째 규칙(뒷패로 나온 조커)이 진짜 원인이었다.**
+그날 오전부터 이어온 모든 조커 버그(빈 공간 슬램다운·죽은 무더기·고아
+조커·ddadakWatch 누락)는 전부 "일단 파킹해두고, 언제 완성될지 모르는
+채로 무기한 대기시킨 뒤 나중에 아무 턴에서나 자연 완성되길 기다린다"는
+**설계 자체가 잘못**돼 있었기 때문이었다 — 매 패치가 "무기한 대기 상태에서
+생기는 새로운 경우의 수"를 하나씩 막는 것이었을 뿐, 무기한 대기라는
+근본 구조 자체를 바꾸지 않았으니 계속 새 구멍이 나왔다. 사용자의 새
+명세는 **무기한 대기 자체를 없앤다** — 조커가 뒷패로 나오면 그 자리에서
+바로 다음 카드 한 장으로 즉시 운명이 갈린다(파킹→다음 카드 확인→즉시
+확정, 전부 같은 턴 안에서 끝난다).
+
+**전면 재설계.** `ResolveBonusJoker`를 처음부터 다시 짰다:
+1. `anchor`는 "이번 턴에 낸 손패"(`card`)를 가리키는 **개념적** 참조다 —
+   `couldBePpeok`로 아직 field에 안 돌아와 있든, 정상 매칭으로 이미
+   캡처돼 사라졌든 상관없다. `AssignFieldSlot`이 월 기준으로 슬롯을
+   찾으므로 anchor 객체 자신이 지금 물리적으로 field에 있는지와 무관하게
+   항상 같은 슬롯을 가리킨다 — 그 슬롯에 이미 다른 실카드(따닥에서
+   고르지 않고 남은 카드 등)가 있으면 조커는 자연히 그 옆에 쌓인다.
+   이 한 가지 성질 덕분에 couldBePpeok/완전 무매칭/ddadakWatch 세
+   갈래를 더 이상 따로 분기할 필요가 없어졌다 — `reservedInField =
+   field.Count(그 달, 조커 제외)`를 그때그때 실측하면 세 경우 모두
+   자동으로 올바른 값이 나온다.
+2. 손패를 안 낸 턴(DeckOnlySeq)은 `anchor=null` — 붙여놓을 자리가
+   없으므로 곧장 유저 소유.
+3. **용량 가드는 유지.** `reservedInField + alreadyCapturedOfMonth >= 4`
+   면(그 달 4장 전부가 이미 소재 확정) 파킹을 시도조차 하지 않고 곧장
+   유저 소유로 처리한다 — "죽은 무더기" 버그를 다시 만들지 않기 위한
+   안전장치, 공식은 이전 세션과 동일하게 유지했다.
+4. 파킹(anchor 슬롯에 얹기) → 곧바로 뒷패를 한 장 더 깐다(`next`).
+   - `next.month == anchor.month` → **뻑!** anchor(있든 없든 손 안 댐)+
+     joker+next를 field에 묻는다. `ppeokCauser[anchor.month]=seat`,
+     `ppeokBonusPi[anchor.month]=joker` — 이 두 값은 기존에 이미
+     검증된 "뻑 먹기" 소비 경로(`matchCount==3` 핸드오프, r1HadChoice의
+     `ppeokBonusPi` 핸드오프, couldBePpeok의 "고침 3" 등 — 전부 그대로
+     재사용, 손 안 댐) 전부가 자동으로 인식한다. 뻑 스트릭/통산 카운트도
+     실제 뻑과 동일하게 올리고 쓰리뻑(통산 3회) 즉시승리 체크도 그대로
+     적용한다.
+   - `next.month != anchor.month` → **뻑 아님.** 조커는 그 자리에서
+     즉시 현재 플레이어 소유로 확정되고, `next`는 독립적인 새 카드로
+     기존 "extra 카드" 처리 경로(Resolve→선택→매칭 판정, 쪽/싹쓸이
+     포함)를 그대로 탄다 — 이 부분은 예전 코드를 거의 그대로 재사용했다.
+   - `next.isJoker` → **연속 조커.** 조커는 월이 없어 anchor와 절대
+     못 맞는다 — 이번 조커는 무조건 "뻑 아님"으로 확정돼 유저 소유가
+     되고, 새 조커(`next`)에 **같은 anchor**로 같은 규칙을 재귀
+     적용한다(사용자 명세 마지막 줄 그대로).
+5. 공통 헬퍼 `CaptureBonusJokerImmediately`(신규) — "field에 아직 없으면
+   먼저 등장시켰다 거둬가고, 이미 파킹돼 있으면 등장 연출 없이 바로
+   거둬간다"를 한 곳에서 처리 — anchor==null/용량초과/뻑 아님/연속
+   조커 4곳이 전부 이 헬퍼 하나를 공유한다.
+
+**"②" 애니메이션도 같은 원리로 단순화했다** — couldBePpeok/완전
+무매칭/ddadakWatch 세 갈래로 나뉘어 있던 사전 슬롯 배정을
+`reservedInField = field.Count(card.month, 조커 제외)` 하나로 통일했다
+— 데이터 레이어와 완전히 같은 공식을 쓰므로 애니메이션 착지 지점이
+데이터 확정과 항상 일치한다.
+
+> **함정 — 이 재설계 도중 "게임을 끝내는 분기 뒤에 트레일링 onDone을
+> 부르면 안 된다"는 이 프로젝트의 기존 함정("3연뻑 버그", 2026-08-16
+> 섹션 참고)을 다시 마주쳤다.** `ResolveBonusJoker`의 "뻑!" 분기가
+> 쓰리뻑으로 `EndGame`을 부를 수 있게 되면서, `PlaySeq`가 그 뒤에도
+> 무조건 트레일링 `onDone?.Invoke()`을 부르면 게임이 끝난 상태를 다시
+> "정상적으로 턴이 끝났다"로 착각해 다음 턴을 진행시켜 버린다. `PlaySeq`의
+> `willDraw/drawn.isJoker` 호출 직후에 `if (state == State.GameOver)
+> yield break;` 가드를 추가해서 막았다 — 반대로 EndGame이 **불렸을 때만**
+> 이 가드가 걸리고, 일반적인(쓰리뻑 아닌) "뻑!"/"뻑 아님" 케이스는
+> `ResolveBonusJoker`가 평범하게 `yield break`로 돌아오면 `PlaySeq`의
+> 기존 공용 트레일링 코드(`actionBusy=false; onDone?.Invoke();`)가
+> 정상적으로 턴을 끝낸다 — 처음엔 이 흐름을 헷갈려서 "뻑!" 분기에
+> 트레일링 코드를 직접 중복해서 넣으려다(불필요했다), 코드 리뷰로
+> 스스로 걸러냈다.
+
+**검증(라이브, 리플렉션 — 이번엔 "최종 상태"뿐 아니라 "턴이 실제로
+다음 좌석으로 넘어갔는지"까지 별도로 확인했다, 위 2차 조커 버그에서
+얻은 교훈 그대로).** 매번 `BeginWithSeatCount(4)`로 완전히 새 판을
+시작하고(`newGameStarting`/`currentSeat`가 딜링 코루틴 도중이라
+곧바로 안정되지 않는 걸 발견해 테스트 목적으로만 강제 세팅), 손패에서
+그 달이 필드에 없는 카드를 고르고 조커+다음 카드를 덱 맨 위에 정확히
+배치한 뒤 `OnPlayerPlay`를 직접 호출하는 방식으로 3가지 시나리오를
+전부 재현:
+- **뻑 아님** — `cap[0]=[Joker_2]`(조커만 즉시 캡처), 다음 카드는
+  독립적으로 정상 처리됨. **턴이 실제로 넘어갔는지**는 `hand[1]`/
+  `hand[2]`가 둘 다 감소한 것으로 확인(내 턴 이후 AI 두 좌석이 실제로
+  턴을 밟고 다시 내 턴으로 돌아온 것 — 처음엔 `currentSeat`만 보고
+  "0이니 안 넘어갔나?"로 착각할 뻔했는데, 다른 좌석들의 손패 수 변화로
+  "정상적으로 한 바퀴 돌았다"는 걸 명확히 구분했다).
+- **뻑!** — `field`의 그 달 슬롯에 anchor+조커+next 3장이 정확히 함께
+  묻히고, `ppeokBonusPi[month]=joker`·`ppeokCauser[month]=0`이 정확히
+  기록되며, `cap[0]`은 비어 있음(터미널 상태, 즉시 캡처 없음) — 이때도
+  다른 좌석 손패 감소로 턴이 정상적으로 넘어간 것을 재확인했다.
+- **연속 조커** — 손패 1장(무매칭) → 덱 맨 위 [조커1, 조커2, 무관한
+  카드] 순으로 세팅 → 실제 플레이 후 `cap[0]=[Joker_1, Joker_2]`
+  (둘 다 정확히 유저 소유로 확정), field에 잔여 조커 없음, 이후 3번째
+  카드는 독립적으로 정상 처리, 턴도 정상적으로 넘어감 — 사용자 명세의
+  "연속 조커에도 같은 규칙을 재귀 적용"이 정확히 의도대로 동작함을
+  확인했다.
+
+3가지 시나리오 전부에 걸쳐 이 검증 세션 내내 콘솔 `error`/`exception`/
+`assert` 0건.
+
+**의도적으로 라이브 재현을 안 한 것 — ddadakWatch(matchCount==2/필드
+2장 선택) 시나리오는 이번엔 별도 재현하지 않았다.** 새 설계가
+`reservedInField`를 그때그때 실측하는 방식으로 통일됐으므로 코드
+경로상 완전 무매칭과 동일하게 처리될 것으로 판단했지만(재고르지 않고
+남은 카드가 있는 슬롯에 자연히 합류), 다음에 이 조합이 재현되면
+한 번 더 직접 확인할 것.
+
+### 보너스피 재설계 직후 실전 크리티컬 버그 — "용량 가드가 파킹 자체를
+막아버림" (2026-09-07)
+
+바로 위 재설계를 커밋한 뒤 실전 플레이 중 "긴급! 유니티 확인바람 —
+너구리 유저가 9월패를 내고 뒷패가 보너스패가 나왔는데, 보너스패만
+가져가고 다음뒷패를 안 뽑음. 9월패도 필드에 그냥 깔려있음"이라는
+신고를 받았다.
+
+**원인.** 재설계 당시 `ResolveBonusJoker` 맨 앞에 안전장치로 남겨둔
+용량 가드(`reservedInField + alreadyCapturedOfMonth >= 4`면 파킹
+자체를 건너뛰고 곧장 즉시 캡처)가 **"뒷패를 하나 더 깐다"는 사용자
+명세의 필수 단계 자체를 통째로 스킵**시키고 있었다 — 용량 부족은
+"묻어도 되는지"만 막아야 하는 조건이었는데, 파킹 시도 자체를 막는
+자리에 잘못 놓여 있었다. 그 달이 이미 소진된 상태에서 조커가 뒷패로
+나오면, 조커만 즉시 캡처되고 next는 아예 뽑히지도 않은 채(이번 턴의
+정상적인 뒷패 소모 자체가 누락) 턴이 끝나 버렸다 — 사용자가 관찰한
+증상과 정확히 일치.
+
+**고침.** 용량 가드를 맨 앞(파킹 여부 결정)에서 "뻑! 묻을지" 결정하는
+지점으로 옮겼다 — `next.month == anchor.month`로 뻑 후보가 확인된
+바로 그 순간에만 `reservedInField + 1(next) + alreadyCapturedOfMonth
+< 4`(묻어도 나중에 완성할 4번째 실카드가 남아있는지)를 확인한다.
+용량이 부족하면 `couldBury=false`가 되어 기존 "뻑 아님" 처리 코드로
+자연히 흘러간다(조커는 유저 소유, next는 독립적으로 정상 매칭 — field에
+anchor가 남아있으면 그걸 정상 캡처하는 흔한 결과가 된다). **파킹
+자체(1단계)와 "뒷패를 하나 더 깐다"(2단계)는 이제 anchor가 있는 한
+항상 무조건 실행된다** — capacity와 무관하게. "②" 애니메이션의 사전
+슬롯 배정도 같은 이유로 조건 없이 항상 실행하도록 맞췄다(예전엔 여기도
+같은 용량 조건이 있어서 애니메이션과 데이터가 다시 어긋날 뻔했다).
+
+**검증(라이브, 실전 재현).** ①**용량 소진 시나리오**(9월 카드 4장 중
+2장을 미리 다른 좌석 캡처로 강제 세팅) — 9월 3번째 카드(완전 무매칭)를
+플레이하고 조커+9월 4번째 카드를 덱 맨 위에 배치 → `cap0`에 조커+
+방금 낸 카드+4번째 카드(next)가 정확히 들어감(next가 정상적으로
+뽑히고 독립 매칭까지 완료), `ppeokBonusPi[9]`는 안 채워짐(묻지 않고
+바로 처리됨), `actionBusy=False, currentSeat` 정상 — **수정 전이었다면
+이 시나리오에서 조커만 캡처되고 next는 영원히 안 뽑혔을 상황.**
+②**용량 여유 시나리오**(회귀 확인) — 같은 절차를 캡처 강제 세팅 없이
+재현 → 정상적으로 뻑! 묻힘(anchor+조커+next가 field에 함께, `ppeokCauser`/
+`ppeokBonusPi` 정확히 기록) → 짧은 대기 후 자연 진행 중이던 다른
+좌석이 실제로 4번째 카드를 완성해 무더기 전체(조커 2개 다 포함 — 이
+좌석의 별도 조커 이벤트가 우연히 겹쳤을 뿐 무관)를 정상적으로 쓸어가는
+것까지 확인 — "해당 뻑을 가져가는 사람이 조커도 가져간다"는 사용자
+명세가 즉시-확정(내 턴)과 나중-완성(남의 턴) 두 경로 모두에서 정확히
+동작함을 재확인했다. 이 검증 세션 내내 콘솔 에러/예외 0건(연결
+타임아웃 노이즈 1건 제외).
+
+> **함정 — 사용자가 신고한 "게임 로직이 망가졌다"는 정확히는 두
+> 가지가 섞여 있었다.** (1) 위에서 고친 진짜 로직 버그, 그리고 (2)
+> 사용자의 라이브 Play 세션이 **이 프로젝트가 이미 여러 번 문서화한
+> "Play 모드 중 재컴파일 → 도메인 리로드로 참조 타입 필드가 null로
+> 리셋"** 함정에 걸려 있었던 것으로 보인다 — 라이브 상태를 조회했을 때
+> `field`/`drawPile` 필드 자체가 **null**이었다(단순히 비어있는 게
+> 아니라 참조 자체가 없었다). 같은 세션에서 이전에 여러 차례
+> `recompile`을 돌렸는데 그 사이 사용자가 계속 같은 Play 세션에서
+> 플레이를 이어가고 있었던 것 — 매번 `editor stop` 후 새 세션을 열지
+> 않으면 이 문제가 재발할 수 있다는 걸 다시 확인했다. `editor_stop`→
+> `editor_play`로 완전히 새 세션을 열어서 즉시 해결됐다(사용자의 진행
+> 중이던 판 자체는 복구 불가 — 새로 시작해야 했다).
+
+### 쪽/따닥 이펙트가 엉뚱한 pos에 뜨는 버그 (2026-09-07)
+
+"pos4에서 따닥이 발생했는데 pos1포지션에서 등장했음" 신고. `chok`/
+`ddadak` 분기의 `comboEffectWorldPos = FieldSlotTransform(card 또는
+ddadakWatch).position;`이 실행되는 시점엔 이미 그 카드가 캡처되고
+그 사이 `RebuildUI()`도 한 번 돌아서 `SyncFieldSlotAssignments`가
+슬롯 배정을 반납한 뒤였다 — `FieldSlotTransform`을 다시 부르면 "빈
+슬롯 새로 찾기" 폴백을 타서 대개 가장 낮은 번호(pos1)의 엉뚱한 자리를
+돌려준다. 바로 위(캡처 직전)에 이미 `flyFrom[...]`으로 정확한 위치를
+스냅샷해 두고 있었으므로, 그걸 재사용하도록 고쳤다(`flyFrom.TryGetValue`,
+없으면 기존 방식으로 폴백). 폭탄/뻑먹기(`ApplyMatchBonus`의 `r.captured[0]`
+기준 위치)도 같은 "캡처+RebuildUI 이후에 재계산"이라 같은 결함이
+있는지 조사 중 — 다음 커밋에서 마저 정리할 것.
+
+## 고스톱 — 콤보 이펙트 위치 마저 정리, 승패 오버레이 정보 확충, 점수 상세
+팝업 레이아웃 정리, CPU 밀어주기/게임포기 패턴 (2026-09-07)
+
+바로 위 "쪽/따닥 이펙트가 엉뚱한 pos에 뜨는 버그" 섹션에서 미뤄둔 폭탄/뻑먹기도
+같은 결함이 있었다 — `r2`의 `matchCount==3`(뻑먹기, 뒷패로 완성) 분기와
+`r1`의 폭탄/`matchCount==3` 분기 둘 다 `ApplyMatchBonus`가 캡처+RebuildUI
+**이후**에 `FieldSlotTransform(r.captured[0])`을 다시 계산해 엉뚱한 슬롯을
+잡고 있었다. `r2`는 `cap.AddRange(r2.captured)` 직후(RebuildUI 전)
+`flyFrom`에서 재사용하도록, `r1`은 이미 캡처 전에 계산해 둔 `matchedSlot`
+(고정 pos 마커 참조라 나중에 읽어도 안전)을 그대로 쓰도록 고쳤다.
+`ApplyMatchBonus`의 late-recompute는 `comboEffectWorldPos == null`일 때만
+(호출자가 안 채워준 경우의 폴백으로) 동작하게 가드해서, `DeckOnlySeq`/
+`ResolveBonusJoker`처럼 RebuildUI 없이 바로 부르는 다른 호출부는 그대로 둔다.
+
+### 승패 오버레이(`Assets/Prefabs/GoStop/UI/OverlayCard.prefab`) 정보 확충
+
+"필요한 정보들이 많이 빠진 느낌 — 누가 승리했는지·몇점·배율·누가 왜
+얼마 냈는지·누가 얼마 받았는지" 요청. 새 UI 요소를 안 늘리고 기존
+`OverlaySub`(단일 텍스트 슬롯)를 여러 줄로 확장하는 쪽을 택했다 — 이미
+`EndGame`이 `payout`(`GoStopRules.MultiPayout`)을 전부 계산해 두고 있어서,
+그 값을 텍스트로 조립하기만 하면 됐다. `BuildOverlayMultiplierLine`/
+`BuildOverlayBreakdownLine` 두 헬퍼를 새로 추가 — 전자는 고/흔들기·폭탄/
+총통·쓰리뻑 배수를 "고 2회(+2점) · 흔들기/폭탄 1회 → 배율 ×2"처럼,
+후자는 "OO -20,000원(광박) · OO -6,000원" 처럼 실제 지급액이 있는
+패자만 나열한다. `sub`가 이제 `[독박 줄?] [배율 줄?] [내역 줄?] [승자
+총획득 줄(승자가 내가 아닐 때만)] [내 변동 줄]`로 조립되며, 이 `sub`
+문자열 하나를 `EndGame`의 6개 `ShowOverlay` 호출부가 전부 공유하므로
+변경 지점이 한 곳으로 끝났다.
+
+`OverlayCard.prefab`도 조정 — `Panel` 900×400@y150 → 900×500@y200,
+`OverlayScore` 900×90(단일 줄 숫자로 축소), `OverlaySub` 900×260·
+fontSize 22·lineSpacing -6(여러 줄이 들어갈 공간 확보). 검증(Play 모드
+라이브): `EndGame`을 리플렉션으로 직접 호출해 독박/광박/승자-비플레이어
+등 시나리오별로 `sub` 텍스트가 정확히 조립되는 것, `GetWorldCorners()`로
+Panel/Score/Sub/Btns 사이 겹침이 없는 것(gap 62 world-unit)까지 확인했다.
+
+> **부작용 — 테스트 중 실제로 `EndGame`을 두 번 호출해서(오프라인이라
+> `SaveMoney()`가 진짜로 돎) 이 세션의 실제 캐릭터 잔액(교수/호구/정마담)과
+> 플레이어 잔액이 합성 테스트 값으로 PlayerPrefs에 저장돼 버렸다. 테스트
+> 시작 전 원래 값을 스냅샷 안 해서 정확한 복구는 불가능했다 — 각자의
+> 티어 시드머니로 리셋해서 최소한 "망가진 값"이 아니라 "새로 시작하는
+> 것과 같은 깨끗한 상태"로 되돌렸다. **이후 세션의 오버레이/스코어디테일
+> 검증은 `EndGame`을 직접 부르는 대신 `pendingPayout`/`pendingWinnerSeat`
+> 등 필드를 수동으로 채우고 `ShowScoreDetail()`/UI만 직접 호출하는 방식으로
+> 바꿔서 `SaveMoney()` 자체가 안 걸리게 피했다 — money 관련 리플렉션
+> 테스트는 항상 이 방식을 우선할 것.**
+
+### 점수 상세 팝업(`ScoreDetailPopup.prefab`) 레이아웃 정리
+
+"마지막 label과 BadgeStripArea가 겹침, 팝업이 화면 밖으로 넘어감" 신고 —
+원인은 `footerText`(패자별 지급액·배율·잔액 변동을 담는 여러 줄 텍스트,
+독박·패자 수에 따라 최대 11줄까지 늘어날 수 있다)가 고정 150px 박스에
+`Overflow` 모드로 그냥 흘려보내고 있었던 것 — 실제 렌더 높이가 250px대라
+100px 가까이 그 아래 `BadgeStripArea`(140px, 겨우 10px 간격)를 침범했다.
+Panel도 1106px(화면 상단 -32 오프셋 포함 1138px)로 1080px 화면을 58px
+초과해 있었다.
+
+**고침 — footerText·BadgeStripArea를 스크롤 콘텐츠(`rowsContent`) 안으로
+옮기고, 실측 높이 기반 커서로 배치.** `footerText.GetPreferredValues(width,
+0f)`로 실제 필요한 높이를 재서 그 자리에 정확히 맞추고, `BadgeStripArea`도
+그 바로 아래 커서에 놓는다 — 내용이 아무리 길어져도 스크롤 안에서
+해결되므로 Panel 자체가 커질 필요가 없다. Panel을 964px로 줄였다.
+
+> **버그를 두 개 만들고 그 자리에서 잡았다.**
+> 1. **`CloseBtn`을 top-cursor 값으로 착각해 화면 밖으로 밀어냄.** `CloseBtn`
+>    (anchorMin/Max=(0.5,0.5))은 다른 요소들(anchorMin/Max=(0.5,1), top-pivot
+>    커서 관례)과 달리 **Body의 중심**을 기준으로 한 `anchoredPosition`이다
+>    — `-824`를 top-cursor처럼 넣었더니 Body 중심에서 824만큼 더 내려가
+>    Panel 밖(패널 전체 높이 964보다 훨씬 아래)으로 나갔다. `GetWorldCorners()`로
+>    확인해보니 실제로 canvas 범위(0~1340) 밖(-325~-409)에 렌더되고 있었다
+>    — 화면에 안 보이고 클릭도 안 되는 상태. Body 중심의 Panel-top-상대
+>    좌표(`-520`)를 역산해서 원하는 위치(Panel-top 기준 `-900`)에 맞는
+>    올바른 오프셋(`-380`)으로 다시 계산해 고쳤다.
+> 2. **`BuildScoreDetailRows`가 매번 `ClearChildren(content)`로 `content`의
+>    자식을 통째로 지운다는 걸 놓치고, footerText/BadgeStripArea를 바로 그
+>    `content`(=`rowsContent`) 밑으로 재부모화해버렸다.** 팝업을 처음 열
+>    때는 `Destroy()`가 프레임 끝까지 지연 실행되는(이 프로젝트에 이미
+>    여러 번 기록된) 특성 덕에 같은 동기 호출 안에서는 안 걸렸지만, **두
+>    번째로 팝업을 열면**(이전 호출의 지연 Destroy가 실제로 실행된 뒤)
+>    `scoreDetailPopup.footerText`가 이미 파괴된 오브젝트를 가리켜
+>    `MissingReferenceException`이 났다 — 정상 플레이에서 "두 번째 판 이후
+>    점수 상세를 다시 열면 크래시"로 나타났을 버그. `ScoreDetailPopup`에
+>    새 필드 `rowsSubContainer`(=`Content` 밑의 새 `Rows` 서브컨테이너)를
+>    추가해서 `BuildScoreDetailRows`/`AppendAllCapsSection`은 이 서브컨테이너만
+>    지우고 다시 그리게 하고, footerText/BadgeStripArea는 `Content`의
+>    직계 자식으로 남겨 절대 안 지워지게 분리했다.
+>
+> 검증(Play 모드 라이브): `ShowScoreDetail()`을 리플렉션으로 3회 연속(콘텐츠
+> 양을 매번 다르게) 호출해도 예외 없이 통과하는 것, `GetWorldCorners()`로
+> footerText·BadgeStripArea·CloseBtn·Panel이 서로 겹치지 않고 전부 canvas
+> 범위(0~1340) 안에 들어오는 것(각 gap 15~37 world-unit), `CloseBtn` 클릭이
+> 여전히 팝업을 정상적으로 닫는 것까지 확인했다.
+
+### CPU 행동 패턴 — 밀어주기·게임포기 (`GoStopAI.cs`)
+
+**밀어주기(협공).** "고를 부른 사람이 있으면 나머지끼리는 암묵적으로
+편을 먹는다 — 어느 쪽이 이기든 고 콜러가 독박이라 손해가 아니다"는 요청.
+치팅(상대 손패 열람) 없이 구현 가능한, 사용자가 준 예시("동맹이 청단
+비상인데 내 손에 청단패가 있으면 필드에 깔아준다")를 그대로 따랐다 —
+`GoStop3PGame.FindBackingCard(seat)`가 **공개 정보(각자의 `captured[]`)
+만으로** 판단한다: 고를 안 부른 나(seat) 기준으로, 역시 고를 안 부른
+다른 활성 좌석("동맹")이 홍단/초단/청단/고도리 중 하나라도 비상(2/3,
+`GoStopRules.CheckSet`)이면 — 그 세트는 표준 덱에 정확히 3장뿐이므로
+내 손에 그 세트 카드가 있으면 그게 곧 동맹이 놓친 마지막 한 장이다.
+`GoStopAI.ChooseCard`에 `backingCard` 선택 인자를 추가해서, **못 먹는
+턴에 한해서만**(내가 뭔가 캡처할 수 있으면 밀어주기 때문에 그 이득을
+포기하지 않는다) tier별 확률(A=100%·B=70%·C=20%, "능력 좋게 활용"을
+확률로 반영)로 그 카드를 discard 선택으로 우선한다. `DelayedAiTurn`
+(정상 턴)과 조커 후 재귀 선택 두 지점에 연결했다.
+
+**게임포기(참가 포기 강화).** 기존 `GoStopAI.WantsToPlay`는 손패의 광
+유무만 봤는데, "돈이 얼마 안 남았고 패도 안 좋으면 의도적으로 참가를
+포기"한다는 요청으로 `moneyRatio`(시드머니 대비 현재 잔액, 0~1) 매개변수를
+추가했다 — 0.3 미만(잔액이 크게 준 상태)이면 참가 확률에 추가 감쇠를
+곱한다: A(잘함)는 50% 더 사리고(위험 관리를 잘함), B는 25%, C(호구)는
+5%만(거의 그대로 들어감 — 기존 "위험을 못 가리는 게 호구"라는 캐릭터성과
+일관). 호출부(`AskParticipation`)에서 `GoStopCharacters.StartingMoney(tier)`
+대비 `money[candidate]` 비율을 계산해 넘긴다. 기본값 `moneyRatio=1f`이라
+이 매개변수를 안 넘기는 호출부는 없음(유일한 호출부가 이번에 갱신됨).
+
+검증(Play 모드 라이브 + 순수 함수 통계 테스트): `FindBackingCard`를
+양성(청단 비상 동맹+손패 매칭 카드 보유)·음성 2종(고 콜러 없음/내가
+고 콜러)으로 리플렉션 직접 호출해 기대한 카드(`October_Tanzaku`)/null이
+정확히 나오는 것 확인. `ChooseCard`에 backingCard를 채워 tier A로 100회
+반복 시 100/100 결정적으로 그 카드를 고르는 것(tier C는 확률적으로 덜
+고름, 관찰치가 이론치와 통계적으로 일치) 확인. `WantsToPlay`를 각
+tier×moneyRatio(1.0/0.1) 조합으로 500회씩 표본 추출해 A는 참가율이
+거의 절반으로, B는 약 25% 감소, C는 거의 안 바뀌는 것을 확인했다 —
+설계한 감쇠율과 표본 비율이 통계적 오차 범위 내로 일치했다.
+
+### 브레인스토밍 — 등급별로 추가하면 좋을 CPU 패턴 (미구현, 아이디어만)
+
+사용자가 "이밖에도 등급별로 구성했으면 좋은 패턴 리스트업" 요청 — 전부
+치팅(숨겨진 손패 열람) 없이 이미 공개된 정보(captured/필드/money/
+goCount/calledGo)만으로 구현 가능한 것 위주로 정리했다. 실제 구현은
+안 함 — 다음에 우선순위를 골라 요청할 것.
+
+- **독박 회피형 고/스톱** — 지금 `ShouldGo`는 순수 점수·손패 개수만
+  본다. 내가 유일한 고 콜러 후보이고 손패가 얼마 안 남았으면(독박
+  노출 시간이 길다) 더 신중하게 멈추는 판단 추가. A만 적용.
+- **폭탄 크레딧(덱만 넘기기) 사용 타이밍 전략화** — 지금은 자발적으로
+  전혀 안 쓴다(단순화, 문서화된 기존 한계). A는 손패가 줄어드는 후반에
+  전략적으로 아꼈다 몰아 쓰고, C는 아무 때나(또는 여전히 안 씀).
+- **패 흐름 카운팅** — 필드+전 좌석 캡처 더미로 이미 나온 카드를 세서
+  "이 달 마지막 한 장이 남의 손/덱 어디 있을지" 추정에 반영, 낼 카드
+  우선순위를 조금 더 정교하게. A 전용, B/C는 기존 CardWeight 그대로.
+- **밀어주기 확장 — 방어적 청소** — 지금은 "동맹에게 카드를 먹여준다"만
+  구현. 반대로 `ChooseFieldMatch`(필드 2장 중 선택)에서 "고 콜러가 다음에
+  완성할 것 같은 세트의 카드를 먼저 치워버리는" 견제형 선택도 밀어주기의
+  연장선으로 추가 가능.
+- **판돈 배수 인지형 몰빵/보수 전환** — `stakeMultiplier`(나가리 배증)가
+  커진 상태에서 A는 더 보수적으로(위험이 커졌으니), C는 오히려 본전
+  생각에 더 무모하게 참가/고 판단을 조정.
+- **연패 심리 반영("본전 생각")** — 최근 몇 판의 손익을 좌석별로 추적해,
+  C는 연속 손실 후에도 게임포기를 안 하고 계속 들어가고(도박 심리),
+  A는 반대로 손절 성향을 보이게. 추적용 상태(최근 N판 델타 배열)가
+  새로 필요해 구현 비용이 이 목록에서 가장 크다.
+- **동맹 관찰형 방어 스톱** — 내가 고를 부른 입장일 때, 다른 활성 좌석
+  전원이 나를 견제 중이라는 신호(둘의 점수가 비슷한 속도로 오르는 등)를
+  단순 휴리스틱으로 감지해 평소보다 일찍 스톱하는 방어형 판단. 신호
+  정의 자체가 다소 자의적이라 다른 항목보다 설계 확정이 더 필요하다.
+
+## 고스톱 — 보너스피가 couldBePpeok 페어를 삼켜버리는 치명적 버그
+(2026-09-07, 사용자 재보고 "긴급" 건의 진짜 원인)
+
+앞서 "보너스패만 가져가고 다음 뒷패를 안 뽑는" 버그를 고쳤다고 보고했는데,
+사용자가 이후 재현한 완전히 다른 시나리오를 재보고했다: "필드에 12월 쌍피가
+있었고 내 손패 12월을 내서 매칭됐다(couldBePpeok) → 뒷패로 보너스패가
+나와 내가 낸 패 위에 정상적으로 붙음 → 그 뒤 결국 뻑은 안 남 → 보너스패는
+내 캡으로 들어왔지만, 내가 낸 12월 패는 필드에 그대로 남아 다음 플레이어
+(아귀)가 12월을 내서 가져감." 코드를 다시 읽어 완전히 별개의, 이전에
+안 잡힌 버그를 발견했다.
+
+**원인.** `couldBePpeok`(손패가 필드 카드 1장과 순수 1:1 매칭돼 뻑 여부가
+아직 미정인 상태)인데 뒷패가 조커면, "③ 뻑 판정" 섹션이 이 페어를
+"보류"시키려고 `field.Add(matchedFieldCard); field.Add(card);
+r1.captured.Clear();`로 되돌려놓는다 — 조커가 그 자리를 "완전 무매칭 anchor"
+처럼 인식하게 만들려는 의도적 설계였다(2026-09-06 커밋). 문제는 그 뒤
+`ResolveBonusJoker`가 "뻑 아님"으로 확정될 때(다음 뒷패가 12월이 아닐 때)
+**조커 자신만 유저 소유로 캡처하고, `matchedFieldCard`+`card`로 이뤄진
+원래의 진짜 매칭 페어는 통째로 잊혀졌다** — `r1.captured`가 비워진 채라
+"④ Cap 배치" 섹션(`if (r1.captured.Count > 0) cap.AddRange(...)`)도 이미
+건너뛴 뒤였고, `ResolveBonusJoker`는 애초에 `matchedFieldCard`라는 개념
+자체를 몰랐다(anchor 하나만 받는다). 결과: 이 페어는 field에 영원히
+남아 다음에 아무나 그 달 카드를 내면 그냥 가져가 버렸다 — 신고와 정확히
+일치.
+
+**고침.** `ResolveBonusJoker`에 `HwatuCard pendingPartner = null` 매개변수를
+추가 — couldBePpeok에서 온 anchor일 때만(`anchor != null && matchedFieldCard
+!= null`) 호출부(`PlaySeq`의 willDraw/조커 분기)가 `matchedFieldCard`를
+넘긴다. "뻑 아님" 확정 시점(조커를 유저 소유로 캡처한 직후)에
+`pendingPartner`가 있고 `anchor`/`pendingPartner`가 아직 field에 있으면
+그제서야 이 페어를 정상 캡처로 커밋한다(`field.Remove` ×2 + `cap.Add` ×2
++ `RebuildUI`). 연속 조커 재귀 호출에도 `pendingPartner`를 그대로
+threading해서, 조커가 몇 번을 연달아 나오든 원래 매칭 페어가 최종적으로
+안 잊혀지게 했다. 진짜 완전 무매칭(anchor가 애초에 아무것도 안 먹은
+경우)은 `pendingPartner=null`이라 이 로직 자체가 스킵되고 예전 동작
+(anchor는 field에 남아 있다가 나중에 정상적으로 캡처됨)이 그대로 유지된다.
+
+**검증(Play 모드 라이브, 사용자가 준 정확한 재현 절차 그대로).**
+`BeginWithSeatCount(4)` 후 실제 딜링이 완전히 정착(`state==Turn &&
+currentSeat==0`)할 때까지 기다린 뒤(즉시 조작하면 아직 참가 선언/딜링
+코루틴이 안 끝나 `OnPlayerPlay`가 조용히 no-op된다 — 이번 검증에서 처음
+겪은 새로운 함정, 아래 참고), 필드에 12월 쌍피(`December_Kasu`)를 두고
+손패의 다른 12월 카드(`December_Hikari`)를 냈다 — 덱 맨 위 두 장을
+[조커, 무관한 3월 카드]로 고정해 정확히 "couldBePpeok → 조커 → 뻑 아님"
+경로를 강제 재현. 결과: `필드잔류: Kasu=False Hikari=False` / `내캡:
+Kasu=True Hikari=True Joker=True` — 신고된 버그(패가 필드에 미아로 남음)가
+사라지고 셋 다 정확히 내 캡으로 들어오는 것을 확인했다. 대조군으로 뒷패를
+[조커, 실제 3번째 12월 카드]로 바꿔 "뻑 형성" 경로도 재확인 — 4장(원래
+필드패+낸패+조커+3번째패)이 정확히 함께 field에 묻히고 `ppeokCauser[12]`/
+`ppeokBonusPi[12]`가 정상 기록되는 것까지 확인했다(회귀 없음). 콘솔
+`error`/`exception` 0건(테스트 도중의 Pipeline exec 타임아웃 노이즈만
+있었을 뿐 게임 코드발 예외는 전혀 없었다).
+
+> **함정 — `BeginWithSeatCount(n)` 직후 곧바로 카드를 조작하고
+> `OnPlayerPlay`를 부르면 조용히 씹힌다.** `NewGameSeq`의 딜링·참가선언
+> 절차가 코루틴이라 `BeginWithSeatCount` 호출 자체는 그 코루틴을
+> **시작만** 시키고 즉시 반환한다 — 실제로 `state==Turn && currentSeat==
+> PLAYER_SEAT`가 되기까지는 몇 초의 실제 시간이 더 필요하다(딜러 뽑기
+> 생략(`dealerDetermined=true`)을 미리 안 해두면 더 걸린다). 이 사이에
+> `OnPlayerPlay`를 부르면 `if (state != State.Turn || currentSeat !=
+> PLAYER_SEAT || actionBusy) return;` 가드에 막혀 아무 일도 안 일어나고
+> (손패도 안 줄고, drawPile도 안 줄고) 아무 에러도 안 남는다 — 겉보기엔
+> "성공"처럼 보이는 조용한 실패라 특히 헷갈린다. **반드시 `BeginWithSeatCount`
+> 호출과 카드 조작을 별도 exec 호출로 나누고, 그 사이 몇 초 기다린 뒤
+> `state`/`currentSeat`가 정착됐는지 먼저 확인할 것.**
+>
+> **함정 — `GoStopDeck.BuildFull()`은 매번 새 인스턴스를 만든다(48장,
+> 조커 미포함) — 라이브 게임이 실제로 쓰고 있는 카드 오브젝트와는
+> 참조가 다른 완전히 별개의 병렬 덱이다.** `HwatuCard`는 이 프로젝트
+> 전역 설계대로 참조 동일성으로 다뤄지므로, 테스트 스크립트가 이렇게
+> 새로 만든 카드를 `hand`/`field`/`drawPile`에 끼워 넣으면 **같은
+> spriteName의 "진짜" 카드가 게임 내부 어딘가(다른 좌석 손패, drawPile
+> 등)에 여전히 남아있을 수 있다** — 그 결과 나중에 검증 시 같은 이름의
+> 카드가 두 곳에 동시에 보이는 것처럼 나와 혼란스러울 수 있다(이번
+> 세션에서 실제로 "Joker_2가 field와 cap[0]에 동시에 있다"로 잠깐
+> 착각했는데, 알고 보니 하나는 내가 만든 테스트용 가짜, 다른 하나는
+> 딜링 때 필드에 우연히 떨어져 이미 선(dealer)에게 자동 지급된 진짜
+> Joker_2였다 — 서로 다른 두 인스턴스였을 뿐 버그가 아니었다). 조커가
+> 필요하면 `GoStopDeck.BuildFull()`이 안 만들어주므로 `new HwatuCard(0,
+> HwatuKind.Pi, "Joker_1", piValue: 1, isJoker: true)`로 직접 만들 것 —
+> `GoStopRules.BuildFullDeckWithJokers()`는 `private static`이라 리플렉션
+> 없이는 접근 불가.
+
+> **함정(운영 교훈) — 사용자가 "유니티 일시정지시켜놨으니 확인해보고"라고
+> 남긴 상태에서, 그 지시를 처리하기도 전에 `recompile`을 먼저 돌려버려서
+> 정작 봐달라던 그 정지 상태(field 등 참조 타입 필드)를 도메인 리로드로
+> 날려버렸다. 사용자가 특정 라이브 상태를 봐달라고 명시했을 때는, 코드
+> 수정을 코드 리딩만으로 충분히 확신할 수 있더라도 **먼저 그 라이브
+> 상태부터 리플렉션으로 읽어 확인한 뒤에** recompile을 돌릴 것 — 순서를
+> 바꾸면 검증 기회 자체가 사라진다.
+
+## 고스톱 4인판 — 캐릭터별 AI 스킬 프로필 (`GoStopSkillProfile`) (2026-09-07)
+
+"등급에 따른 AI 패턴 뭐 있나" 브레인스토밍(밀어주기·게임포기 외에
+독박회피형 고/스톱·폭탄크레딧 전략화·패흐름카운팅·판돈배수 인지형
+몰빵/보수·연패 심리·동맹 관찰형 방어 스톱 7개를 제안했던 것)에 이어
+"전부 다 구현하는데 스킬의 유용함에따라서 각 13개 캐릭터에 능력을
+부여하고 싶어. 웹에서 타짜 영화 찾아보고 각 캐릭터에 맞게 스킬능력
+배분해서 세팅해줘"라는 요청 — A/B/C 3단계 티어 하나로 뭉뚱그려져 있던
+CPU 행동을 캐릭터 13명 각자의 개성에 맞춰 세분화했다.
+
+### 아키텍처 — `GoStopTier`는 폐기하지 않고 시드머니 전용으로 격하
+
+새 파일 `GoStopSkillProfile.cs` — 17개 float(0~1) 필드(정확도 계열
+5종 + 성향 계열 4종(기존) + 신규 8종: `DokbakCaution`/`BombCreditStrategy`/
+`CardCountingSkill`/`SetCompletionWeight`/`FieldSetAwareness`/
+`AllyTargetingSkill`/`StakeRiskAwareness`/`TiltResistance`/
+`PressureDetection`). `Base(GoStopTier tier, ...17개 nullable override...)`
+팩토리가 티어 기본값에서 시작해 캐릭터가 명시적으로 넘긴 필드만 덮어쓴다
+— 캐릭터 하나당 "이 캐릭터가 유독 잘하는/못하는" 2~5개 축만 지정하면
+되므로 13명×17축을 전부 손으로 채울 필요가 없었다. `GoStopTier` 자체는
+`GoStopCharacters.StartingMoney(tier)`(시드머니 A=100만/B=50만/C=10만)
+용도로만 남기고, **실제 플레이 행동은 이제 전부 이 프로필을 읽는다.**
+
+### 캐릭터 근거 — 타짜 시리즈(2006/신의 손 2014/원 아이드 잭 2019)+원작
+만화·드라마
+
+웹 검색으로 확인한 각 캐릭터의 실제 성격을 그대로 스킬 축에 매핑했다
+(전체 근거는 `GoStopCharacters.cs`의 클래스 문서 주석 참고):
+
+- **고니(A)** — 평경장의 제자, 배짱+깊은 의리. `handAccuracy=1, backingChance=0.95,
+  setCompletionWeight=0.85, moneyCaution=0.2`(대담함).
+- **평경장(A)** — "도박판의 전설", 냉철한 통찰력의 노장. `cardCountingSkill=0.95,
+  bombCreditStrategy=0.9, stakeRiskAwareness=0.9, dokbakCaution=0.85,
+  tiltResistance=0.95` 전부 최상급, 대신 `goAggression=0.35`(무리한 고는
+  안 부름).
+- **정마담(B)** — 화려한 심리전의 대가. `allyTargetingSkill=0.95,
+  pressureDetection=0.85, dualPiSkill=0.95, fieldSetAwareness=0.75`.
+- **고광렬(B)** — 우스꽝스럽지만 정 많은 서포터. `backingChance=0.8`(정),
+  `handAccuracy=0.55, discardPrecision=0.5`(서투름).
+- **아귀(A)** — 잔혹·탐욕적인 최상위 포식자. `goAggression=0.95,
+  dokbakCaution=0.1, stakeRiskAwareness=0.1`(몰빵형), `tiltResistance=0.9`,
+  `backingChance=0.05`(협력 안 함 — 티어 전체 최저).
+- **곽철용(B)** — "묻고 더블로가" 허세형. `goAggression=0.9,
+  baseParticipation=0.95, moneyCaution=0.05, stakeRiskAwareness=0.1`,
+  대신 `tiltResistance=0.2`(계속 본전 생각에 몰빵 — 티어 최저).
+- **화란(C)** — 능글맞고 대담한 동업자. `allyTargetingSkill=0.7,
+  backingChance=0.6`, `moneyCaution=0.15, dokbakCaution=0.2`(잔액 걱정
+  적음).
+- **짝귀(A)** — 경상도 최고수 실력파. `cardCountingSkill=0.85,
+  fieldChoiceSkill=0.9, handAccuracy=0.9`, 대신 `allyTargetingSkill=0.3`
+  (우직해서 정치질은 서투름).
+- **호구(C)** — 정확도 계열 전 항목 최저(`handAccuracy=0.35,
+  discardPrecision=0.3, shakeReliability=0.4`), `moneyCaution=0.05,
+  goAggression=0.8, baseParticipation=0.95`(이름 그대로).
+- **무석(B)** — 기회주의적 사기꾼. `moneyCaution=0.7, fieldChoiceSkill=0.7`
+  (눈치 빠르게 발 빼기), `backingChance=0.1, dokbakCaution=0.1`(의리·독박
+  각오는 없음).
+- **세란(C)** — 순박하게 정착. `backingChance=0.85`(정), `goAggression=0.3`
+  (공격적 승부는 낮음).
+- **너구리(C)** — 평경장의 죽음을 조사하는 탐정, 관찰력이 본업. 티어는
+  C지만 `cardCountingSkill=0.9, pressureDetection=0.7`만은 예외적으로
+  날카롭다.
+- **점박이 교수(C)** — 지적·분석형. `setCompletionWeight=0.9,
+  fieldSetAwareness=0.9, dualPiSkill=0.85`("이론"에 강함), 대신
+  `dokbakCaution=0.2, tiltResistance=0.3`(실전 배짱은 약함).
+
+### `GoStopAI.cs` 전면 재작성 — 새 판단 지점 8곳
+
+- `ChooseCard` — `SetCompletionWeight`(내 진행 중 세트를 완성시키는
+  카드에 가중치), `CardCountingSkill`(discard 시 필드+양쪽 캡처에 이미
+  많이 나온 달을 우선 버림), `BackingChance`(밀어주기 카드 우선), 전부
+  기존 `HandAccuracy`/`DiscardPrecision` 실수 확률 롤 위에 얹었다.
+- `ChooseFieldMatch` — `FieldSetAwareness`(필드 2장 후보 중 세트 완성
+  카드 우선).
+- `ShouldGo` — `DokbakCaution`(내가 유일한 고 콜러일 때 조기 정지),
+  `StakeRiskAwareness`(판돈 배수가 커졌을 때 조기 정지),
+  `PressureDetection`(다른 좌석들이 바짝 쫓아오면 조기 정지),
+  `TiltResistance`(연패 후 `stopAtGoCount`가 +2 늘어나는 걸 얼마나
+  버티는지).
+- `WantsToPlay` — `MoneyCaution`(잔액 30% 미만일 때 참가 확률 추가 감쇠),
+  `StakeRiskAwareness`(판돈 배수 큰 판 회피), `TiltResistance`(연패 후
+  본전 생각으로 참가 확률 오히려 상승).
+- `ShouldUseBombCredit`(신규 함수) — `BombCreditStrategy` 하나로 손이
+  줄어든 후반(1~3장)에 폭탄 크레딧을 자발적으로 소모할지 결정 — 예전엔
+  AI가 이 크레딧을 절대 자발적으로 안 썼다.
+- `FindBackingCard`(`GoStop3PGame.cs`, 밀어주기 대상 탐색) —
+  `AllyTargetingSkill`로 "그냥 처음 찾은 동맹"과 "`CalcScore` 기준
+  가장 점수 높은 동맹" 중 어느 쪽을 우선할지 확률적으로 가른다.
+
+`GoStop3PGame.cs`의 9개 호출 지점(`AskParticipation`/`DelayedAiTurn`/
+`AfterAction`/조커 재귀 선택/`ChooseFieldMatch`/`OptimizeDualPi` 등)을
+전부 `seatSkills[seat]`(신규 배열, `Start()`의 캐릭터 드로우 직후
+`ch.skills`로 채움) + 필요한 컨텍스트(`OthersCaptured(seat)`,
+`StakeMultiplierNormalized`, `lossStreak[seat]`, `isSoleGoCaller`,
+`rivalsCloseCount`)를 넘기도록 갱신했다. `lossStreak[]`는 `EndGame`에서
+승자는 0으로 리셋, 패자는 +1 — `ApplyDowngrade`(파산 좌석 압축)에서도
+`money`/`seatCharName`과 같은 방식으로 압축한다.
+
+### 검증 — 12개 신규/확장 메커니즘 전부 개별 확인 + 자연 진행 스모크
+테스트
+
+**순수 함수/통계 테스트(리플렉션, N=200~1000회 반복):**
+- `SetCompletionWeight=1`이 세트 완성 카드를(가치 낮아도), `=0`이면
+  순가치 높은 카드를 정확히 선택(단일 케이스로 결정적 확인).
+- `ShouldGo`의 `DokbakCaution`/`StakeRiskAwareness`/`PressureDetection`
+  전부 hi(=1) 조건에서 lo(=0) 대비 압도적으로 더 자주 멈추는 것 확인
+  (235~400/400 vs 0/400 등). `TiltResistance`는 반대 방향(lo가 더
+  무모하게 계속 감, 400/400 vs 0/400)으로 정확히 확인.
+- `WantsToPlay`의 `MoneyCaution`/`StakeRiskAwareness`/`TiltResistance`
+  전부 설계한 방향으로 통계적 차이 확인(0/1000 vs 514/1000 등).
+- `ShouldUseBombCredit`: hi=497/1000, lo=0/1000(자발적으로 절대 안 씀
+  — 기존 동작 그대로 유지되는 것도 함께 확인).
+- `FindBackingCard`의 `AllyTargetingSkill`: 홍단 2/3(낮은 점수) 동맹과
+  초단 2/3+광3장(높은 점수) 동맹을 동시에 세팅 — `skill=0`이면 먼저
+  발견된 좌석(March_Tanzaku), `skill=1`이면 `CalcScore` 기준 더 높은
+  좌석(July_Tanzaku)을 정확히 선택하는 것을 라이브 `GoStop3PGame`
+  인스턴스의 실제 `FindBackingCard`를 리플렉션으로 직접 호출해 확인.
+- `FieldSetAwareness`: hi=500/500 완성카드 우선, lo=0/500 순가치 우선.
+- `CardCountingSkill`: hand 순서를 일부러 뒤집어 순가치 타이브레이크를
+  무력화한 뒤 — hi=200/200이 "필드+양쪽 캡처에 이미 3장 나온 9월"을
+  정확히 버리고, lo=0/200은 원래 순서(10월)를 그대로 버리는 것 확인.
+
+**자연 진행 스모크 테스트(라이브 Play, 완전히 새로 연 Play 세션에서).**
+`BeginWithSeatCount(4)` + `dealerDetermined=true`(선 뽑기 연출 스킵)로
+딜링(7/7/7/6+drawPile23, 곽철용/짝귀 참가·정마담 광팔이로 자동 스큐즈)
+→ 손패에서 조커(Joker_2) 포함 실제 카드 5장을 사람 좌석으로 직접
+플레이하며 나머지 세 AI 좌석(고니/곽철용/정마담)이 `seatSkills`를 실제로
+읽어 자동 진행 → 자연스럽게 `GoStopChoice`(고 선택)까지 거쳐 `GameOver`
+도달. 이 전체 사이클(딜링·조커 처리·AI ChooseCard/ShouldGo/WantsToPlay/
+FindBackingCard/ShouldUseBombCredit가 전부 실전 호출 경로로 실행됨) 동안
+콘솔 `error`/`exception`이 **0건**(순수 Pipeline exec 타임아웃 노이즈
+1건 제외).
+
+> **함정 — `BeginWithSeatCount` 직후, 이전 세션에서 리플렉션으로 오염된
+> 상태(예: `FindBackingCard` 테스트가 남긴 `hand[0]`/`captured[]`의
+> 합성 카드) 위에 그대로 새 딜링을 태우면 `field`/`drawPile`이 계속
+> `null`인 채 멈춘 것처럼 보이는 상태가 나왔다** — DOTween 관련 콘솔
+> 예외(`RectTransform has been destroyed`)도 함께 관찰됐는데, 이는 그
+> 이전 세션에서 리플렉션으로 직접 띄웠다 미처 안 닫은 팝업 GameObject가
+> 나중 `RebuildUI`의 `ClearChildren`에 파괴된 뒤에도 트윈이 계속 그
+> 죽은 참조를 건드리려 한 잔여물이었다. **원인 규명 없이 바로
+> `editor_stop` → `editor_play`로 완전히 새 세션을 열어서 해결했다** —
+> 이 프로젝트에 이미 여러 번 기록된 "장시간 리플렉션 테스트 후에는
+> 새 세션에서 다시 검증할 것"이라는 원칙을 다시 확인한 사례.
+
+### 남은 것
+
+- `GoStopAI.cs`의 신규 8개 함수 중 `ShouldUseBombCredit`은 통계
+  테스트만 했고, 실제 게임에서 손패가 자연스럽게 1~3장으로 줄어드는
+  후반 상황까지 자연 진행시켜 자발적으로 발동하는 걸 라이브로 확인하진
+  못했다(순수 함수 테스트로 로직 자체는 확정, 통합 지점은 스모크
+  테스트가 정상 진행되는 것으로 간접 확인).
+- 브레인스토밍 7개 항목 중 이번에 실제로 구현된 건 5개(밀어주기·
+  게임포기·독박회피·폭탄크레딧전략화·패흐름카운팅) — "판돈배수 인지형
+  몰빵/보수"와 "연패 심리"도 `StakeRiskAwareness`/`TiltResistance`로
+  함께 구현됐다. "동맹 관찰형 방어 스톱"은 `PressureDetection`으로
+  구현. 사실상 7개 전부 반영됐다.
+
+## 고스톱 4인판 — "결과 넘기기" 버튼(광팔이/참가포기로 쉬는 판 전용,
+오프라인 한정) (2026-09-07)
+
+"로컬 게임에서 내가 광파는 역할, 혹은 쉬는 역할이 되었을 때 가만히 CPU
+플레이를 보고 있는 게 무료한데. '결과넘기기' 버튼을 둬서 해당 경기를
+결과만 보고 건너뛸 수 있으면 좋겠어. 결과넘기기버튼은 내 Hand영역에
+보여주면 좋을거같아. 네트워크대전시엔 나오지않는 버튼으로해서." 요청.
+
+**구현 방식 — `Time.timeScale` 배속.** 이 게임의 애니메이션(카드 슬램·
+펀치스케일·DOTween 이펙트)과 턴 진행 간격(`PLAY_STEP_DELAY` 등, 두 파일
+합쳐 37곳의 `yield return new WaitForSeconds(...)`)이 전부 별도의
+"빨리감기 분기" 없이 **기본 시간 스케일을 그대로 따르는** 구조였다
+(`SetUpdate(true)`로 실시간 갱신을 쓰는 DOTween 트윈도, `Time.timeScale`을
+건드리는 코드도 이 프로젝트 전체에 단 한 곳도 없었다 — grep으로 확인) —
+그래서 37곳 전부를 개별로 고치는 대신 **버튼을 누르면 `Time.timeScale =
+12f`로 올리는 것 하나**로 대기 시간과 애니메이션 전부가 동시에 빨라진다.
+`RunLocalInputTimeout`/`TurnPlayTimeoutSeq`(네트워크 전용 입력 타임아웃)는
+전부 `isNetworkHost || isNetworkGuest`로만 걸리는 코드라, 이 버튼이 뜨는
+조건(오프라인 한정)과 애초에 겹치지 않아 영향이 없다.
+
+**배치 — Hand 영역과 같은 자리에 겹쳐서.** `handArea`는 쉬는 판엔
+`RebuildUI`가 `SetActive(false)`로 완전히 꺼버리므로, `handArea`의 자식이
+아니라 **`mySeatT`의 별도 형제 오브젝트**(`SkipResultBtn`, 같은
+`anchoredPosition`)로 만들어서 handArea의 활성 상태 토글과 안 부딪히게
+했다. 다른 버튼들과 같은 "씬에 있으면 재사용, 없으면 생성" 원칙
+(`mySeatT.Find("SkipResultBtn")`)을 그대로 따랐다.
+
+**표시 조건 — `iAmSittingOut && !isNetworkHost && !isNetworkGuest`.**
+`RebuildUI`가 매턴 다시 판단해서 `SetActive`한다 — 다음 판에 다시 쉬게
+되면 자동으로 재활성화되고, 그 시점에 `interactable`/라벨도
+"결과 넘기기"로 원상복구된다(클릭 시 잠갔던 것을 되돌리는 지점이 별도로
+필요 없다).
+
+**Time.timeScale 리셋 지점 4곳** — `Screen.orientation` 리셋과 정확히
+같은 자리에 같은 원칙으로 추가했다(이 씬이 가로 강제/세로 복귀를 이미
+`OnDestroy`/`GoToTitle`에서 안전망으로 관리하고 있던 것과 동일 패턴):
+1. `EndGame()` 맨 앞(`state = State.GameOver;` 직후) — 결과가 나온 그
+   즉시 정상 속도로 복귀해서, 승패 오버레이·컨페티 이펙트는 배속 없이
+   정상적으로 보인다. 나가리·다운그레이드·총통·쓰리뻑 등 `EndGame`으로
+   들어오는 모든 경로가 이 한 줄로 커버된다.
+2. `NewGameSeq()` 맨 앞 — 다음 판은 항상 정상 속도로 시작(방어적
+   리셋), 동시에 `skipResultBtn`도 딜링 중엔 꺼서 지난 판 표시 잔상을
+   없앤다.
+3. `GoToTitle()` — 배속 중에 타이틀로 나가면 씬을 넘어서도
+   `Time.timeScale`이 안 풀려 다른 게임까지 빨라지는 사고를 막는다.
+4. `OnDestroy()` — 뒤로가기 제스처 등 버튼을 안 거치고 씬이 파괴되는
+   경로에 대한 안전망(기존 `Screen.orientation` 리셋과 같은 이유).
+
+**검증(Play 모드 라이브, 리플렉션).** ①`sittingOutSeat=0`으로 강제한 뒤
+`RebuildUI()` 직접 호출 → `skipResultBtn.active=True, interactable=True,
+handArea.active=False`(같은 자리에서 서로 안 부딪히는 것 확인),
+`timeScale=1`(아직 안 누름). ②`skipResultBtn.onClick.Invoke()` →
+`timeScale=12, interactable=False, label="결과로 넘기는 중..."`
+정확히 확인. ③`EndGame(0, null, 1)` 직접 호출 → `timeScale=1`로 즉시
+복귀 확인. ④`isNetworkHost=true`로 강제한 채(같은 `sittingOutSeat=0`)
+`RebuildUI()` 재호출 → `skipResultBtn.active=False`(네트워크면 쉬는
+중이어도 절대 안 뜨는 것 확인). ⑤`Time.timeScale=12f`로 강제해 둔 뒤
+`GoToTitle()` 직접 호출 → `timeScale=1`로 정확히 리셋 확인. ⑥회귀
+확인 — 새 Play 세션에서 정상적으로(강제 조작 없이) 4인 게임을 딜링부터
+여러 턴 자연 진행시켜(조커·고/스톱 포함) 콘솔 `error`/`exception`이
+전혀 없는 것까지 확인(순수 Pipeline exec 타임아웃 노이즈만 있었음).
+
+> 실제로 쉬는 판까지 자연 진행시켜(참가 포기 3연속 등을 유도) 화면에서
+> 버튼이 뜨는 걸 육안으로 확인하지는 못했다 — 이 환경은 스크린샷을
+> 신뢰할 수 없어 이 프로젝트가 항상 그래왔듯 리플렉션으로 상태를 직접
+> 읽는 방식으로 검증했다(위 ①~⑤). 표시 조건·클릭 동작·리셋 지점 4곳
+> 전부 정확히 설계대로 동작하는 것을 확인했으니 기능 자체는 완성됐다고
+> 판단한다.
+
+## 고스톱 — 족보완성 이펙트가 뒷패 처리 전에 먼저 떠서 뒷패를 가리는 버그
+(2026-09-08)
+
+"내 손패를 내고 족보완성 이펙트가 먼저 떠버려서 내 뒷패가 뭐가나왔는지
+안보여" 신고 → 사용자가 곧바로 정확한 원인까지 짚어줬다: "원래
+족보완성이나 비상이펙트는 유저가 쌓을 수도 있기 때문에 cap에 현재턴
+패들이 다 들어와야 나와야되는거아냐?"
+
+**원인.** `CheckEmergencies()`는 `RebuildUI()`가 불릴 때마다(한 턴 안에서
+여러 번) 실행되는데, `FireAchievement`/`FireGwangAchievement`가 감지되는
+즉시(동기, 지연 없이) `GoStopVectorEffect.Ensure().Play(...)`(화면 전체를
+덮는 대형 카드+타이틀 연출)를 띄웠다. `PlaySeq`의 "④ 손패 결과를 Cap에
+배치" 단계(손패 캡처만 반영)에서 이미 완성이 감지될 수 있는데, 이 시점은
+**아직 뒷패(있다면) 자신의 매칭·캡처 처리가 안 끝난 채**다(그건 나중,
+`willDraw` 블록에서 진행된다) — 여기서 곧장 화면 전체 이펙트가 뜨면
+뒷패가 정리되는 바로 그 순간을 통째로 덮어버린다.
+
+**고침.** `FireAchievementDeferred`/`FireGwangAchievementDeferred` 두
+코루틴을 새로 추가 — `achievedFired` 기록(재검사 방지용 북키핑)은
+`CheckEmergencies()`에서 그대로 동기로 하되, 실제 화면 표시(`FireAchievement`/
+`FireGwangAchievement` 호출)만 `yield return new WaitUntil(() =>
+!actionBusy);` + `WaitForSeconds(0.3f)`로 미룬다. `actionBusy`는 이번
+턴(`PlaySeq`/`DeckOnlySeq`)이 손패·뒷패 처리를 포함해 완전히 끝나야
+`false`로 풀리므로 — 필드선택/9월열끗 등 팝업이 떠 있는 동안도 계속
+`true`라 자동으로 안 끼어든다. `FireEmergencyDeferred`(비상 이펙트, 기존에
+이미 있던 1초 defer)와 같은 원칙을 완성 이펙트에도 적용한 것이다.
+
+**검증(Play 모드 라이브, 리플렉션).** 청단(6·9·10월 띠) 완성 시나리오를
+구성 — 캡에 6·9월 띠를 미리 채워두고, 손패의 10월 띠를 내면 필드 매칭으로
+캡처되어 3/3이 완성되게 세팅. `OnPlayerPlay` 호출 직후(동기 구간)
+`achievedFired.Count=0, actionBusy=True`(아직 감지도 안 됨) 확인. 우연히
+필드에 10월 카드가 2장이라 필드선택 팝업이 뜬 상태(무기한 대기)에서도
+계속 `achievedFired.Count=0`(팝업 떠 있는 동안 안 끼어듦) 확인. 팝업
+응답 후 뒷패 처리까지 턴이 완전히 끝나(`actionBusy=False`) 캡에 4장
+(청단 3장+파트너)이 다 들어간 뒤에야 `achievedFired.Count=1`, 효과
+타이틀이 정확히 `"나님이 청단 완성!"`으로 뜬 것까지 확인했다. 이
+테스트 세션 전체 콘솔 `error`/`exception` 0건.
+
+## 고스톱 — 연출·팝업 전체 시퀀스 재점검: "팝업이 뜨고 나서 연출이
+나온다" (2026-09-08)
+
+바로 위 achievement-defer 수정 직후 "전체적으로 문제인거같아... 팝업이
+뜨고나서 연출이 나오니까 지저분해보여"라는 재신고. 코드를 다시 추적해서
+**내가 방금 만든 수정 자체가 새로운 레이스 컨디션을 만들었다는** 걸
+확인했다: `FireAchievementDeferred`가 `WaitUntil(() => !actionBusy)`로
+"이번 턴이 끝나는 순간"을 기다리는데, 정확히 그 "턴이 끝나는 순간"은
+`PlaySeq`의 `actionBusy = false; onDone?.Invoke();`가 **동기로 즉시**
+`AfterAction` → `AdvanceTurn()`/`EndGame()`을 실행하는 바로 그 순간이다.
+`WaitUntil`은 **다음 프레임에야** 풀리므로, 완성 이펙트는 이 경쟁에서
+구조적으로 항상 진다 — 결과: 결과 오버레이(또는 고/스톱 오버레이)가
+먼저 뜨고, 그 위에 완성 이펙트가 0.3초쯤 뒤늦게 겹쳤다. "팝업이 뜨고
+나서 연출이 나온다"는 정확히 이 증상이었다.
+
+**고침 — `pendingSetEffectCount`(진행 중인 이펙트 개수) + 3개 화면
+전환 지점을 이 카운터로 게이팅.**
+- `CheckEmergencies()`가 완성 이펙트를 스케줄링하는 순간(+1), 실제
+  재생이 끝나는 순간(-1) — `GoStopVectorEffect.Play`/`PlayEmergency`를
+  `void`→`Coroutine`으로 바꿔서(기존 호출부는 반환값을 버리므로 무해)
+  `FireAchievementDeferred`/`FireGwangAchievementDeferred`가
+  `yield return`으로 실제 재생 완료까지 기다린 뒤 감소시킨다.
+- `AdvanceTurn()` — 기존 본문을 `AdvanceTurnImmediate()`로 이름만
+  옮기고, `AdvanceTurn()` 자체는 `pendingSetEffectCount>0`이면
+  `WaitUntil`로 미뤘다가 실행하는 얇은 게이트로 바꿨다. 기존 호출부는
+  전부 그대로 `AdvanceTurn()`을 부르면 되므로 단 한 곳도 안 고쳤다.
+- `EndGame()` — 상태/정산(state=GameOver, dealerSeat, 머니 이동,
+  SaveMoney 등)은 전부 그대로 즉시 실행하되, 화면에 결과 오버레이를
+  실제로 띄우는 마지막 동작만 `ShowResultOverlayDeferred(() => { ... })`
+  로 감쌌다 — 8개 `ui?.ShowOverlay(...)` 호출부 전부(나가리 2개+승리
+  분기 6개) 같은 패턴으로 래핑. 네트워크 브로드캐스트처럼 화면과 무관한
+  동작은 클로저 밖에 그대로 둬서 예전처럼 즉시 실행된다.
+- `ShowGoStopPrompt()`(고/스톱 오버레이) — `EndGame`과 똑같은 레이스가
+  있었다(캡처가 동시에 점수선을 넘기고 족보도 완성시키는 경우). 같은
+  `ShowResultOverlayDeferred` 헬퍼를 재사용해서 오버레이 표시+타임아웃
+  코루틴 시작을 같이 미뤘다(`state`/`RebuildUI()`는 즉시 — 작은
+  상태박스 표시라 완성 이펙트와 안 부딪힌다).
+- `FireGoEffect`(1~8고 화면 정중앙 대형 이펙트) — 스톱 쪽은 이미
+  `EndGameAfterStop`이 `yield return FireStopEffect(seat)`로 명시적으로
+  기다린 뒤에야 `EndGame`을 불러서 문제가 없었는데, **고 쪽만 빠져
+  있었다**(`FireGoEffect(...); AdvanceTurn();`가 곧장 이어져서, 이
+  대형 이펙트가 재생 중인데도 바로 다음 턴이 진행됐다). `FireGoEffect`
+  안에서 `pendingSetEffectCount++`, `GoEffectSeq`를 `try/finally`로
+  감싸 정확히 한 번(프리팹 로드 실패로 조기 종료되는 경로 포함) `--`
+  하도록 고쳤다 — `AdvanceTurn()`의 새 게이트가 이 경우도 자동으로
+  커버한다(호출부 변경 없음).
+- `FireBlockedDeferred`(실패 이펙트) — `FireAchievementDeferred`와
+  똑같이 즉시 발동하던 문제가 있어 같은 방식으로 defer했다. 다만
+  실패/비상은 alt-큐(`EnqueueAlt`) 기반이라 정확한 재생완료 시점을
+  밖에서 못 잡아 `pendingSetEffectCount`에는 안 넣었다 — `state ==
+  State.GameOver`면 조용히 생략하는 방어만 추가(제대로 하려면
+  `GoStopVectorEffect`의 alt 큐 자체를 손봐야 한다, 이번 범위 밖).
+
+**FieldChoicePopup/DualPiPopup은 왜 안 건드렸나 — 이미 구조적으로
+안전하다.** 이 둘은 캡처가 확정되기 *전*(뻑/폭탄/필드선택 등 판정
+도중)에만 뜨는데, `CheckEmergencies()`는 캡처가 **확정된 뒤**
+(`RebuildUI`의 "④ Cap 배치" 단계)에만 완성을 감지한다 — 같은 턴 안에서
+이 둘이 겹칠 수 없다. 다음 턴의 FieldChoicePopup/DualPiPopup은
+`AdvanceTurn()`의 새 게이트가 그 턴 자체의 시작을 미루므로 자동으로
+보호된다. ScoreDetailPopup도 사용자가 직접 눌러야 열리는 버튼이라
+"이미 정상적으로 뜬 결과 오버레이 이후"에만 열릴 수 있어, EndGame
+수정으로 그대로 안전해졌다.
+
+**검증(Play 모드 라이브, 리플렉션).**
+1. `pendingSetEffectCount=1`로 강제한 뒤 `EndGame(0,null,1)` 직접 호출 →
+   `state=GameOver`(즉시 반영) `overlayVisible=False`(안 뜸) 확인 →
+   카운터를 0으로 되돌리자 `overlayVisible=True`로 바뀌는 것 확인.
+2. `pendingSetEffectCount=1`로 강제한 뒤 `AdvanceTurn()` 호출 →
+   `currentSeat` 안 바뀜 확인 → 카운터 0으로 되돌리자 실제로
+   `currentSeat`가 바뀌는 것 확인.
+3. `FireGoEffect(0,3)` 직접 호출 → 호출 직후 `pendingSetEffectCount=1`,
+   이펙트 재생이 끝난 뒤 `pendingSetEffectCount=0`(try/finally 정상
+   동작) 확인.
+4. **실전 시나리오 — 초단 완성이 캡처와 동시에 점수선을 넘기는 경우를
+   실제로 재현.** 캡에 4·5월 띠를 미리 채우고 손패 7월 띠로 완성시킴 —
+   필드에 우연히 7월이 2장이라 FieldChoicePopup까지 뜬 상태(무기한
+   대기)에서도 `pendingSetEffectCount=0`(안 끼어듦) 확인 → 팝업 응답 →
+   충분한 시간 경과 후 확인한 결과: **`state=GoStopChoice`,
+   `overlayVisible=True`(고/스톱 오버레이가 정상적으로 뜸),
+   `achievementCardRowCount=0`(완성 이펙트는 이미 재생을 끝내고
+   스스로 정리된 상태)** — 완성 이펙트가 먼저 끝난 뒤에야 고/스톱
+   오버레이가 떴다는 뜻으로, 사용자가 요청한 "연출나오고 팝업"
+   순서가 실전 시나리오에서 정확히 재현됐다.
+5. 이어서 고를 선택(`OnPlayerGo`, 새로 게이팅된 `FireGoEffect`/
+   `AdvanceTurn` 경로를 실제로 태움) → 이후 5턴 이상 자연 진행(조커
+   처리 포함) → 콘솔 `error`/`exception` 0건.
