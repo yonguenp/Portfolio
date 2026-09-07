@@ -2690,14 +2690,29 @@ public partial class GoStop3PGame
         return go;
     }
 
-    /// <summary>이 슬롯의 자식 중 "진짜 카드"만 센다 — StackTooltipTrigger
-    /// (겹친 패 확인용 투명 오버레이)는 카드가 아니므로 제외한다. 고스트
-    /// (GhostMarker)는 "곧 이 슬롯에 자리 잡을 카드"라 포함한다.</summary>
+    /// <summary>필드 슬롯(pos 마커)의 자식이 될 수 있는 "카드가 아닌" 임시
+    /// 오버레이 이름들 — StackTooltipTrigger(겹친 패 확인용 투명 오버레이)
+    /// 뿐 아니라 <see cref="SpawnImpactFlash"/>가 만드는 "Impact"(카드 착지
+    /// 임팩트 플래시, at.parent=카드의 부모=슬롯 자체에 형제로 붙는다)도
+    /// 여기 속한다. 2026-09-08 버그 수정 — RealFieldCardCount/
+    /// RelayoutFieldSlotSiblings 둘 다 "StackTooltipTrigger"만 걸러내고
+    /// "Impact"는 몰랐다. 방금 착지한 카드의 임팩트 플래시가 아직
+    /// 자기소멸(FlashAndDestroy) 전이면 "카드 한 장 더 있다"고 잘못
+    /// 세어져, 그 슬롯에 곧이어 랑딩하는 다음 카드(전형적으로 조커
+    /// 파킹 직후의 뒷패 리빌)의 step/offset이 실제보다 한 단계 더
+    /// 촘촘한 값으로 잘못 계산됐다(예: 진짜 2장 슬롯인데 3장으로 오판해
+    /// step 15를 써서 20이어야 할 X오프셋이 30으로 나옴) — "보너스패가
+    /// 필드 패 위에 쌓일 때 포지션이 완전 이상함" 신고의 정체.</summary>
+    static bool IsFieldSlotOverlay(string name) => name == "StackTooltipTrigger" || name == "Impact";
+
+    /// <summary>이 슬롯의 자식 중 "진짜 카드"만 센다 — 위 오버레이들은 카드가
+    /// 아니므로 제외한다. 고스트(GhostMarker)는 "곧 이 슬롯에 자리 잡을
+    /// 카드"라 포함한다.</summary>
     static int RealFieldCardCount(RectTransform target)
     {
         int n = 0;
         for (int k = 0; k < target.childCount; k++)
-            if (target.GetChild(k).name != "StackTooltipTrigger") n++;
+            if (!IsFieldSlotOverlay(target.GetChild(k).name)) n++;
         return n;
     }
 
@@ -2714,7 +2729,7 @@ public partial class GoStop3PGame
             var child = target.GetChild(k) as RectTransform;
             if (child == null) continue;
             if (child.GetComponent<GhostMarker>() != null) continue;
-            if (child.name == "StackTooltipTrigger") continue;
+            if (IsFieldSlotOverlay(child.name)) continue;
 
             var newOffset = new Vector2(i * step, -i * step);
             i++;
