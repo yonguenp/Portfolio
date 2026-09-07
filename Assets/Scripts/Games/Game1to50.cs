@@ -17,6 +17,7 @@ public class Game1to50 : MonoBehaviour
     int nextTarget;
     float elapsed;
     bool running;
+    int lastShownTenths = -1; // SetScore 표시 throttle용 — 아래 Update() 참고
 
     void Start()
     {
@@ -72,7 +73,7 @@ public class Game1to50 : MonoBehaviour
 
     void StartGame()
     {
-        nextTarget = 1; elapsed = 0; running = true;
+        nextTarget = 1; elapsed = 0; running = true; lastShownTenths = -1;
         ui?.HideOverlay();
         ui?.SetTitle("1 to 50");
         ui?.SetScore("0.0s");
@@ -96,7 +97,18 @@ public class Game1to50 : MonoBehaviour
     {
         if (!running) return;
         elapsed += Time.deltaTime;
-        ui?.SetScore($"{elapsed:F1}s");
+        // 2026-09-08(최적화) — 화면엔 소수 첫째자리(F1)까지만 보이는데
+        // SetScore가 매 프레임(최대 초당 수백 회) 문자열을 새로 만들어
+        // TMP 텍스트를 갱신하고 있었다 — 실제로 표시가 바뀌는 건 초당
+        // 10번뿐이라 나머지는 전부 낭비였다. 표시값(소수 첫째자리)이
+        // 실제로 바뀔 때만 갱신하도록 좁혔다 — elapsed 누적·승리 판정
+        // (ShowResult가 읽는 elapsed 원본값)은 전혀 안 건드렸다.
+        int tenths = (int)(elapsed * 10f);
+        if (tenths != lastShownTenths)
+        {
+            lastShownTenths = tenths;
+            ui?.SetScore($"{elapsed:F1}s");
+        }
     }
 
     void UpdateHint()
