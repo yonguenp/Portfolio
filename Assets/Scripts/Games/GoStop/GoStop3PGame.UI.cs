@@ -506,7 +506,7 @@ public partial class GoStop3PGame
         else
         {
             skipResultBtn = UISkin.MakeKenneyButton(mySeatT, "SkipResultBtn", new Vector2(280f, 90f),
-                new Vector2(0f, handY), UISkin.Accent.Blue, "결과 넘기기", OnSkipToResultClicked);
+                new Vector2(0f, 0f), UISkin.Accent.Blue, "결과 넘기기", OnSkipToResultClicked);
         }
         skipResultBtnLabel = skipResultBtn.transform.Find("Label")?.GetComponent<TextMeshProUGUI>();
         skipResultBtn.gameObject.SetActive(false); // 매턴 RebuildUI가 실제 표시 여부를 판단
