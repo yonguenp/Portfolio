@@ -2432,7 +2432,7 @@ public partial class GoStop3PGame : MonoBehaviour
                 if (needAchieve && state == GoStopRules.SetState.Achieved)
                 {
                     achievedFired.Add((seat, i));
-                    FireAchievement(seat, EmergencySets[i].name, mine.Where(EmergencySets[i].pred).ToList());
+                    StartCoroutine(FireAchievementDeferred(seat, EmergencySets[i].name, mine.Where(EmergencySets[i].pred).ToList()));
                 }
                 else if (needBlocked && state == GoStopRules.SetState.Blocked)
                 {
@@ -2465,7 +2465,7 @@ public partial class GoStop3PGame : MonoBehaviour
                     if (needAchieve && state == GoStopRules.SetState.Achieved)
                     {
                         achievedFired.Add((seat, GwangEmergencyIdx));
-                        FireGwangAchievement(seat, mine);
+                        StartCoroutine(FireGwangAchievementDeferred(seat, mine));
                     }
                     else if (needBlocked && state == GoStopRules.SetState.Blocked)
                     {
@@ -2540,6 +2540,35 @@ public partial class GoStop3PGame : MonoBehaviour
         yield return new WaitForSeconds(1.0f);
         if (achievedFired.Contains((seat, setIdx))) yield break; // 그 사이 완성돼버렸다 — 비상은 생략, 완성 이펙트만 보여준다
         FireEmergency(seat, setName, cards);
+    }
+
+    /// <summary>2026-09-08 버그 수정 — "손패 내고 족보완성 이펙트가 바로
+    /// 떠서 뒷패가 뭐가 나왔는지 안 보인다" 신고. `CheckEmergencies()`는
+    /// `RebuildUI()` 안에서 매번 불리는데, 손패 캡처 직후("④" 단계)에
+    /// 벌써 완성이 감지될 수 있다 — 이 시점은 아직 뒷패(있다면) 자신의
+    /// 매칭·캡처 처리가 안 끝난 채다(그건 나중, `PlaySeq`의 willDraw
+    /// 블록에서 진행된다). 여기서 곧장 화면 전체(<see cref="GoStopVectorEffect"/>)
+    /// 이펙트를 띄우면 뒷패가 정리되는 그 순간을 그대로 덮어버린다. 이번
+    /// 턴(`PlaySeq`/`DeckOnlySeq`)이 완전히 끝나 `actionBusy`가 풀릴
+    /// 때까지 기다렸다가 보여준다 — 필드선택/9월열끗 등 팝업이 떠 있는
+    /// 동안도 `actionBusy`가 계속 true라 자동으로 안 끼어든다.
+    /// `achievedFired`는 `CheckEmergencies()`에서 이미 동기로 기록해 두므로
+    /// (재검사 방지) 이 코루틴은 순수하게 "언제 보여줄지"만 다룬다.</summary>
+    IEnumerator FireAchievementDeferred(int seat, string setName, List<HwatuCard> cards)
+    {
+        yield return new WaitUntil(() => !actionBusy);
+        yield return new WaitForSeconds(0.3f); // 턴이 막 끝난 화면이 한 번 정착할 여유
+        FireAchievement(seat, setName, cards);
+    }
+
+    /// <summary>위 <see cref="FireAchievementDeferred"/>와 같은 이유·같은
+    /// 원칙 — 광 완성도 손패 캡처만으로 즉시 3장을 채울 수 있어 동일한
+    /// 버그가 있었다.</summary>
+    IEnumerator FireGwangAchievementDeferred(int seat, List<HwatuCard> mine)
+    {
+        yield return new WaitUntil(() => !actionBusy);
+        yield return new WaitForSeconds(0.3f);
+        FireGwangAchievement(seat, mine);
     }
 
     /// <summary>3광 비상 판정 — 광 5장 중 3장을 채우면 되므로, 상대가 광을

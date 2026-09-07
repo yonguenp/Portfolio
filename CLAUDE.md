@@ -12987,3 +12987,41 @@ handArea.active=False`(같은 자리에서 서로 안 부딪히는 것 확인),
 > 읽는 방식으로 검증했다(위 ①~⑤). 표시 조건·클릭 동작·리셋 지점 4곳
 > 전부 정확히 설계대로 동작하는 것을 확인했으니 기능 자체는 완성됐다고
 > 판단한다.
+
+## 고스톱 — 족보완성 이펙트가 뒷패 처리 전에 먼저 떠서 뒷패를 가리는 버그
+(2026-09-08)
+
+"내 손패를 내고 족보완성 이펙트가 먼저 떠버려서 내 뒷패가 뭐가나왔는지
+안보여" 신고 → 사용자가 곧바로 정확한 원인까지 짚어줬다: "원래
+족보완성이나 비상이펙트는 유저가 쌓을 수도 있기 때문에 cap에 현재턴
+패들이 다 들어와야 나와야되는거아냐?"
+
+**원인.** `CheckEmergencies()`는 `RebuildUI()`가 불릴 때마다(한 턴 안에서
+여러 번) 실행되는데, `FireAchievement`/`FireGwangAchievement`가 감지되는
+즉시(동기, 지연 없이) `GoStopVectorEffect.Ensure().Play(...)`(화면 전체를
+덮는 대형 카드+타이틀 연출)를 띄웠다. `PlaySeq`의 "④ 손패 결과를 Cap에
+배치" 단계(손패 캡처만 반영)에서 이미 완성이 감지될 수 있는데, 이 시점은
+**아직 뒷패(있다면) 자신의 매칭·캡처 처리가 안 끝난 채**다(그건 나중,
+`willDraw` 블록에서 진행된다) — 여기서 곧장 화면 전체 이펙트가 뜨면
+뒷패가 정리되는 바로 그 순간을 통째로 덮어버린다.
+
+**고침.** `FireAchievementDeferred`/`FireGwangAchievementDeferred` 두
+코루틴을 새로 추가 — `achievedFired` 기록(재검사 방지용 북키핑)은
+`CheckEmergencies()`에서 그대로 동기로 하되, 실제 화면 표시(`FireAchievement`/
+`FireGwangAchievement` 호출)만 `yield return new WaitUntil(() =>
+!actionBusy);` + `WaitForSeconds(0.3f)`로 미룬다. `actionBusy`는 이번
+턴(`PlaySeq`/`DeckOnlySeq`)이 손패·뒷패 처리를 포함해 완전히 끝나야
+`false`로 풀리므로 — 필드선택/9월열끗 등 팝업이 떠 있는 동안도 계속
+`true`라 자동으로 안 끼어든다. `FireEmergencyDeferred`(비상 이펙트, 기존에
+이미 있던 1초 defer)와 같은 원칙을 완성 이펙트에도 적용한 것이다.
+
+**검증(Play 모드 라이브, 리플렉션).** 청단(6·9·10월 띠) 완성 시나리오를
+구성 — 캡에 6·9월 띠를 미리 채워두고, 손패의 10월 띠를 내면 필드 매칭으로
+캡처되어 3/3이 완성되게 세팅. `OnPlayerPlay` 호출 직후(동기 구간)
+`achievedFired.Count=0, actionBusy=True`(아직 감지도 안 됨) 확인. 우연히
+필드에 10월 카드가 2장이라 필드선택 팝업이 뜬 상태(무기한 대기)에서도
+계속 `achievedFired.Count=0`(팝업 떠 있는 동안 안 끼어듦) 확인. 팝업
+응답 후 뒷패 처리까지 턴이 완전히 끝나(`actionBusy=False`) 캡에 4장
+(청단 3장+파트너)이 다 들어간 뒤에야 `achievedFired.Count=1`, 효과
+타이틀이 정확히 `"나님이 청단 완성!"`으로 뜬 것까지 확인했다. 이
+테스트 세션 전체 콘솔 `error`/`exception` 0건.
