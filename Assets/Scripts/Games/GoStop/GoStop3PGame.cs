@@ -3429,7 +3429,15 @@ public partial class GoStop3PGame : MonoBehaviour
                 // 지워도 화면 공백이 없다(동기 구간).
                 DestroyGhost(deckGhost);
                 HwatuCard anchor = r1.captured.Count == 0 ? card : null;
-                yield return StartCoroutine(ResolveBonusJoker(seat, drawn, anchor, cap, isLastHandCard, handActualLanding));
+                // 2026-09-07 버그 수정 — r1.captured가 비어있는 이유가 "완전
+                // 무매칭"이 아니라 couldBePpeok 페어를 조커가 보류시키며
+                // 섹션 ③이 강제로 비운 것일 수도 있다(matchedFieldCard가
+                // 실제 필드 매칭이 있었다는 증거) — 그 경우만 pendingPartner를
+                // 넘겨서, 조커가 "뻑 아님"으로 확정될 때 이 페어도 같이
+                // 캡처되게 한다(안 그러면 이 페어가 field에 영원히 미아로
+                // 남아 다음에 아무나 가져가 버린다 — 실전 재현된 버그).
+                HwatuCard pendingPartner = anchor != null && matchedFieldCard != null ? matchedFieldCard : null;
+                yield return StartCoroutine(ResolveBonusJoker(seat, drawn, anchor, cap, isLastHandCard, handActualLanding, pendingPartner));
                 // 조커 연쇄가 뻑으로 이어져 쓰리뻑 즉시승리(EndGame)까지
                 // 갈 수 있다 — 게임을 끝내는 분기 뒤에 아래 트레일링
                 // onDone을 부르면 안 된다(이 프로젝트가 이미 겪은 "3연뻑
@@ -3708,7 +3716,22 @@ public partial class GoStop3PGame : MonoBehaviour
     /// 그대로 넘겨준다). DeckOnlySeq에서 호출될 때는 이미 손이 빈 뒤라
     /// 항상 false를 넘긴다 — 쪽/싹쓸이 예외는 정확히 그 한 번의 턴에만
     /// 적용된다(사용자 확인).</param>
-    IEnumerator ResolveBonusJoker(int seat, HwatuCard joker, HwatuCard anchor, List<HwatuCard> cap, bool isLastHandCard, Vector3? revealFrom = null)
+    /// <param name="pendingPartner">2026-09-07 버그 수정("12월 쌍피 매칭 후
+    /// 보너스패 → 뻑 안 남 → 내가 낸 패가 필드에 그대로 남아 상대가
+    /// 가져감" 실전 재현) — anchor가 "완전 무매칭"이 아니라 couldBePpeok
+    /// (손패가 필드 카드 1장과 이미 매칭됐던 진짜 페어)에서 왔을 때, 그
+    /// 페어의 나머지 한 장(호출부의 matchedFieldCard). PlaySeq의 "③ 뻑
+    /// 판정" 섹션이 조커로 인해 이 페어의 확정을 미루면서 r1.captured를
+    /// 비우고 두 카드를 field로 되돌리는데(조커가 "보류"시키는 것), 그
+    /// 상태에서 이 함수가 "뻑 아님"으로 확정하면 조커만 유저 소유가 되고
+    /// **정작 이 페어는 캡처된 적이 없다는 사실 자체가 사라져** field에
+    /// 영원히 미아로 남았었다(다음 번 아무나 그 달 카드를 내면 그냥
+    /// 가져가 버림). "뻑 아님" 확정 시점에 이 페어를 정상 캡처로 함께
+    /// 커밋해서 고친다. anchor가 진짜 완전 무매칭이면(원래도 field에
+    /// 혼자 남아 있다가 나중에 정상적으로 캡처되는 게 의도된 동작) null로
+    /// 넘어와 이 로직 자체가 스킵된다.</param>
+    IEnumerator ResolveBonusJoker(int seat, HwatuCard joker, HwatuCard anchor, List<HwatuCard> cap, bool isLastHandCard,
+        Vector3? revealFrom = null, HwatuCard pendingPartner = null)
     {
         if (anchor == null)
         {
@@ -3749,7 +3772,7 @@ public partial class GoStop3PGame : MonoBehaviour
             // 으로 확정돼 유저 소유가 되고, 새 조커(next)에 같은 규칙을
             // 같은 anchor로 재귀 적용한다.
             yield return StartCoroutine(CaptureBonusJokerImmediately(seat, joker, cap, null));
-            yield return StartCoroutine(ResolveBonusJoker(seat, next, anchor, cap, isLastHandCard, drawPileArea.position));
+            yield return StartCoroutine(ResolveBonusJoker(seat, next, anchor, cap, isLastHandCard, drawPileArea.position, pendingPartner));
             yield break;
         }
 
@@ -3797,6 +3820,21 @@ public partial class GoStop3PGame : MonoBehaviour
 
         // 뻑 아님 — 조커는 유저 소유로 확정.
         yield return StartCoroutine(CaptureBonusJokerImmediately(seat, joker, cap, null));
+
+        // 2026-09-07 버그 수정 — couldBePpeok 페어가 조커 때문에 보류돼
+        // 있었다면(pendingPartner != null) 여기서 확정 커밋한다. anchor(=card)
+        // 자체도 아직 field에 있다는 전제 — 위 어느 분기도 anchor를 건드리지
+        // 않았으므로 항상 성립한다.
+        if (pendingPartner != null && field.Contains(anchor) && field.Contains(pendingPartner))
+        {
+            field.Remove(anchor);
+            field.Remove(pendingPartner);
+            cap.Add(anchor);
+            cap.Add(pendingPartner);
+            GoStopAudio.Instance?.Capture(); // 섹션 ④의 평범한 캡처와 같은 사운드(별도 이펙트 없음 — 뻑도 쪽도 아닌 평범한 2장 매칭)
+            RebuildUI();
+            yield return new WaitForSeconds(PLAY_STEP_DELAY);
+        }
 
         // next는 독립적인 새 카드로 정상 매칭 로직을 그대로 탄다(기존
         // "extra 카드" 처리와 동일한 경로 — Resolve→선택→매칭 판정).

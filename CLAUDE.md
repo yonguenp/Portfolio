@@ -12669,3 +12669,94 @@ goCount/calledGo)만으로 구현 가능한 것 위주로 정리했다. 실제 �
   전원이 나를 견제 중이라는 신호(둘의 점수가 비슷한 속도로 오르는 등)를
   단순 휴리스틱으로 감지해 평소보다 일찍 스톱하는 방어형 판단. 신호
   정의 자체가 다소 자의적이라 다른 항목보다 설계 확정이 더 필요하다.
+
+## 고스톱 — 보너스피가 couldBePpeok 페어를 삼켜버리는 치명적 버그
+(2026-09-07, 사용자 재보고 "긴급" 건의 진짜 원인)
+
+앞서 "보너스패만 가져가고 다음 뒷패를 안 뽑는" 버그를 고쳤다고 보고했는데,
+사용자가 이후 재현한 완전히 다른 시나리오를 재보고했다: "필드에 12월 쌍피가
+있었고 내 손패 12월을 내서 매칭됐다(couldBePpeok) → 뒷패로 보너스패가
+나와 내가 낸 패 위에 정상적으로 붙음 → 그 뒤 결국 뻑은 안 남 → 보너스패는
+내 캡으로 들어왔지만, 내가 낸 12월 패는 필드에 그대로 남아 다음 플레이어
+(아귀)가 12월을 내서 가져감." 코드를 다시 읽어 완전히 별개의, 이전에
+안 잡힌 버그를 발견했다.
+
+**원인.** `couldBePpeok`(손패가 필드 카드 1장과 순수 1:1 매칭돼 뻑 여부가
+아직 미정인 상태)인데 뒷패가 조커면, "③ 뻑 판정" 섹션이 이 페어를
+"보류"시키려고 `field.Add(matchedFieldCard); field.Add(card);
+r1.captured.Clear();`로 되돌려놓는다 — 조커가 그 자리를 "완전 무매칭 anchor"
+처럼 인식하게 만들려는 의도적 설계였다(2026-09-06 커밋). 문제는 그 뒤
+`ResolveBonusJoker`가 "뻑 아님"으로 확정될 때(다음 뒷패가 12월이 아닐 때)
+**조커 자신만 유저 소유로 캡처하고, `matchedFieldCard`+`card`로 이뤄진
+원래의 진짜 매칭 페어는 통째로 잊혀졌다** — `r1.captured`가 비워진 채라
+"④ Cap 배치" 섹션(`if (r1.captured.Count > 0) cap.AddRange(...)`)도 이미
+건너뛴 뒤였고, `ResolveBonusJoker`는 애초에 `matchedFieldCard`라는 개념
+자체를 몰랐다(anchor 하나만 받는다). 결과: 이 페어는 field에 영원히
+남아 다음에 아무나 그 달 카드를 내면 그냥 가져가 버렸다 — 신고와 정확히
+일치.
+
+**고침.** `ResolveBonusJoker`에 `HwatuCard pendingPartner = null` 매개변수를
+추가 — couldBePpeok에서 온 anchor일 때만(`anchor != null && matchedFieldCard
+!= null`) 호출부(`PlaySeq`의 willDraw/조커 분기)가 `matchedFieldCard`를
+넘긴다. "뻑 아님" 확정 시점(조커를 유저 소유로 캡처한 직후)에
+`pendingPartner`가 있고 `anchor`/`pendingPartner`가 아직 field에 있으면
+그제서야 이 페어를 정상 캡처로 커밋한다(`field.Remove` ×2 + `cap.Add` ×2
++ `RebuildUI`). 연속 조커 재귀 호출에도 `pendingPartner`를 그대로
+threading해서, 조커가 몇 번을 연달아 나오든 원래 매칭 페어가 최종적으로
+안 잊혀지게 했다. 진짜 완전 무매칭(anchor가 애초에 아무것도 안 먹은
+경우)은 `pendingPartner=null`이라 이 로직 자체가 스킵되고 예전 동작
+(anchor는 field에 남아 있다가 나중에 정상적으로 캡처됨)이 그대로 유지된다.
+
+**검증(Play 모드 라이브, 사용자가 준 정확한 재현 절차 그대로).**
+`BeginWithSeatCount(4)` 후 실제 딜링이 완전히 정착(`state==Turn &&
+currentSeat==0`)할 때까지 기다린 뒤(즉시 조작하면 아직 참가 선언/딜링
+코루틴이 안 끝나 `OnPlayerPlay`가 조용히 no-op된다 — 이번 검증에서 처음
+겪은 새로운 함정, 아래 참고), 필드에 12월 쌍피(`December_Kasu`)를 두고
+손패의 다른 12월 카드(`December_Hikari`)를 냈다 — 덱 맨 위 두 장을
+[조커, 무관한 3월 카드]로 고정해 정확히 "couldBePpeok → 조커 → 뻑 아님"
+경로를 강제 재현. 결과: `필드잔류: Kasu=False Hikari=False` / `내캡:
+Kasu=True Hikari=True Joker=True` — 신고된 버그(패가 필드에 미아로 남음)가
+사라지고 셋 다 정확히 내 캡으로 들어오는 것을 확인했다. 대조군으로 뒷패를
+[조커, 실제 3번째 12월 카드]로 바꿔 "뻑 형성" 경로도 재확인 — 4장(원래
+필드패+낸패+조커+3번째패)이 정확히 함께 field에 묻히고 `ppeokCauser[12]`/
+`ppeokBonusPi[12]`가 정상 기록되는 것까지 확인했다(회귀 없음). 콘솔
+`error`/`exception` 0건(테스트 도중의 Pipeline exec 타임아웃 노이즈만
+있었을 뿐 게임 코드발 예외는 전혀 없었다).
+
+> **함정 — `BeginWithSeatCount(n)` 직후 곧바로 카드를 조작하고
+> `OnPlayerPlay`를 부르면 조용히 씹힌다.** `NewGameSeq`의 딜링·참가선언
+> 절차가 코루틴이라 `BeginWithSeatCount` 호출 자체는 그 코루틴을
+> **시작만** 시키고 즉시 반환한다 — 실제로 `state==Turn && currentSeat==
+> PLAYER_SEAT`가 되기까지는 몇 초의 실제 시간이 더 필요하다(딜러 뽑기
+> 생략(`dealerDetermined=true`)을 미리 안 해두면 더 걸린다). 이 사이에
+> `OnPlayerPlay`를 부르면 `if (state != State.Turn || currentSeat !=
+> PLAYER_SEAT || actionBusy) return;` 가드에 막혀 아무 일도 안 일어나고
+> (손패도 안 줄고, drawPile도 안 줄고) 아무 에러도 안 남는다 — 겉보기엔
+> "성공"처럼 보이는 조용한 실패라 특히 헷갈린다. **반드시 `BeginWithSeatCount`
+> 호출과 카드 조작을 별도 exec 호출로 나누고, 그 사이 몇 초 기다린 뒤
+> `state`/`currentSeat`가 정착됐는지 먼저 확인할 것.**
+>
+> **함정 — `GoStopDeck.BuildFull()`은 매번 새 인스턴스를 만든다(48장,
+> 조커 미포함) — 라이브 게임이 실제로 쓰고 있는 카드 오브젝트와는
+> 참조가 다른 완전히 별개의 병렬 덱이다.** `HwatuCard`는 이 프로젝트
+> 전역 설계대로 참조 동일성으로 다뤄지므로, 테스트 스크립트가 이렇게
+> 새로 만든 카드를 `hand`/`field`/`drawPile`에 끼워 넣으면 **같은
+> spriteName의 "진짜" 카드가 게임 내부 어딘가(다른 좌석 손패, drawPile
+> 등)에 여전히 남아있을 수 있다** — 그 결과 나중에 검증 시 같은 이름의
+> 카드가 두 곳에 동시에 보이는 것처럼 나와 혼란스러울 수 있다(이번
+> 세션에서 실제로 "Joker_2가 field와 cap[0]에 동시에 있다"로 잠깐
+> 착각했는데, 알고 보니 하나는 내가 만든 테스트용 가짜, 다른 하나는
+> 딜링 때 필드에 우연히 떨어져 이미 선(dealer)에게 자동 지급된 진짜
+> Joker_2였다 — 서로 다른 두 인스턴스였을 뿐 버그가 아니었다). 조커가
+> 필요하면 `GoStopDeck.BuildFull()`이 안 만들어주므로 `new HwatuCard(0,
+> HwatuKind.Pi, "Joker_1", piValue: 1, isJoker: true)`로 직접 만들 것 —
+> `GoStopRules.BuildFullDeckWithJokers()`는 `private static`이라 리플렉션
+> 없이는 접근 불가.
+
+> **함정(운영 교훈) — 사용자가 "유니티 일시정지시켜놨으니 확인해보고"라고
+> 남긴 상태에서, 그 지시를 처리하기도 전에 `recompile`을 먼저 돌려버려서
+> 정작 봐달라던 그 정지 상태(field 등 참조 타입 필드)를 도메인 리로드로
+> 날려버렸다. 사용자가 특정 라이브 상태를 봐달라고 명시했을 때는, 코드
+> 수정을 코드 리딩만으로 충분히 확신할 수 있더라도 **먼저 그 라이브
+> 상태부터 리플렉션으로 읽어 확인한 뒤에** recompile을 돌릴 것 — 순서를
+> 바꾸면 검증 기회 자체가 사라진다.
