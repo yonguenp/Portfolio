@@ -3157,23 +3157,20 @@ public partial class GoStop3PGame : MonoBehaviour
                 // 2026-09-06 4차 재설계(사용자 확정 명세) — 뒷패 조커는
                 // "이번 턴에 낸 손패(card)의 자리에 일단 얹힌다"는 게
                 // 유일한 원칙이다. couldBePpeok/완전 무매칭/따닥(ddadakWatch)
-                // 같은 손패 쪽 세부 경로가 무엇이었든, 지금 field에 그 달
-                // 실카드가 몇 장 있는지는 그냥 이 시점의 field를 그대로
-                // 세면 된다(카드가 아직 물리적으로 field에 없어도 —
-                // couldBePpeok는 "③"이 나중에 되돌려 넣는다 — AssignFieldSlot은
-                // 월 기준으로 슬롯을 찾으므로 최종 도착지는 항상 같다).
-                // 실제 파킹 여부·용량 판단은 ResolveBonusJoker 안에서
-                // 최종 확정한다 — 여기서는 애니메이션이 그 최종 결정과
-                // 어긋나지 않도록 같은 공식으로 미리 슬롯만 잡아둔다.
-                int reservedInField = field.Count(c => c.month == card.month && !c.isJoker);
-                int alreadyCapturedOfMonth = captured.Where(cap => cap != null)
-                    .Sum(cap => cap.Count(c => c.month == card.month));
-                if (reservedInField + alreadyCapturedOfMonth < 4)
-                    fieldSlotAssign[drawn] = AssignFieldSlot(card);
+                // 같은 손패 쪽 세부 경로가 무엇이었든, AssignFieldSlot은
+                // 월 기준으로 슬롯을 찾으므로 최종 도착지는 항상 같다.
+                // 2026-09-07 정정 — ResolveBonusJoker가 이제 "일단 무조건
+                // 파킹 후 곧바로 뒷패로 운명을 확정"하는 구조로 바뀌면서
+                // (용량 가드는 "뻑으로 묻을지" 판단 시점으로만 옮겨졌다 —
+                // 아래 ResolveBonusJoker 참고), 여기서도 파킹 자체는
+                // 무조건 일어난다고 보고 슬롯을 항상 미리 잡아둔다 —
+                // 예전처럼 용량 조건으로 걸러내면 애니메이션이 실제
+                // 데이터(항상 파킹)와 다시 어긋난다.
+                fieldSlotAssign[drawn] = AssignFieldSlot(card);
 
                 var target = FieldSlotTransform(drawn);
                 Debug.Log("[GoStopJokerGhost] drawn=" + drawn.spriteName + " cardMonth=" + card.month +
-                    " reservedInField=" + reservedInField + " target=" + target.name);
+                    " target=" + target.name);
                 deckGhost = SpawnGhostCard(drawn, target);
                 // 위 손패 슬램과 같은 이유(2026-09-02) — target.position이
                 // 아니라 고스트의 실제 착지 자리를 flyFrom에 기록한다.
@@ -3449,7 +3446,15 @@ public partial class GoStop3PGame : MonoBehaviour
                     if (chok)
                     {
                         StealPiFromEachOther(seat, 1);
-                        comboEffectWorldPos = FieldSlotTransform(card).position;
+                        // 2026-09-07 버그 수정("따닥 이펙트가 엉뚱한 pos에 뜬다") —
+                        // 이 시점엔 card가 이미 캡처되고 RebuildUI(3444줄)도
+                        // 한 번 돈 뒤라 SyncFieldSlotAssignments가 그 슬롯 배정을
+                        // 이미 반납했다 — FieldSlotTransform(card)를 여기서 다시
+                        // 부르면 "빈 슬롯 새로 찾기" 폴백을 타서 엉뚱한(대개 가장
+                        // 낮은 번호의) 자리를 돌려준다. 바로 위(3422줄)에서 이미
+                        // 캡처 직전에 정확한 위치를 flyFrom[card]로 스냅샷해
+                        // 뒀으니 그걸 그대로 재사용한다.
+                        comboEffectWorldPos = flyFrom.TryGetValue(card, out var chokPos) ? chokPos : FieldSlotTransform(card).position;
                         Toast(seat, "쪽");
                         stole2 = true;
                         if (r2.sweep)
@@ -3467,7 +3472,12 @@ public partial class GoStop3PGame : MonoBehaviour
                         // 에서만 판정한다 — 위 선택 시점에서 옮겨왔다(그때는 아직
                         // 진짜 따닥인지 몰랐다). 피 뺏기는 원래대로 그대로 일어나고
                         // (상대에게 피가 있다면), 첫 턴이면 그 위에 판돈을 추가로 얹는다.
-                        comboEffectWorldPos = FieldSlotTransform(card).position;
+                        // 2026-09-07 버그 수정("pos4에서 따닥이 발생했는데 pos1
+                        // 포지션에서 등장") — 위 chok과 완전히 같은 원인(이 시점엔
+                        // ddadakWatch도 이미 캡처+RebuildUI를 거쳐 슬롯 배정이
+                        // 반납된 뒤라 FieldSlotTransform이 엉뚱한 빈 슬롯을 새로
+                        // 잡는다) — 캡처 직전 스냅샷인 flyFrom[ddadakWatch]를 쓴다.
+                        comboEffectWorldPos = flyFrom.TryGetValue(ddadakWatch, out var ddadakPos) ? ddadakPos : FieldSlotTransform(ddadakWatch).position;
                         if (wasFirstPlay) { ApplyMoneyBonus(seat, PpeokMoney(), "첫따닥비"); Toast(seat, "첫따닥"); }
                         else Toast(seat, "따닥");
                         stole2 = true;
@@ -3642,15 +3652,17 @@ public partial class GoStop3PGame : MonoBehaviour
             yield break;
         }
 
-        int reservedInField = field.Count(c => c.month == anchor.month && !c.isJoker);
-        int alreadyCapturedOfMonth = captured.Where(c2 => c2 != null)
-            .Sum(c2 => c2.Count(c => c.month == anchor.month));
-        if (reservedInField + alreadyCapturedOfMonth >= 4)
-        {
-            yield return StartCoroutine(CaptureBonusJokerImmediately(seat, joker, cap, revealFrom));
-            yield break;
-        }
-
+        // 2026-09-07 버그 수정("보너스패만 가져가고 다음 뒷패를 안 뽑는다",
+        // 라이브에서 실제 재현) — 예전엔 여기서 "이 달이 이미 소진됐으면
+        // 파킹 자체를 포기하고 곧장 캡처"하는 용량 가드를 최상단에 뒀는데,
+        // 그러면 "곧바로 뒷패를 하나 더 깐다"는 사용자 명세의 필수 단계
+        // 자체가 통째로 스킵됐다 — 용량 부족은 "묻어도 되는지"만 막아야
+        // 하는 조건이지 "뒷패를 더 깔지 말지"를 막을 이유가 아니었다(용량이
+        // 부족해도 next 카드 자체는 이번 턴의 정상적인 뒷패 소모라 항상
+        // 뽑아야 한다). 용량 체크는 아래 "뻑!" 판정 시점으로 옮겼다 —
+        // next가 실제로 anchor와 같은 달일 때만, 그 순간 이 달 실카드가
+        // 정말 하나라도 더 남아있는지(=이 뻑이 언젠가 완성 가능한지)를
+        // 확인한다.
         // 1) 이번 턴에 낸 패(anchor) 자리에 일단 붙여놓는다 — 아직 확정 아님.
         fieldSlotAssign[joker] = AssignFieldSlot(anchor);
         field.Add(joker);
@@ -3677,7 +3689,24 @@ public partial class GoStop3PGame : MonoBehaviour
             yield break;
         }
 
-        if (next.month == anchor.month)
+        bool couldBury = next.month == anchor.month;
+        if (couldBury)
+        {
+            // 용량 가드는 여기(실제로 묻을지 결정하는 순간)에서만 확인한다.
+            // 지금 field에 있는 그 달 실카드 + 이번에 묻힐 next 1장 +
+            // 이미 어딘가에 캡처된 장수를 더해 4장(그 달 전부)이 되면
+            // 손패/덱 어디에도 4번째 실카드가 더 없다는 뜻 — 묻어도
+            // 영원히 완성 못 하는 죽은 무더기가 된다. 그럴 땐 아래
+            // "뻑 아님" 처리로 자연히 넘어간다(조커는 유저 소유, next는
+            // 독립적으로 정상 매칭 — field에 anchor가 남아있으면 그걸
+            // 정상 캡처하는 흔한 결과가 된다).
+            int reservedInField = field.Count(c => c.month == anchor.month && !c.isJoker);
+            int alreadyCapturedOfMonth = captured.Where(c2 => c2 != null)
+                .Sum(c2 => c2.Count(c => c.month == anchor.month));
+            couldBury = reservedInField + 1 + alreadyCapturedOfMonth < 4;
+        }
+
+        if (couldBury)
         {
             // 뻑! joker는 이미 field에 있으니 next만 같은 슬롯에 합류시킨다.
             // anchor 자신은 물리적으로 있든 없든 손대지 않는다 — 이미
