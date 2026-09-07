@@ -260,6 +260,11 @@ public partial class GoStop3PGame
         // 걸어주므로(아래 참고) 이 정도 분량도 겹침 없이 들어간다.
         ui?.SetHelp("고스톱 규칙", GoStopHelpBodyText, "확인");
 
+        // 2026-09-07 — 디버그 시나리오 패널 토글. HelpBtn 오른쪽에 이어
+        // 붙는다(GoStop3PGame.Debug.cs). 릴리즈 빌드에는 버튼 자체가
+        // 안 만들어진다(BuildDebugToggle 내부 가드).
+        BuildDebugToggle(root, helpBtn);
+
         // 2026-09-04: "우측상단에 점당 얼마짜리 게임인지 표시 추가했어"
         // — 원래 사용자가 씬에 만든 "Info"(배경 Image) 밑에 "점당"/숫자/
         // "원" 세 라벨이 있었다. 2026-09-06 재조사 — "점당 가격 표시가
@@ -1791,7 +1796,7 @@ public partial class GoStop3PGame
             for (int i = 0; i < cardsInSlot.Count; i++)
             {
                 var c = cardsInSlot[i];
-                var offset = new Vector2(i * step, -i * step);
+                var offset = new Vector2(i * step * -1f, -i * step);
                 var target = FieldSlotTransform(c);
                 var go = HwatuUI.MakeCard(c, target, offset, FIELD_W, FIELD_H, null, false);
                 // 2026-09-02 버그 수정 — "뒷패가 깔린 패 pos에 들어갈 때 sibling이
@@ -2637,7 +2642,7 @@ public partial class GoStop3PGame
         // DrawField가 최종 step으로 다시 그릴 때 생기는 미세한 차이는
         // 이미 있는 SlamIn 보정(위 flyFrom 처리)이 부드럽게 메워준다.
         float step = FieldStackStep(Mathf.Max(existing, 2));
-        var offset = new Vector2(existing * step, -existing * step);
+        var offset = new Vector2(existing * step * -1f, -existing * step);
         var go = HwatuUI.MakeCard(card, target, offset, FIELD_W, FIELD_H, null, false);
         go.AddComponent<GhostMarker>();
         return go;
