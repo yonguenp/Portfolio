@@ -3340,6 +3340,13 @@ public partial class GoStop3PGame : MonoBehaviour
                 if (dual != null) dualPiPending.Add(dual);
             }
         }
+        // 2026-09-07 버그 수정(쪽/따닥과 같은 원인) — 폭탄/뻑먹기 이펙트
+        // 위치(ApplyMatchBonus의 comboEffectWorldPos)는 캡처+RebuildUI
+        // 이후 FieldSlotTransform을 다시 부르면 이미 반납된 슬롯 배정
+        // 때문에 엉뚱한 자리를 새로 잡는다 — matchedSlot(캡처 전 이미
+        // 확보해 둔 RectTransform 참조, 슬롯 마커 자체는 영구 고정
+        // 오브젝트라 나중에 읽어도 항상 정확하다)이 있을 때 미리 스냅샷.
+        if ((bomb || r1.matchCount == 3) && matchedSlot != null) comboEffectWorldPos = matchedSlot.position;
         RebuildUI();
         yield return new WaitForSeconds(PLAY_STEP_DELAY);
 
@@ -3424,6 +3431,17 @@ public partial class GoStop3PGame : MonoBehaviour
 
                     cap.AddRange(r2.captured);
                     GoStopAudio.Instance?.Capture();
+                    // 2026-09-07 — r1과 같은 이유. 뻑먹기(matchCount==3)가
+                    // 뒷패 쪽에서 완성되는 경우, ApplyMatchBonus가 나중에
+                    // FieldSlotTransform을 다시 부르면 이미 반납된 슬롯이라
+                    // 엉뚱한 자리를 잡는다 — 위에서 이미 등록해 둔 flyFrom
+                    // 스냅샷(r2.captured.Skip(1)의 첫 카드)을 재사용한다.
+                    if (r2.matchCount == 3)
+                    {
+                        var r2FieldCard = r2.captured.Skip(1).FirstOrDefault();
+                        if (r2FieldCard != null && flyFrom.TryGetValue(r2FieldCard, out var r2Pos))
+                            comboEffectWorldPos = r2Pos;
+                    }
                     bool chok = r1.placedOnField && r2.captured.Contains(card) && !isLastHandCard;
                     // 따닥: 손패로 필드 2장 중 하나를 고른 뒤(ddadakWatch=고르지
                     // 않은 나머지 한 장), 같은 턴의 뒷패가 그 나머지 한 장마저
@@ -3830,7 +3848,16 @@ public partial class GoStop3PGame : MonoBehaviour
         // 순수 싹쓸이(matchCount!=3, bomb 아님)로 여기 들어온 경우는 아래
         // `r.sweep` 블록에서 이 값을 안 건드리고 fieldArea.position 폴백으로
         // 자연히 넘어간다(위 comboEffectWorldPos 필드 주석 참고).
-        if (bomb || r.matchCount == 3) comboEffectWorldPos = FieldSlotTransform(r.captured[0]).position;
+        // 2026-09-07 — r1/r2 호출부는 이제 각자 캡처 직전(슬롯 배정이
+        // 아직 유효할 때) comboEffectWorldPos를 미리 정확히 스냅샷해
+        // 둔다 — 여기서 다시 계산하면 이미 반납된 슬롯 때문에 엉뚱한
+        // 자리를 잡아 그 값을 덮어써 버린다. 이미 설정돼 있으면 손대지
+        // 않고, DeckOnlySeq/ResolveBonusJoker의 "뻑 아님" 꼬리처럼 캡처
+        // 직후 곧바로(RebuildUI 전) 이 함수가 불리는 경로에서만 이
+        // 폴백이 여전히 정확하다(그 경로는 comboEffectWorldPos가 비어
+        // 있으므로 자연히 이 분기를 탄다).
+        if ((bomb || r.matchCount == 3) && comboEffectWorldPos == null)
+            comboEffectWorldPos = FieldSlotTransform(r.captured[0]).position;
         if (bomb) { StealPiFromEachOther(seat, 1); Toast(seat, "폭탄"); did = true; }
         else if (r.matchCount == 3)
         {
