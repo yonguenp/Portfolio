@@ -13330,3 +13330,51 @@ null) yield break;` 가드가 다음 프레임에 스스로 조용히 멈춰주�
 가로채기가 실제로 일어남) 확인 → 잠시 후 `capFlightGhosts.Count=0`,
 카드 `alpha=1`(정상 노출), 정확한 최종 위치에 안착 확인. 이 전체 테스트
 세션(정상+경합+자연 진행 몇 초) 콘솔 `error`/`exception` 0건.
+
+## 고스톱 — 보너스패 다음 뒷패 애니메이션이 부자연스러운 문제 (2026-09-08)
+
+"뒷패 깔 때 보너스패 나오면 그 다음 패 까는 애니메이션이 좀 부자연스럽다"
+신고 — `ResolveBonusJoker`(조커 파킹→다음 뒷패로 운명 확정)의 두 분기
+(`couldBury`=뻑 형성, "뻑 아님"=독립 캡처/필드 배치) 둘 다에서 `next`
+(조커 바로 다음에 까는 카드)를 `flyFrom[next] = drawPileArea.position;`
+만 등록하고 곧장 `RebuildUI()`를 불러 **밋밋한 수평 이동(SlamIn)** 으로만
+흘러들어 오고 있었다. 반면 바로 앞의 조커 자신(PlaySeq의 "② 뒷패
+슬램다운")과 이 파일의 다른 모든 덱 뒤집기(`PlaySeq`의 나머지 분기·
+`DeckOnlySeq`)는 전부 `SpawnGhostCard`+`SlamDown(..., suspensePulses:2)`
+— 더미 위에서 뒷면으로 잠깐 대기하다 뒤집히고, 결과에 맞는 완급
+(호쾌/힘없이)으로 떨어지는 연출을 받는다. 조커 자신은 이 플로어를 받고
+그 운명을 정하는 카드만 못 받으니, 같은 "뒷패 한 장 더 깐다"는 사건인데
+두 카드의 등장 방식이 어긋나 보였다.
+
+**고침 — 두 분기 모두 PlaySeq/DeckOnlySeq와 완전히 같은 패턴으로
+통일했다.** `couldBury`(뻑 형성)는 target=`FieldSlotTransform(anchor)`,
+PlaySeq의 뻑-형성 완급(dropHeight 60·dropDur 0.22·punchDur 0.16·
+punchScale 1.06, "힘없이")과 동일한 값을 그대로 썼다. "뻑 아님"은
+target=`FieldSlotTransform(next)`, `LandingMood(willCapture, bigCapture)`로
+매칭 여부에 따른 완급을 계산 — 다른 일반 뒷패 슬램과 동일한 공식.
+둘 다 `SpawnGhostCard` → `yield return StartCoroutine(SlamDown(...,
+suspensePulses: 2))` → `DestroyGhost` 순서로 실제 상태 변경(`field.Add`/
+`flyFrom` 등록/`RebuildUI`)보다 먼저 실행되게 배치했다 — "먼저 보여주고
+나서 결과를 확정한다"는 이 프로젝트 전역의 기존 순서 원칙 그대로.
+
+**검증(Play 모드 라이브, 리플렉션).** ①`couldBury`(디버그 패널
+`JokerPark` 시나리오, 5월) — 손패 무매칭 → 조커 파킹 → next(5월 짝)로
+뻑 형성. 필드에 `[May_Tane, Joker_1, May_Tanzaku]` 3장이 정확한 계단식
+오프셋으로 쌓이는 것, `ppeokCauser`/`ppeokBonusPi` 정상 기록 확인(로직
+회귀 없음). ②"뻑 아님"(3월 무매칭 손패 + 필드에 8월 1장 미리 배치 +
+[조커, 매칭되는 8월 카드] 순으로 덱 리깅) — 조커+매칭된 8월 카드
+쌍(`August_Tane`+`August_Hikari`) 정확히 캡처, anchor(March_Hikari)는
+그대로 필드에 남는 것 확인. 두 테스트 모두 완전히 새 Play 세션에서
+실행해 콘솔 `error`/`exception` 0건.
+
+> **함정 — 같은 Play 세션에서 테스트를 연달아 돌리면 이전 테스트가
+> 남긴 상태(예: 해소 안 된 뻑 무더기)가 다음 테스트를 오염시킬 수
+> 있다.** 두 번째 검증을 처음 시도했을 때 `captured[0]`에 "Joker_2"가
+> 두 장 잡혀서 순간 새 버그로 오판할 뻔했다 — 원인은 내가 만든 코드가
+> 아니라, 첫 번째 테스트가 만든 5월 뻑 무더기(`Joker_1` 포함, 미해소
+> 상태로 필드에 남음)와 몇 초의 자연 진행(백그라운드 AI 턴)이 겹친
+> 테스트 오염이었다. `hand`/`captured`/`field`/`drawPile` 전부에서
+> 조커를 미리 지우고 완전히 새 Play 세션에서 재검증하니 정확히
+> 3장(`Joker_2, August_Tane, August_Hikari`)만 깔끔하게 잡혔다 — 이
+> 프로젝트에 이미 여러 번 기록된 "리플렉션 테스트가 실제 게임과
+> 경합한다"는 함정과 같은 계열.

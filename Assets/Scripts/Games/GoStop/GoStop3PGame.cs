@@ -4020,9 +4020,24 @@ public partial class GoStop3PGame : MonoBehaviour
             // 뻑! joker는 이미 field에 있으니 next만 같은 슬롯에 합류시킨다.
             // anchor 자신은 물리적으로 있든 없든 손대지 않는다 — 이미
             // 있으면 그대로, 이미 캡처돼 사라졌으면 그 상태 그대로 둔다.
+            // 2026-09-08 — "보너스패 나온 다음 뒷패 애니메이션이 부자연스럽다"
+            // 신고. 예전엔 여기서 flyFrom만 등록하고 곧장 RebuildUI를 불러서
+            // SlamIn(수평 이동)으로 밋밋하게 흘러들어 왔다 — 바로 앞(PlaySeq)의
+            // 조커 자신은 긴장 펄스+드롭 연출(SlamDown)을 받는데, 조커의 운명을
+            // 정하는 이 next 카드만 아무 연출 없이 미끄러져 들어와서 두 카드의
+            // 등장 방식이 어긋나 보였다. PlaySeq의 정상 뒷패 슬램과 완전히
+            // 같은 고스트+SlamDown을 쓴다 — 뻑으로 묻히는 결과라 PlaySeq의
+            // 뻑-형성 완급(힘없이)과 같은 값.
+            var nextTarget = FieldSlotTransform(anchor);
+            var nextGhost = SpawnGhostCard(next, nextTarget);
+            var nextLanding = nextGhost.transform.position;
+            yield return StartCoroutine(SlamDown(nextGhost.transform as RectTransform, nextTarget,
+                dropHeight: 60f, dropDur: 0.22f, punchDur: 0.16f, punchScale: 1.06f, cardMonth: next.month, suspensePulses: 2));
+            DestroyGhost(nextGhost);
+
             field.Add(next);
             fieldSlotAssign[next] = AssignFieldSlot(anchor);
-            flyFrom[next] = drawPileArea.position;
+            flyFrom[next] = nextLanding;
             ppeokCauser[anchor.month] = seat;
             ppeokBonusPi[anchor.month] = joker;
 
@@ -4060,7 +4075,20 @@ public partial class GoStop3PGame : MonoBehaviour
 
         // next는 독립적인 새 카드로 정상 매칭 로직을 그대로 탄다(기존
         // "extra 카드" 처리와 동일한 경로 — Resolve→선택→매칭 판정).
-        flyFrom[next] = drawPileArea.position;
+        // 2026-09-08 — 위 couldBury 분기와 같은 이유로 고스트+SlamDown을
+        // 추가했다. 매칭 여부에 따른 완급은 PlaySeq/DeckOnlySeq의 일반
+        // 뒷패 슬램과 동일한 공식(LandingMood)을 그대로 쓴다.
+        var nextTarget2 = FieldSlotTransform(next);
+        bool nextWillCapture = nextTarget2.childCount > 0;
+        bool nextBigCapture = nextWillCapture && nextTarget2.childCount >= 3;
+        var nextMood = LandingMood(nextWillCapture, nextBigCapture);
+        var nextGhost2 = SpawnGhostCard(next, nextTarget2);
+        var nextLanding2 = nextGhost2.transform.position;
+        yield return StartCoroutine(SlamDown(nextGhost2.transform as RectTransform, nextTarget2,
+            dropHeight: nextMood.dropHeight, dropDur: nextMood.dropDur, punchDur: nextMood.punchDur, punchScale: nextMood.punchScale,
+            cardMonth: next.month, suspensePulses: 2));
+        DestroyGhost(nextGhost2);
+        flyFrom[next] = nextLanding2;
         var r = GoStopRules.Resolve(next, field);
 
         if (r.choiceCandidates != null)
