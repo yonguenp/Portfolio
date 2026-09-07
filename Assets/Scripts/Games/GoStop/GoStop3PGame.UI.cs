@@ -803,14 +803,14 @@ public partial class GoStop3PGame
         shakePopup.SetSecondary(() => OnShakeChoice(false));
     }
 
-    /// <summary>나가기 확인 팝업 — ShakeConfirmPopup과 같은 범용 2버튼
+    /// <summary>나가기 확인 팝업 — ExitConfirmPopup
     /// 프리팹을 새 인스턴스로 하나 더 만든다(프리팹은 공유해도 인스턴스는
     /// 독립적이라 서로 다른 용도로 동시에 존재할 수 있다). 버튼 라벨은
     /// 프리팹 기본값(흔들기용 "예/아니오")과 달라야 하므로 런타임에
     /// 텍스트를 직접 덮어쓴다.</summary>
     void BuildExitConfirmUI(RectTransform canvasRoot)
     {
-        exitConfirmPopup = HwatuUI.InstantiatePopup<ModalTwoButtonPopup>("ShakeConfirmPopup", canvasRoot);
+        exitConfirmPopup = HwatuUI.InstantiatePopup<ModalTwoButtonPopup>("ExitConfirmPopup", canvasRoot);
         exitConfirmPopup.messageText.text = "게임을 종료하고 타이틀로 나가시겠습니까?";
         var primaryLabel = exitConfirmPopup.primaryButton.GetComponentInChildren<TextMeshProUGUI>();
         if (primaryLabel) primaryLabel.text = "나가기";
@@ -1796,7 +1796,7 @@ public partial class GoStop3PGame
             for (int i = 0; i < cardsInSlot.Count; i++)
             {
                 var c = cardsInSlot[i];
-                var offset = new Vector2(i * step * -1f, -i * step);
+                var offset = new Vector2(i * step, -i * step);
                 var target = FieldSlotTransform(c);
                 var go = HwatuUI.MakeCard(c, target, offset, FIELD_W, FIELD_H, null, false);
                 // 2026-09-02 버그 수정 — "뒷패가 깔린 패 pos에 들어갈 때 sibling이
@@ -2009,6 +2009,20 @@ public partial class GoStop3PGame
                 Vector2 fromSize = flyFromSize.TryGetValue(c, out var sz) ? sz : new Vector2(FIELD_W, FIELD_H);
                 pending.Add(((RectTransform)go.transform, c, from, hit, fromSize));
             }
+            else if (capFlightGhosts.TryGetValue(c, out var staleGhost))
+            {
+                // 2026-09-08 — capFlightGhosts 문서 참고. 이전 RebuildUI가
+                // 시작한 SlamToCap이 아직 날아가는 도중인데 이번 RebuildUI가
+                // 같은 카드를 또 그렸다 — 옛 고스트의 "지금 실제 화면 위치"를
+                // 그대로 이어받아 새 목적지로 다시 날린다. 옛 고스트는 여기서
+                // 즉시 파괴한다(그 코루틴은 다음 프레임 `ghost==null` 가드로
+                // 스스로 조용히 멈춘다).
+                capFlightGhosts.Remove(c);
+                Vector3 from2 = staleGhost != null ? staleGhost.position : go.transform.position;
+                Vector2 fromSize2 = staleGhost != null ? staleGhost.sizeDelta : new Vector2(CAP_W, CAP_H);
+                if (staleGhost != null) Destroy(staleGhost.gameObject);
+                pending.Add(((RectTransform)go.transform, c, from2, (Vector3?)null, fromSize2));
+            }
             else
             {
                 GoStopFX.SetArtShadow(go, true); // 이번 리빌드에서 안 움직이는 정적 카드
@@ -2125,6 +2139,10 @@ public partial class GoStop3PGame
         var ghostGo = HwatuUI.MakeCard(card, stableParent, Vector2.zero, fromSize.x, fromSize.y, null, false);
         var ghost = ghostGo.transform as RectTransform;
         ghost.position = from;
+        // 2026-09-08 — capFlightGhosts 문서 참고. 이 카드를 향한 비행이
+        // 아직 안 끝났는데 다음 RebuildUI가 같은 카드를 다시 그리면, 그
+        // 시점의 MakeOne이 이 고스트를 찾아 이어받는다.
+        capFlightGhosts[card] = ghost;
 
         if (hit.HasValue)
         {
@@ -2146,6 +2164,13 @@ public partial class GoStop3PGame
             yield return FlyAndPunchGhost(ghost, from, to, fromSize, toSize,
                 Mathf.Lerp(0.11f, 0.38f, t01), Mathf.Lerp(0.14f, 0.22f, t01));
         }
+
+        // 방해 없이 끝까지 날아온 정상 완주 — 이 카드는 더 이상 "비행 중"이
+        // 아니다. g==ghost 가드는 방어적: 이 지점에 정상 도달했다는 건
+        // 아무도 가로채지 않았다는 뜻이라 사실상 항상 참이지만, 혹시라도
+        // 다른 항목을 실수로 지우지 않도록 남긴다.
+        if (capFlightGhosts.TryGetValue(card, out var myEntry) && myEntry == ghost)
+            capFlightGhosts.Remove(card);
 
         if (rt != null)
         {
@@ -2642,7 +2667,7 @@ public partial class GoStop3PGame
         // DrawField가 최종 step으로 다시 그릴 때 생기는 미세한 차이는
         // 이미 있는 SlamIn 보정(위 flyFrom 처리)이 부드럽게 메워준다.
         float step = FieldStackStep(Mathf.Max(existing, 2));
-        var offset = new Vector2(existing * step * -1f, -existing * step);
+        var offset = new Vector2(existing * step, -existing * step);
         var go = HwatuUI.MakeCard(card, target, offset, FIELD_W, FIELD_H, null, false);
         go.AddComponent<GhostMarker>();
         return go;
