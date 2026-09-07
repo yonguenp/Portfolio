@@ -3154,47 +3154,26 @@ public partial class GoStop3PGame : MonoBehaviour
 
             if (drawn.isJoker)
             {
-                // 2026-09-06 버그 수정("아직도 빈 공간에 슬램다운") — 조커가
-                // 필드의 anchor 슬롯에 합류할 때(couldBePpeok 대기 페어든,
-                // 완전 무매칭으로 혼자 남은 카드든 — 아래 "③ 뻑 판정"/
-                // ResolveBonusJoker에서 실제로 파킹되는 경우), 그 슬롯 배정
-                // 자체는 그 이후에야 이뤄졌다 — 그런데 이 애니메이션(②)은
-                // 그보다 먼저 실행되므로, 배정이 아직 안 된 시점의
-                // FieldSlotTransform(drawn)은 조커 전용 규칙(월이 없어 항상
-                // 새 빈 슬롯)을 그대로 따라 엉뚱한 빈 자리로 떨어졌다 —
-                // 데이터(최종 렌더)는 나중에 올바르게 고쳐지지만, 그 사이의
-                // 착지 애니메이션만 틀린 자리를 보여준 것이었다.
-                //
-                // 처음엔 couldBePpeok 케이스만 여기서 미리 계산해 뒀는데,
-                // "완전 무매칭"(손패가 아무 데도 안 붙어 그대로 필드에 혼자
-                // 남는 경우, r1.captured.Count==0)도 똑같이 뒷패 조커가
-                // 그 위에 파킹될 수 있다는 걸 놓쳤다 — anchor가 나중에
-                // ResolveBonusJoker에서 실제로 field에 있는지로 판정되는데
-                // (뒤에서 field.Contains(anchor)), couldBePpeok는 그
-                // 판정이 나기도 전인 "③"에서 anchor를 되돌려 넣지만
-                // 완전 무매칭은 애초에 "①"에서 이미 field에 그대로 남아
-                // 있다는 차이만 있을 뿐, "이 조커가 anchor와 함께 쌓일
-                // 것"이라는 결론 자체는 두 경우 다 여기서 미리 알 수 있다.
-                // 예약 슬롯 수(reservedSlots)만 다르다 — couldBePpeok는
-                // 카드+매칭필드패 2장, 완전 무매칭은 카드 1장뿐이라 "이
-                // 달 카드가 몇 장 더 남아야 완성 가능한지" 문턱값이 갈린다
-                // (ResolveBonusJoker의 parkOnAnchor 최종 판정과 같은 공식:
-                // reservedSlots + alreadyCapturedOfMonth < 4).
-                HwatuCard parkAnchor = null;
-                int reservedSlots = 0;
-                if (couldBePpeok) { parkAnchor = card; reservedSlots = 2; }
-                else if (!bomb && r1.captured.Count == 0) { parkAnchor = card; reservedSlots = 1; }
+                // 2026-09-06 4차 재설계(사용자 확정 명세) — 뒷패 조커는
+                // "이번 턴에 낸 손패(card)의 자리에 일단 얹힌다"는 게
+                // 유일한 원칙이다. couldBePpeok/완전 무매칭/따닥(ddadakWatch)
+                // 같은 손패 쪽 세부 경로가 무엇이었든, 지금 field에 그 달
+                // 실카드가 몇 장 있는지는 그냥 이 시점의 field를 그대로
+                // 세면 된다(카드가 아직 물리적으로 field에 없어도 —
+                // couldBePpeok는 "③"이 나중에 되돌려 넣는다 — AssignFieldSlot은
+                // 월 기준으로 슬롯을 찾으므로 최종 도착지는 항상 같다).
+                // 실제 파킹 여부·용량 판단은 ResolveBonusJoker 안에서
+                // 최종 확정한다 — 여기서는 애니메이션이 그 최종 결정과
+                // 어긋나지 않도록 같은 공식으로 미리 슬롯만 잡아둔다.
+                int reservedInField = field.Count(c => c.month == card.month && !c.isJoker);
+                int alreadyCapturedOfMonth = captured.Where(cap => cap != null)
+                    .Sum(cap => cap.Count(c => c.month == card.month));
+                if (reservedInField + alreadyCapturedOfMonth < 4)
+                    fieldSlotAssign[drawn] = AssignFieldSlot(card);
 
-                if (parkAnchor != null)
-                {
-                    int alreadyCapturedOfMonth = captured.Where(cap => cap != null)
-                        .Sum(cap => cap.Count(c => c.month == parkAnchor.month));
-                    if (reservedSlots + alreadyCapturedOfMonth < 4)
-                        fieldSlotAssign[drawn] = AssignFieldSlot(parkAnchor);
-                }
                 var target = FieldSlotTransform(drawn);
-                Debug.Log("[GoStopJokerGhost] drawn=" + drawn.spriteName + " couldBePpeok=" + couldBePpeok +
-                    " target=" + target.name + " anchorTarget=" + FieldSlotTransform(card).name);
+                Debug.Log("[GoStopJokerGhost] drawn=" + drawn.spriteName + " cardMonth=" + card.month +
+                    " reservedInField=" + reservedInField + " target=" + target.name);
                 deckGhost = SpawnGhostCard(drawn, target);
                 // 위 손패 슬램과 같은 이유(2026-09-02) — target.position이
                 // 아니라 고스트의 실제 착지 자리를 flyFrom에 기록한다.
@@ -3401,6 +3380,12 @@ public partial class GoStop3PGame : MonoBehaviour
                 DestroyGhost(deckGhost);
                 HwatuCard anchor = r1.captured.Count == 0 ? card : null;
                 yield return StartCoroutine(ResolveBonusJoker(seat, drawn, anchor, cap, isLastHandCard, handActualLanding));
+                // 조커 연쇄가 뻑으로 이어져 쓰리뻑 즉시승리(EndGame)까지
+                // 갈 수 있다 — 게임을 끝내는 분기 뒤에 아래 트레일링
+                // onDone을 부르면 안 된다(이 프로젝트가 이미 겪은 "3연뻑
+                // 버그"와 같은 함정 — onDone은 "턴이 정상적으로 끝났다"는
+                // 뜻이라 그 자체로 다음 턴 진행을 트리거한다).
+                if (state == State.GameOver) yield break;
             }
             else
             {
@@ -3602,30 +3587,43 @@ public partial class GoStop3PGame : MonoBehaviour
         onDone?.Invoke();
     }
 
-    /// <summary>보너스피(조커) 처리. 조커는 월이 없어(<see cref="HwatuCard.isJoker"/>)
-    /// 실제 매칭에 참여할 수 없다.
+    /// <summary>보너스피(조커) 처리 — 2026-09-06 사용자 확정 명세로 전면
+    /// 재작성. 조커는 월이 없어(<see cref="HwatuCard.isJoker"/>) 실제
+    /// 매칭에 참여할 수 없다.
     /// <br/>
-    /// 2026-09-06(사용자 확인) — "뒷패에서 보너스패가 나오면 빈 pos가 아니라
-    /// 손패에서 나가 아직 필드에 남아있는 카드(<paramref name="anchor"/>) 위에
-    /// 쌓여야 한다 — 나중에 뻑이 될 수도 있어서, 뻑을 해소하는 쪽이 조커까지
-    /// 한꺼번에 가져가야 한다." anchor가 아직 필드에 살아있으면(캡처 안 된
-    /// 채 대기 중이면) 즉시 캡처하지 않고 anchor의 슬롯에 합류시켜 그대로
-    /// 필드에 남긴다 — <c>ppeokBonusPi[anchor.month]</c>에 등록해 두면
-    /// 이후 그 달을 캡처하는 모든 경로(2인/4인 여러 곳 — 필드선택 팝업을
-    /// 조커 핸드오프로 대체하는 분기, 뻑 먹기 matchCount==3 분기 등)가
-    /// 자동으로 조커까지 같이 걷어간다. **이 소비 로직 자체는 이미 있었지만
-    /// 지금까지 아무도 `ppeokBonusPi`에 값을 써준 적이 없어 죽은 코드였다**
-    /// — anchor가 없거나(DeckOnlySeq 등) 이미 다른 경로로 사라진 경우에만
-    /// 예전처럼 그 자리에서 즉시 캡처한다(겹쳐놓을 대상이 없으므로).
+    /// **확정 규칙(사용자 명세, 그대로 인용):**
+    /// "뒷패에서 조커 -> 플레이어 현재턴에 낸 패 위에 일단 붙여놓는다.
+    /// 그리고 뒷패를 하나 더 까서 뻑이 아니면 유저 소유. 뻑이나면 필드에
+    /// 묻어놓는다. 해당 뻑을 가져가는 사람이 조커도 가져간다. 조커가
+    /// 연속적으로 나오는 케이스에도 위 규칙을 동일하게 적용하면 됨."
     /// <br/>
-    /// **함정 — 뒷패(extra)를 절대 `Resolve()` 없이 그냥 필드에 던지지
-    /// 말 것.** 조커는 진짜 카드가 아니라 이번 턴 덱 소모 몫을 아직 못
-    /// 채운 상태라, anchor 유무와 무관하게 항상 뒷패를 한 장 더 까고 일반
-    /// 덱 캡처와 완전히 같은 경로(Resolve→선택→매칭 판정)를 거쳐야 한다 —
-    /// anchor가 이 카드에 맞춰 잡히면 그게 곧 쪽이다. 예전에 "extra가 anchor와
-    /// 다른 달이면 그냥 필드에 던진다"는 특수 분기가 있었는데, 그 카드가
-    /// 필드의 무관한 다른 카드와 우연히 짝이 맞아도 절대 안 먹히고 계속
-    /// 쌓이기만 해서 "필드에 홀수 개가 남는다"는 버그로 이어졌다.</summary>
+    /// 즉 조커의 운명은 그 자리에서 바로 다음 카드 한 장으로 **즉시**
+    /// 확정된다 — 예전(9/6 초·중반) 설계처럼 "일단 파킹해두고 언제
+    /// 완성될지 모르는 채로 무기한 대기"하지 않는다. 이 즉시-확정 덕분에
+    /// "따로 떠 있다가 다른 사람 정상 매칭에 orphan된다"·"두 번째 조커가
+    /// 같은 자리를 덮어써 첫 조커 추적이 끊긴다" 같은, 무기한 대기
+    /// 상태이기 때문에만 생기던 버그 부류가 구조적으로 성립할 수 없다.
+    /// <br/>
+    /// <paramref name="anchor"/>는 "이번 턴에 낸 손패" 그 자체(<c>card</c>)를
+    /// 가리키는 **개념적** 참조다 — couldBePpeok로 아직 field에 안 돌아와
+    /// 있든, 이미 정상 매칭으로 캡처돼 사라졌든 상관없다. <c>AssignFieldSlot</c>
+    /// 이 월 기준으로 슬롯을 찾으므로, anchor 객체 자신이 지금 물리적으로
+    /// field에 있는지와 무관하게 항상 같은(그 달) 슬롯을 가리킨다 — 그
+    /// 슬롯에 이미 다른 실카드(예: 따닥에서 고르지 않고 남은 카드)가
+    /// 있으면 조커는 자연히 그 카드 옆에 쌓인다. 손패를 안 낸 턴
+    /// (DeckOnlySeq)은 anchor 자체가 없어(null) 붙여놓을 자리가 없으므로
+    /// 곧장 유저 소유로 처리한다.
+    /// <br/>
+    /// **용량 가드.** 이 달의 실카드는 항상 정확히 4장이다 — 지금
+    /// field에 있는 실카드 수(<c>reservedInField</c>) + 이미 어딘가에
+    /// 캡처된 장수가 4장에 도달했다면 "뻑으로 묻어도 영원히 완성 못
+    /// 하는" 상태이므로, 파킹 자체를 시도하지 않고 곧장 유저 소유로
+    /// 처리한다(9/6 "죽은 무더기" 신고로 확정된 안전장치, 그대로 유지).
+    /// <br/>
+    /// **연속 조커.** 파킹 이후 뽑은 "한 장 더"가 또 조커면, 조커는
+    /// 월이 없어 anchor와 절대 못 맞는다 — 이번 조커는 무조건 "뻑
+    /// 아님"으로 확정돼 유저 소유가 되고, 새 조커에 같은 규칙을 같은
+    /// anchor 기준으로 재귀 적용한다(사용자 명세 마지막 줄 그대로).</summary>
     /// <param name="revealFrom">2026-08-23: "뒷패가 보너스패라면 유저가
     /// 직전에 선택한 손패 위 포지션에 등장한다" 요청 — PlaySeq가 방금
     /// 손패 슬램다운이 착지한 지점을 넘겨주면 그 자리에서 나타난다. 안
@@ -3638,77 +3636,91 @@ public partial class GoStop3PGame : MonoBehaviour
     /// 적용된다(사용자 확인).</param>
     IEnumerator ResolveBonusJoker(int seat, HwatuCard joker, HwatuCard anchor, List<HwatuCard> cap, bool isLastHandCard, Vector3? revealFrom = null)
     {
-        // 2026-09-06 재정리 — "anchor가 필드에 살아있으면 무조건 파킹"이던
-        // 예전 조건에, couldBePpeok 전용으로 따로 두었던 "완성 가능성" 가드를
-        // 통합했다. 이 달 카드는 항상 정확히 4장 — 지금 field에 이미 쌓여
-        // 있는 실카드 장수(reservedInField, couldBePpeok가 되돌린 2장짜리
-        // 대기 페어든, 완전 무매칭으로 혼자 남은 anchor 1장이든 이 시점엔
-        // 이미 field에 반영돼 있다) + 다른 좌석이 이미 캡처한 장수를 더해
-        // 4장을 넘으면(=4번째 실카드가 세상에 더 없으면) 파킹하지 않고
-        // 즉시 캡처로 진행한다 — anchor가 field에 "혼자만" 있는 완전
-        // 무매칭 케이스에는 이 가드가 지금까지 아예 없어서, couldBePpeok
-        // 때와 똑같은 "영원히 못 먹는 죽은 무더기"가 만들어질 수 있었다.
-        bool parkOnAnchor = false;
-        if (anchor != null && field.Contains(anchor))
+        if (anchor == null)
         {
-            int reservedInField = field.Count(c => c.month == anchor.month && !c.isJoker);
-            int alreadyCapturedOfMonth = captured.Where(cap => cap != null)
-                .Sum(cap => cap.Count(c => c.month == anchor.month));
-            parkOnAnchor = reservedInField + alreadyCapturedOfMonth < 4;
-        }
-        Debug.Log("[GoStopJoker] anchor=" + (anchor == null ? "null" : anchor.spriteName) +
-            " anchorInField=" + (anchor != null && field.Contains(anchor)) + " parkOnAnchor=" + parkOnAnchor);
-        if (parkOnAnchor)
-        {
-            fieldSlotAssign[joker] = AssignFieldSlot(anchor); // anchor와 같은 pos에 쌓인다
-            field.Add(joker);
-            ppeokBonusPi[anchor.month] = joker;
-            flyFrom[joker] = revealFrom ?? drawPileArea.position;
-            Toast(seat, "보너스패 쌓임");
-            RebuildUI();
-            yield return new WaitForSeconds(PLAY_STEP_DELAY * 0.5f);
-        }
-        else
-        {
-            field.Add(joker);
-            flyFrom[joker] = revealFrom ?? drawPileArea.position;
-            RebuildUI();
-            yield return new WaitForSeconds(PLAY_STEP_DELAY * 0.5f);
-
-            field.Remove(joker);
-            cap.Add(joker);
-            flyFrom[joker] = fieldArea.position;
-            Toast(seat, "보너스 획득");
-            RebuildUI();
-            yield return new WaitForSeconds(PLAY_STEP_DELAY * 0.5f);
-        }
-
-        if (drawPile.Count == 0) yield break;
-
-        var extra = drawPile[0]; drawPile.RemoveAt(0);
-
-        if (extra.isJoker)
-        {
-            // 두 조커가 연달아 나오는 극히 드문 경우 — 같은 함수를 재귀
-            // 호출해서 이번에도 같은 anchor 기준으로 처리한다.
-            yield return StartCoroutine(ResolveBonusJoker(seat, extra, anchor, cap, isLastHandCard));
+            yield return StartCoroutine(CaptureBonusJokerImmediately(seat, joker, cap, revealFrom));
             yield break;
         }
 
-        flyFrom[extra] = drawPileArea.position;
-        var r = GoStopRules.Resolve(extra, field);
+        int reservedInField = field.Count(c => c.month == anchor.month && !c.isJoker);
+        int alreadyCapturedOfMonth = captured.Where(c2 => c2 != null)
+            .Sum(c2 => c2.Count(c => c.month == anchor.month));
+        if (reservedInField + alreadyCapturedOfMonth >= 4)
+        {
+            yield return StartCoroutine(CaptureBonusJokerImmediately(seat, joker, cap, revealFrom));
+            yield break;
+        }
+
+        // 1) 이번 턴에 낸 패(anchor) 자리에 일단 붙여놓는다 — 아직 확정 아님.
+        fieldSlotAssign[joker] = AssignFieldSlot(anchor);
+        field.Add(joker);
+        flyFrom[joker] = revealFrom ?? drawPileArea.position;
+        Toast(seat, "보너스패 대기");
+        RebuildUI();
+        yield return new WaitForSeconds(PLAY_STEP_DELAY * 0.5f);
+
+        // 2) 곧바로 뒷패를 하나 더 깐다 — 이 카드가 조커의 운명을 정한다.
+        if (drawPile.Count == 0)
+        {
+            yield return StartCoroutine(CaptureBonusJokerImmediately(seat, joker, cap, null));
+            yield break;
+        }
+        var next = drawPile[0]; drawPile.RemoveAt(0);
+
+        if (next.isJoker)
+        {
+            // 조커는 anchor와 절대 못 맞는다 — 이번 조커(joker)는 "뻑 아님"
+            // 으로 확정돼 유저 소유가 되고, 새 조커(next)에 같은 규칙을
+            // 같은 anchor로 재귀 적용한다.
+            yield return StartCoroutine(CaptureBonusJokerImmediately(seat, joker, cap, null));
+            yield return StartCoroutine(ResolveBonusJoker(seat, next, anchor, cap, isLastHandCard, drawPileArea.position));
+            yield break;
+        }
+
+        if (next.month == anchor.month)
+        {
+            // 뻑! joker는 이미 field에 있으니 next만 같은 슬롯에 합류시킨다.
+            // anchor 자신은 물리적으로 있든 없든 손대지 않는다 — 이미
+            // 있으면 그대로, 이미 캡처돼 사라졌으면 그 상태 그대로 둔다.
+            field.Add(next);
+            fieldSlotAssign[next] = AssignFieldSlot(anchor);
+            flyFrom[next] = drawPileArea.position;
+            ppeokCauser[anchor.month] = seat;
+            ppeokBonusPi[anchor.month] = joker;
+
+            int total = ++ppeokTotalCount[seat];
+            ++ppeokStreak[seat];
+            comboEffectWorldPos = FieldSlotTransform(anchor).position;
+            Toast(seat, "보너스+뻑");
+            RebuildUI();
+            yield return new WaitForSeconds(PLAY_STEP_DELAY);
+
+            // 쓰리뻑 — 이번 판 통산 3번째 뻑이면 즉시 승리. 호출자(PlaySeq)가
+            // 이 뒤에 트레일링 onDone을 부르지 않도록 state를 확인해야 한다
+            // (이 함수는 EndGame을 부른 뒤 그대로 yield break만 한다).
+            if (total >= 3) EndGame(seat, fixedBaseScore: 3);
+            yield break;
+        }
+
+        // 뻑 아님 — 조커는 유저 소유로 확정.
+        yield return StartCoroutine(CaptureBonusJokerImmediately(seat, joker, cap, null));
+
+        // next는 독립적인 새 카드로 정상 매칭 로직을 그대로 탄다(기존
+        // "extra 카드" 처리와 동일한 경로 — Resolve→선택→매칭 판정).
+        flyFrom[next] = drawPileArea.position;
+        var r = GoStopRules.Resolve(next, field);
 
         if (r.choiceCandidates != null)
         {
-            if (ppeokBonusPi.TryGetValue(extra.month, out var jokerAtExtra))
+            if (ppeokBonusPi.TryGetValue(next.month, out var jokerAtNext))
             {
-                r = GoStopRules.ResolveJokerPpeok(extra, r.choiceCandidates, jokerAtExtra, field);
-                ppeokBonusPi.Remove(extra.month); // 이중 지급 방지 (PlaySeq의 r1/r2 분기와 같은 이유)
+                r = GoStopRules.ResolveJokerPpeok(next, r.choiceCandidates, jokerAtNext, field);
+                ppeokBonusPi.Remove(next.month); // 이중 지급 방지
             }
             else
             {
                 GoStopRules.CaptureResult chosen = null;
-                yield return StartCoroutine(ContinueChoice(extra, r, seat, res => chosen = res));
+                yield return StartCoroutine(ContinueChoice(next, r, seat, res => chosen = res));
                 r = chosen;
             }
         }
@@ -3719,8 +3731,9 @@ public partial class GoStop3PGame : MonoBehaviour
             GoStopAudio.Instance?.Capture();
             RegisterFlyViaField(r);
 
-            // 쪽 — anchor가 이 뒷패에 맞춰 잡혔다. PlaySeq의 일반 쪽 판정
-            // (r1.placedOnField && r2.captured.Contains(card))과 완전히 같은 형태다.
+            // 쪽 — anchor가 이 next에 맞춰 잡혔다(anchor가 아직 field에
+            // 남아있던 경우에만 성립 — Resolve가 실제 field 카드만 매칭
+            // 하므로 이미 캡처돼 사라진 anchor는 자연히 걸리지 않는다).
             bool chok = anchor != null && r.captured.Contains(anchor) && !isLastHandCard;
             if (chok)
             {
@@ -3745,6 +3758,28 @@ public partial class GoStop3PGame : MonoBehaviour
 
         RebuildUI();
         yield return new WaitForSeconds(PLAY_STEP_DELAY);
+    }
+
+    /// <summary>조커를 그 자리에서 곧장 현재 플레이어 소유로 확정한다 —
+    /// field에 아직 안 나와 있으면(파킹을 시도조차 안 한 anchor==null·
+    /// 용량초과 케이스) 먼저 field에 살짝 등장시켰다 거둬가고, 이미
+    /// field에 얹혀 있으면(파킹 대기 중이었다 "뻑 아님"으로 확정된 경우)
+    /// 등장 연출 없이 바로 거둬간다.</summary>
+    IEnumerator CaptureBonusJokerImmediately(int seat, HwatuCard joker, List<HwatuCard> cap, Vector3? revealFrom)
+    {
+        if (!field.Contains(joker))
+        {
+            field.Add(joker);
+            flyFrom[joker] = revealFrom ?? drawPileArea.position;
+            RebuildUI();
+            yield return new WaitForSeconds(PLAY_STEP_DELAY * 0.5f);
+        }
+        field.Remove(joker);
+        cap.Add(joker);
+        flyFrom[joker] = fieldArea.position;
+        Toast(seat, "보너스 획득");
+        RebuildUI();
+        yield return new WaitForSeconds(PLAY_STEP_DELAY * 0.5f);
     }
 
     /// <summary>폭탄이 아닌 매칭 보너스(뻑 해소/자뻑·싹쓸이) — 쪽은 <see cref="PlaySeq"/>에서
