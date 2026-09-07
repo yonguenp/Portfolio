@@ -12760,3 +12760,161 @@ Kasu=True Hikari=True Joker=True` — 신고된 버그(패가 필드에 미아�
 > 수정을 코드 리딩만으로 충분히 확신할 수 있더라도 **먼저 그 라이브
 > 상태부터 리플렉션으로 읽어 확인한 뒤에** recompile을 돌릴 것 — 순서를
 > 바꾸면 검증 기회 자체가 사라진다.
+
+## 고스톱 4인판 — 캐릭터별 AI 스킬 프로필 (`GoStopSkillProfile`) (2026-09-07)
+
+"등급에 따른 AI 패턴 뭐 있나" 브레인스토밍(밀어주기·게임포기 외에
+독박회피형 고/스톱·폭탄크레딧 전략화·패흐름카운팅·판돈배수 인지형
+몰빵/보수·연패 심리·동맹 관찰형 방어 스톱 7개를 제안했던 것)에 이어
+"전부 다 구현하는데 스킬의 유용함에따라서 각 13개 캐릭터에 능력을
+부여하고 싶어. 웹에서 타짜 영화 찾아보고 각 캐릭터에 맞게 스킬능력
+배분해서 세팅해줘"라는 요청 — A/B/C 3단계 티어 하나로 뭉뚱그려져 있던
+CPU 행동을 캐릭터 13명 각자의 개성에 맞춰 세분화했다.
+
+### 아키텍처 — `GoStopTier`는 폐기하지 않고 시드머니 전용으로 격하
+
+새 파일 `GoStopSkillProfile.cs` — 17개 float(0~1) 필드(정확도 계열
+5종 + 성향 계열 4종(기존) + 신규 8종: `DokbakCaution`/`BombCreditStrategy`/
+`CardCountingSkill`/`SetCompletionWeight`/`FieldSetAwareness`/
+`AllyTargetingSkill`/`StakeRiskAwareness`/`TiltResistance`/
+`PressureDetection`). `Base(GoStopTier tier, ...17개 nullable override...)`
+팩토리가 티어 기본값에서 시작해 캐릭터가 명시적으로 넘긴 필드만 덮어쓴다
+— 캐릭터 하나당 "이 캐릭터가 유독 잘하는/못하는" 2~5개 축만 지정하면
+되므로 13명×17축을 전부 손으로 채울 필요가 없었다. `GoStopTier` 자체는
+`GoStopCharacters.StartingMoney(tier)`(시드머니 A=100만/B=50만/C=10만)
+용도로만 남기고, **실제 플레이 행동은 이제 전부 이 프로필을 읽는다.**
+
+### 캐릭터 근거 — 타짜 시리즈(2006/신의 손 2014/원 아이드 잭 2019)+원작
+만화·드라마
+
+웹 검색으로 확인한 각 캐릭터의 실제 성격을 그대로 스킬 축에 매핑했다
+(전체 근거는 `GoStopCharacters.cs`의 클래스 문서 주석 참고):
+
+- **고니(A)** — 평경장의 제자, 배짱+깊은 의리. `handAccuracy=1, backingChance=0.95,
+  setCompletionWeight=0.85, moneyCaution=0.2`(대담함).
+- **평경장(A)** — "도박판의 전설", 냉철한 통찰력의 노장. `cardCountingSkill=0.95,
+  bombCreditStrategy=0.9, stakeRiskAwareness=0.9, dokbakCaution=0.85,
+  tiltResistance=0.95` 전부 최상급, 대신 `goAggression=0.35`(무리한 고는
+  안 부름).
+- **정마담(B)** — 화려한 심리전의 대가. `allyTargetingSkill=0.95,
+  pressureDetection=0.85, dualPiSkill=0.95, fieldSetAwareness=0.75`.
+- **고광렬(B)** — 우스꽝스럽지만 정 많은 서포터. `backingChance=0.8`(정),
+  `handAccuracy=0.55, discardPrecision=0.5`(서투름).
+- **아귀(A)** — 잔혹·탐욕적인 최상위 포식자. `goAggression=0.95,
+  dokbakCaution=0.1, stakeRiskAwareness=0.1`(몰빵형), `tiltResistance=0.9`,
+  `backingChance=0.05`(협력 안 함 — 티어 전체 최저).
+- **곽철용(B)** — "묻고 더블로가" 허세형. `goAggression=0.9,
+  baseParticipation=0.95, moneyCaution=0.05, stakeRiskAwareness=0.1`,
+  대신 `tiltResistance=0.2`(계속 본전 생각에 몰빵 — 티어 최저).
+- **화란(C)** — 능글맞고 대담한 동업자. `allyTargetingSkill=0.7,
+  backingChance=0.6`, `moneyCaution=0.15, dokbakCaution=0.2`(잔액 걱정
+  적음).
+- **짝귀(A)** — 경상도 최고수 실력파. `cardCountingSkill=0.85,
+  fieldChoiceSkill=0.9, handAccuracy=0.9`, 대신 `allyTargetingSkill=0.3`
+  (우직해서 정치질은 서투름).
+- **호구(C)** — 정확도 계열 전 항목 최저(`handAccuracy=0.35,
+  discardPrecision=0.3, shakeReliability=0.4`), `moneyCaution=0.05,
+  goAggression=0.8, baseParticipation=0.95`(이름 그대로).
+- **무석(B)** — 기회주의적 사기꾼. `moneyCaution=0.7, fieldChoiceSkill=0.7`
+  (눈치 빠르게 발 빼기), `backingChance=0.1, dokbakCaution=0.1`(의리·독박
+  각오는 없음).
+- **세란(C)** — 순박하게 정착. `backingChance=0.85`(정), `goAggression=0.3`
+  (공격적 승부는 낮음).
+- **너구리(C)** — 평경장의 죽음을 조사하는 탐정, 관찰력이 본업. 티어는
+  C지만 `cardCountingSkill=0.9, pressureDetection=0.7`만은 예외적으로
+  날카롭다.
+- **점박이 교수(C)** — 지적·분석형. `setCompletionWeight=0.9,
+  fieldSetAwareness=0.9, dualPiSkill=0.85`("이론"에 강함), 대신
+  `dokbakCaution=0.2, tiltResistance=0.3`(실전 배짱은 약함).
+
+### `GoStopAI.cs` 전면 재작성 — 새 판단 지점 8곳
+
+- `ChooseCard` — `SetCompletionWeight`(내 진행 중 세트를 완성시키는
+  카드에 가중치), `CardCountingSkill`(discard 시 필드+양쪽 캡처에 이미
+  많이 나온 달을 우선 버림), `BackingChance`(밀어주기 카드 우선), 전부
+  기존 `HandAccuracy`/`DiscardPrecision` 실수 확률 롤 위에 얹었다.
+- `ChooseFieldMatch` — `FieldSetAwareness`(필드 2장 후보 중 세트 완성
+  카드 우선).
+- `ShouldGo` — `DokbakCaution`(내가 유일한 고 콜러일 때 조기 정지),
+  `StakeRiskAwareness`(판돈 배수가 커졌을 때 조기 정지),
+  `PressureDetection`(다른 좌석들이 바짝 쫓아오면 조기 정지),
+  `TiltResistance`(연패 후 `stopAtGoCount`가 +2 늘어나는 걸 얼마나
+  버티는지).
+- `WantsToPlay` — `MoneyCaution`(잔액 30% 미만일 때 참가 확률 추가 감쇠),
+  `StakeRiskAwareness`(판돈 배수 큰 판 회피), `TiltResistance`(연패 후
+  본전 생각으로 참가 확률 오히려 상승).
+- `ShouldUseBombCredit`(신규 함수) — `BombCreditStrategy` 하나로 손이
+  줄어든 후반(1~3장)에 폭탄 크레딧을 자발적으로 소모할지 결정 — 예전엔
+  AI가 이 크레딧을 절대 자발적으로 안 썼다.
+- `FindBackingCard`(`GoStop3PGame.cs`, 밀어주기 대상 탐색) —
+  `AllyTargetingSkill`로 "그냥 처음 찾은 동맹"과 "`CalcScore` 기준
+  가장 점수 높은 동맹" 중 어느 쪽을 우선할지 확률적으로 가른다.
+
+`GoStop3PGame.cs`의 9개 호출 지점(`AskParticipation`/`DelayedAiTurn`/
+`AfterAction`/조커 재귀 선택/`ChooseFieldMatch`/`OptimizeDualPi` 등)을
+전부 `seatSkills[seat]`(신규 배열, `Start()`의 캐릭터 드로우 직후
+`ch.skills`로 채움) + 필요한 컨텍스트(`OthersCaptured(seat)`,
+`StakeMultiplierNormalized`, `lossStreak[seat]`, `isSoleGoCaller`,
+`rivalsCloseCount`)를 넘기도록 갱신했다. `lossStreak[]`는 `EndGame`에서
+승자는 0으로 리셋, 패자는 +1 — `ApplyDowngrade`(파산 좌석 압축)에서도
+`money`/`seatCharName`과 같은 방식으로 압축한다.
+
+### 검증 — 12개 신규/확장 메커니즘 전부 개별 확인 + 자연 진행 스모크
+테스트
+
+**순수 함수/통계 테스트(리플렉션, N=200~1000회 반복):**
+- `SetCompletionWeight=1`이 세트 완성 카드를(가치 낮아도), `=0`이면
+  순가치 높은 카드를 정확히 선택(단일 케이스로 결정적 확인).
+- `ShouldGo`의 `DokbakCaution`/`StakeRiskAwareness`/`PressureDetection`
+  전부 hi(=1) 조건에서 lo(=0) 대비 압도적으로 더 자주 멈추는 것 확인
+  (235~400/400 vs 0/400 등). `TiltResistance`는 반대 방향(lo가 더
+  무모하게 계속 감, 400/400 vs 0/400)으로 정확히 확인.
+- `WantsToPlay`의 `MoneyCaution`/`StakeRiskAwareness`/`TiltResistance`
+  전부 설계한 방향으로 통계적 차이 확인(0/1000 vs 514/1000 등).
+- `ShouldUseBombCredit`: hi=497/1000, lo=0/1000(자발적으로 절대 안 씀
+  — 기존 동작 그대로 유지되는 것도 함께 확인).
+- `FindBackingCard`의 `AllyTargetingSkill`: 홍단 2/3(낮은 점수) 동맹과
+  초단 2/3+광3장(높은 점수) 동맹을 동시에 세팅 — `skill=0`이면 먼저
+  발견된 좌석(March_Tanzaku), `skill=1`이면 `CalcScore` 기준 더 높은
+  좌석(July_Tanzaku)을 정확히 선택하는 것을 라이브 `GoStop3PGame`
+  인스턴스의 실제 `FindBackingCard`를 리플렉션으로 직접 호출해 확인.
+- `FieldSetAwareness`: hi=500/500 완성카드 우선, lo=0/500 순가치 우선.
+- `CardCountingSkill`: hand 순서를 일부러 뒤집어 순가치 타이브레이크를
+  무력화한 뒤 — hi=200/200이 "필드+양쪽 캡처에 이미 3장 나온 9월"을
+  정확히 버리고, lo=0/200은 원래 순서(10월)를 그대로 버리는 것 확인.
+
+**자연 진행 스모크 테스트(라이브 Play, 완전히 새로 연 Play 세션에서).**
+`BeginWithSeatCount(4)` + `dealerDetermined=true`(선 뽑기 연출 스킵)로
+딜링(7/7/7/6+drawPile23, 곽철용/짝귀 참가·정마담 광팔이로 자동 스큐즈)
+→ 손패에서 조커(Joker_2) 포함 실제 카드 5장을 사람 좌석으로 직접
+플레이하며 나머지 세 AI 좌석(고니/곽철용/정마담)이 `seatSkills`를 실제로
+읽어 자동 진행 → 자연스럽게 `GoStopChoice`(고 선택)까지 거쳐 `GameOver`
+도달. 이 전체 사이클(딜링·조커 처리·AI ChooseCard/ShouldGo/WantsToPlay/
+FindBackingCard/ShouldUseBombCredit가 전부 실전 호출 경로로 실행됨) 동안
+콘솔 `error`/`exception`이 **0건**(순수 Pipeline exec 타임아웃 노이즈
+1건 제외).
+
+> **함정 — `BeginWithSeatCount` 직후, 이전 세션에서 리플렉션으로 오염된
+> 상태(예: `FindBackingCard` 테스트가 남긴 `hand[0]`/`captured[]`의
+> 합성 카드) 위에 그대로 새 딜링을 태우면 `field`/`drawPile`이 계속
+> `null`인 채 멈춘 것처럼 보이는 상태가 나왔다** — DOTween 관련 콘솔
+> 예외(`RectTransform has been destroyed`)도 함께 관찰됐는데, 이는 그
+> 이전 세션에서 리플렉션으로 직접 띄웠다 미처 안 닫은 팝업 GameObject가
+> 나중 `RebuildUI`의 `ClearChildren`에 파괴된 뒤에도 트윈이 계속 그
+> 죽은 참조를 건드리려 한 잔여물이었다. **원인 규명 없이 바로
+> `editor_stop` → `editor_play`로 완전히 새 세션을 열어서 해결했다** —
+> 이 프로젝트에 이미 여러 번 기록된 "장시간 리플렉션 테스트 후에는
+> 새 세션에서 다시 검증할 것"이라는 원칙을 다시 확인한 사례.
+
+### 남은 것
+
+- `GoStopAI.cs`의 신규 8개 함수 중 `ShouldUseBombCredit`은 통계
+  테스트만 했고, 실제 게임에서 손패가 자연스럽게 1~3장으로 줄어드는
+  후반 상황까지 자연 진행시켜 자발적으로 발동하는 걸 라이브로 확인하진
+  못했다(순수 함수 테스트로 로직 자체는 확정, 통합 지점은 스모크
+  테스트가 정상 진행되는 것으로 간접 확인).
+- 브레인스토밍 7개 항목 중 이번에 실제로 구현된 건 5개(밀어주기·
+  게임포기·독박회피·폭탄크레딧전략화·패흐름카운팅) — "판돈배수 인지형
+  몰빵/보수"와 "연패 심리"도 `StakeRiskAwareness`/`TiltResistance`로
+  함께 구현됐다. "동맹 관찰형 방어 스톱"은 `PressureDetection`으로
+  구현. 사실상 7개 전부 반영됐다.

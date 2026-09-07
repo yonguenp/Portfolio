@@ -167,6 +167,15 @@ public partial class GoStop3PGame : MonoBehaviour
     // 같은 방식으로 압축해서 살아남은 좌석의 정체성을 유지한다.
     readonly string[] seatCharName = new string[SEATS_MAX];
     readonly GoStopTier[] seatTier = new GoStopTier[SEATS_MAX];
+    // 2026-09-07 — 캐릭터별 스킬 프로필(GoStopSkillProfile). seatTier와
+    // 완전히 같은 생명주기(Start()에서 캐릭터 뽑을 때 채움, ApplyDowngrade
+    // 에서 같이 압축)를 따른다 — seatTier는 이제 시드머니 용도로만 남고
+    // 실제 AI 행동은 전부 이 프로필을 읽는다.
+    readonly GoStopSkillProfile[] seatSkills = new GoStopSkillProfile[SEATS_MAX];
+    // 2026-09-07(연패심리/TiltResistance) — 좌석별 연속 손실 판수. EndGame이
+    // 매 라운드 끝에 갱신한다(승자는 0으로 리셋, 패자는 +1). 나가리는 승부가
+    // 안 갈렸으므로 안 건드린다.
+    readonly int[] lossStreak = new int[SEATS_MAX];
     // 광팔이 — 사용자 확인 규칙: 광이나 쌍피 계열(쌍피·9월 열끗·보너스 조커)
     // 한 장당 "1점 가격"씩을, 2·3번째(선을 제외한, 나를 밀어낸 두 명)에게서
     // "각각" 받는다(2인이 각자 내므로 카드 한 장당 실수령은 1점 가격의
@@ -185,6 +194,9 @@ public partial class GoStop3PGame : MonoBehaviour
     readonly int[] money = new int[SEATS_MAX];
     readonly int[] allInCount = new int[SEATS_MAX]; // 이제 "리필 횟수"가 아니라 "파산으로 세션이 끝난 횟수"
     int stakeMultiplier = 1; // 나가리마다 2배, 결판나면 1로 리셋 (Start()에서만 초기화)
+    // 2026-09-07(판돈배수인지) — stakeMultiplier(1,2,4,8...)를 0~1로
+    // 정규화 — 1배=0(위험 없음), 8배 이상=1(최고 위험)로 클램프한다.
+    float StakeMultiplierNormalized => Mathf.Clamp01((stakeMultiplier - 1) / 7f);
 
     // EndGame이 정산을 적용하기 직전의 좌석별 잔액 스냅샷 — ShowScoreDetail은
     // 버튼을 눌러야 나중에 실행되므로 그때는 이미 정산이 끝난 money[]만
@@ -252,6 +264,8 @@ public partial class GoStop3PGame : MonoBehaviour
         var survivorAllIn = new List<int>();
         var survivorCharName = new List<string>();
         var survivorTier = new List<GoStopTier>();
+        var survivorSkills = new List<GoStopSkillProfile>();
+        var survivorLossStreak = new List<int>();
         for (int s = 0; s < SEATS; s++)
         {
             if (bankruptSeats.Contains(s)) continue;
@@ -259,6 +273,8 @@ public partial class GoStop3PGame : MonoBehaviour
             survivorAllIn.Add(allInCount[s]);
             survivorCharName.Add(seatCharName[s]);
             survivorTier.Add(seatTier[s]);
+            survivorSkills.Add(seatSkills[s]);
+            survivorLossStreak.Add(lossStreak[s]);
         }
         int newSeats = survivorMoney.Count;
         for (int i = 0; i < newSeats; i++)
@@ -269,6 +285,8 @@ public partial class GoStop3PGame : MonoBehaviour
             // seatCharName[새 인덱스]가 여전히 압축 전 옛 좌석의 캐릭터를
             // 가리켜 "다른 사람 이름이 뜨는" 버그가 난다.
             seatCharName[i] = survivorCharName[i]; seatTier[i] = survivorTier[i];
+            // 2026-09-07 — 스킬 프로필·연패 기록도 같은 이유로 같이 압축한다.
+            seatSkills[i] = survivorSkills[i]; lossStreak[i] = survivorLossStreak[i];
         }
         SetSeatCount(newSeats);
         dealerSeat = 0; // 다운그레이드 직후엔 선을 단순하게 나로 리셋한다(누가 이겼는지와 무관하게)
@@ -1186,6 +1204,7 @@ public partial class GoStop3PGame : MonoBehaviour
                     var ch = drawnChars[drawIdx++];
                     seatCharName[s] = ch.name;
                     seatTier[s] = ch.tier;
+                    seatSkills[s] = ch.skills; // 2026-09-07 — 캐릭터별 스킬 프로필도 같이 앉힌다
                     money[s] = GoStopCharacters.LoadMoney(ch.name, ch.tier);
                     allInCount[s] = 0; // AI 개인별 올인 횟수는 세션 내 표시용일 뿐 영구 저장 범위 밖
                 }
@@ -1335,6 +1354,12 @@ public partial class GoStop3PGame : MonoBehaviour
 
     IEnumerable<int> ActiveSeats() => Enumerable.Range(0, SEATS).Where(s => s != sittingOutSeat);
 
+    // 2026-09-07 — 패흐름카운팅(CardCountingSkill)·세트인지 계열 AI 판단이
+    // 전부 "나를 뺀 다른 활성 좌석들의 획득패 합"(공개 정보)을 필요로 해서
+    // 공용 헬퍼로 뽑았다 — FindBackingCard/CheckEmergencies가 이미 각자
+    // 인라인으로 하던 것과 완전히 같은 계산이다.
+    List<HwatuCard> OthersCaptured(int seat) => ActiveSeats().Where(s => s != seat).SelectMany(s => captured[s]).ToList();
+
     // ── 화면 슬롯 ↔ 좌석 매핑 ─────────────────────────────
     // 슬롯: 0=하단(나) 1=좌측 2=상단(쉬는 사람 전용) 3=우측. 실제 턴 로테이션은
     // 좌석 번호(0~3, AdvanceTurn)로만 돌아가고 절대 안 바뀐다 — 이 배열은
@@ -1478,7 +1503,8 @@ public partial class GoStop3PGame : MonoBehaviour
             // 잔액 비율을 넘겨서, 돈이 얼마 안 남았을 때 패가 나빠도
             // 더 쉽게 참가를 포기하게 한다(등급별 반영은 GoStopAI 쪽 문서 참고).
             float moneyRatio = (float)money[candidate] / GoStopCharacters.StartingMoney(seatTier[candidate]);
-            wantsIn = GoStopAI.WantsToPlay(hand[candidate], seatTier[candidate], moneyRatio);
+            wantsIn = GoStopAI.WantsToPlay(hand[candidate], seatSkills[candidate], moneyRatio,
+                StakeMultiplierNormalized, lossStreak[candidate]);
         }
         onResult(wantsIn);
     }
@@ -2449,6 +2475,13 @@ public partial class GoStop3PGame : MonoBehaviour
         bool anyGoCaller = ActiveSeats().Any(s => s != seat && calledGo[s]);
         if (!anyGoCaller) return null;
 
+        // 2026-09-07(AllyTargetingSkill) — 동맹이 여럿이면 "고 콜러를 가장
+        // 잘 이길 동맹"(점수가 가장 앞선 쪽)을 우선 후보로 모아둔다. 스킬이
+        // 낮으면(또는 확률에서 지면) 예전처럼 순회 중 처음 찾은 후보로
+        // 폴백한다 — 이 경우도 여전히 "동맹 중 하나"라 전략 자체는 유효하다.
+        HwatuCard firstFound = null;
+        HwatuCard bestFound = null;
+        int bestAllyScore = -1;
         foreach (int ally in ActiveSeats().Where(s => s != seat && !calledGo[s]))
         {
             var mine = captured[ally];
@@ -2459,10 +2492,16 @@ public partial class GoStop3PGame : MonoBehaviour
                 var (state, have) = GoStopRules.CheckSet(mine, theirs, EmergencySets[i].pred);
                 if (state != GoStopRules.SetState.Alive || have != 2) continue;
                 var mySetCard = hand[seat].FirstOrDefault(EmergencySets[i].pred);
-                if (mySetCard != null) return mySetCard;
+                if (mySetCard == null) continue;
+
+                firstFound ??= mySetCard;
+                int allyScore = GoStopRules.CalcScore(mine, sweeps[ally]).Total;
+                if (allyScore > bestAllyScore) { bestAllyScore = allyScore; bestFound = mySetCard; }
+                break; // 이 동맹은 이미 밀어줄 카드를 찾았으니 다음 세트는 안 봐도 된다
             }
         }
-        return null;
+        if (firstFound == null) return null;
+        return Random.value < seatSkills[seat].AllyTargetingSkill ? bestFound : firstFound;
     }
 
     /// <summary>비상 이펙트의 실제 화면 표시를 잠깐 미룬 뒤, 그 사이 같은
@@ -2946,8 +2985,8 @@ public partial class GoStop3PGame : MonoBehaviour
             {
                 if (seat != PLAYER_SEAT && !IsRemoteSeat(seat))
                 {
-                    var next = GoStopAI.ChooseCard(h, field, seatTier[seat], FindBackingCard(seat));
-                    yield return StartCoroutine(PlaySeq(seat, next, GoStopAI.ShouldShake(seatTier[seat]), onDone));
+                    var next = GoStopAI.ChooseCard(h, field, seatSkills[seat], FindBackingCard(seat), cap, OthersCaptured(seat));
+                    yield return StartCoroutine(PlaySeq(seat, next, GoStopAI.ShouldShake(seatSkills[seat]), onDone));
                 }
                 else if (IsRemoteSeat(seat))
                 {
@@ -4048,7 +4087,7 @@ public partial class GoStop3PGame : MonoBehaviour
             chosen = decoded != null ? initial.choiceCandidates.FirstOrDefault(c => c.spriteName == decoded.spriteName) : null;
             if (chosen == null) chosen = GoStopAI.ChooseFieldMatch(initial.choiceCandidates); // 방어 — 오염된 메시지/타임아웃이 와도 판이 안 멈추게
         }
-        else chosen = GoStopAI.ChooseFieldMatch(initial.choiceCandidates, seatTier[seat]);
+        else chosen = GoStopAI.ChooseFieldMatch(initial.choiceCandidates, seatSkills[seat], captured[seat]);
 
         onResolved(GoStopRules.ResolveChoice(played, chosen, field));
     }
@@ -4087,7 +4126,7 @@ public partial class GoStop3PGame : MonoBehaviour
             // DeckOnlySeq의 호출부 참고), 여기서 또 AI가 덮어쓰면 안 된다.
             if (captured[seat].Any(c => c.dualPi))
             {
-                GoStopAI.OptimizeDualPi(captured[seat], seatTier[seat]);
+                GoStopAI.OptimizeDualPi(captured[seat], seatSkills[seat]);
                 RebuildUI();
             }
         }
@@ -4134,7 +4173,14 @@ public partial class GoStop3PGame : MonoBehaviour
                 return;
             }
 
-            if (GoStopAI.ShouldGo(rawScore, goCount[seat], hand[seat].Count, seatTier[seat]))
+            // 2026-09-07 신규 — 독박회피(내가 유일한 고 콜러)·판돈배수인지·
+            // 동맹관찰형 방어스톱(따라잡을 만한 라이벌 수)·연패심리를 전부
+            // GoStopAI.ShouldGo에 넘긴다.
+            bool isSoleGoCaller = ActiveSeats().Count(s => s != seat && calledGo[s]) == 0;
+            int rivalsCloseCount = ActiveSeats().Count(s => s != seat &&
+                GoStopRules.CalcScore(captured[s], sweeps[s]).Total >= rawScore - 2);
+            if (GoStopAI.ShouldGo(rawScore, goCount[seat], hand[seat].Count, seatSkills[seat],
+                isSoleGoCaller, StakeMultiplierNormalized, rivalsCloseCount, lossStreak[seat]))
             {
                 goCount[seat]++;
                 lastGoScore[seat] = rawScore;
@@ -4353,16 +4399,25 @@ public partial class GoStop3PGame : MonoBehaviour
 
         if (hand[seat].Count == 0)
             StartCoroutine(DeckOnlySeq(seat, () => AfterAction(seat)));
+        // 2026-09-07 신규(폭탄크레딧 타이밍 전략화) — 손이 줄어든 후반에
+        // 스킬 높은 캐릭터가 자발적으로 "덱만 넘기기" 크레딧을 쓴다.
+        // OnPlayerBombSkip과 동일한 효과(actionBusy 가드는 사람 입력
+        // 재진입 방지용이라 AI 경로엔 필요 없다 — 기존 AI 턴 코드도 안 걸었다).
+        else if (bombCredits[seat] > 0 && GoStopAI.ShouldUseBombCredit(hand[seat].Count, bombCredits[seat], seatSkills[seat]))
+        {
+            bombCredits[seat]--;
+            StartCoroutine(DeckOnlySeq(seat, () => AfterAction(seat)));
+        }
         else
         {
-            var card = GoStopAI.ChooseCard(hand[seat], field, seatTier[seat], FindBackingCard(seat));
+            var card = GoStopAI.ChooseCard(hand[seat], field, seatSkills[seat], FindBackingCard(seat), captured[seat], OthersCaptured(seat));
             // 2026-08-23: 플레이어 쪽과 같은 이유 — 이 카드가 폭탄으로
             // 터질 조건(손 3장+필드 1장)이면 흔들기 배수까지 같이 주면
             // 안 된다(OnPlayerPlay 주석 참고). AI도 예외 없이 같은 규칙을
             // 받는다.
             bool bombEligible = hand[seat].Count(c => c.month == card.month) == 3
                               && field.Count(c => c.month == card.month) == 1;
-            StartCoroutine(PlaySeq(seat, card, !bombEligible && GoStopAI.ShouldShake(seatTier[seat]), () => AfterAction(seat)));
+            StartCoroutine(PlaySeq(seat, card, !bombEligible && GoStopAI.ShouldShake(seatSkills[seat]), () => AfterAction(seat)));
         }
     }
 
@@ -4541,6 +4596,12 @@ public partial class GoStop3PGame : MonoBehaviour
         // 대상에서 제외한다 — 낀 사람만 이기고 지는 판이다.
         var loserSeats = ActiveSeats().Where(s => s != winnerSeat).ToList();
         var loserCaptured = loserSeats.Select(s => captured[s]).ToList();
+
+        // 2026-09-07(연패심리/TiltResistance) — 승자는 연승 스트릭 리셋,
+        // 패자는 연패 카운트 증가. 나가리(winnerSeat<0)는 이 코드 경로
+        // 자체에 안 온다(위쪽 나가리 전용 분기에서 이미 return).
+        lossStreak[winnerSeat] = 0;
+        foreach (var s in loserSeats) lossStreak[s]++;
 
         // 독박(고박) — 패자 중 이번 판에 고를 부른 적 있는 사람이 정확히 한 명이면
         // 그 사람이 전원분을 몰아서 낸다. 여럿이거나 아무도 안 불렀으면
