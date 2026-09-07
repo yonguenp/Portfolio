@@ -4015,29 +4015,36 @@ public partial class GoStop3PGame : MonoBehaviour
             couldBury = reservedInField + 1 + alreadyCapturedOfMonth < 4;
         }
 
+        // 2026-09-08 재정렬 — "왜 보너스패가 cap으로 이동한 다음에야
+        // 뒷패를 까?" 신고. 예전엔 couldBury=false(뻑 아님)일 때
+        // CaptureBonusJokerImmediately로 조커를 먼저 Cap에 넣고 나서야
+        // next를 뒤집었다 — 결과(조커가 Cap으로 감)를 원인(next가 그
+        // 달과 다르다)보다 먼저 보여준 셈이라 인과관계가 거꾸로 보였다.
+        // next를 먼저 보여주고 나서(어느 쪽 결과든) 그 결과를 실행하도록
+        // 순서를 바꿨다 — couldBury 여부와 무관하게 next의 최종 자리는
+        // FieldSlotTransform(next) 하나로 정확히 계산된다(couldBury라면
+        // next.month==anchor.month라 이 함수가 자연히 anchor와 같은
+        // 슬롯을 돌려주므로 별도 분기 불필요 — AssignFieldSlot이 이미
+        // 월 기준으로 슬롯을 찾기 때문).
+        var nextTarget = FieldSlotTransform(next);
+        var nextMood = couldBury
+            ? (dropHeight: 60f, dropDur: 0.22f, punchDur: 0.16f, punchScale: 1.06f) // 뻑-형성 완급(힘없이) — PlaySeq와 동일 값
+            : LandingMood(nextTarget.childCount > 0, nextTarget.childCount >= 3);
+        var nextGhost = SpawnGhostCard(next, nextTarget);
+        var nextLanding = nextGhost.transform.position;
+        yield return StartCoroutine(SlamDown(nextGhost.transform as RectTransform, nextTarget,
+            dropHeight: nextMood.dropHeight, dropDur: nextMood.dropDur, punchDur: nextMood.punchDur, punchScale: nextMood.punchScale,
+            cardMonth: next.month, suspensePulses: 2));
+        DestroyGhost(nextGhost);
+        flyFrom[next] = nextLanding;
+
         if (couldBury)
         {
             // 뻑! joker는 이미 field에 있으니 next만 같은 슬롯에 합류시킨다.
             // anchor 자신은 물리적으로 있든 없든 손대지 않는다 — 이미
             // 있으면 그대로, 이미 캡처돼 사라졌으면 그 상태 그대로 둔다.
-            // 2026-09-08 — "보너스패 나온 다음 뒷패 애니메이션이 부자연스럽다"
-            // 신고. 예전엔 여기서 flyFrom만 등록하고 곧장 RebuildUI를 불러서
-            // SlamIn(수평 이동)으로 밋밋하게 흘러들어 왔다 — 바로 앞(PlaySeq)의
-            // 조커 자신은 긴장 펄스+드롭 연출(SlamDown)을 받는데, 조커의 운명을
-            // 정하는 이 next 카드만 아무 연출 없이 미끄러져 들어와서 두 카드의
-            // 등장 방식이 어긋나 보였다. PlaySeq의 정상 뒷패 슬램과 완전히
-            // 같은 고스트+SlamDown을 쓴다 — 뻑으로 묻히는 결과라 PlaySeq의
-            // 뻑-형성 완급(힘없이)과 같은 값.
-            var nextTarget = FieldSlotTransform(anchor);
-            var nextGhost = SpawnGhostCard(next, nextTarget);
-            var nextLanding = nextGhost.transform.position;
-            yield return StartCoroutine(SlamDown(nextGhost.transform as RectTransform, nextTarget,
-                dropHeight: 60f, dropDur: 0.22f, punchDur: 0.16f, punchScale: 1.06f, cardMonth: next.month, suspensePulses: 2));
-            DestroyGhost(nextGhost);
-
             field.Add(next);
             fieldSlotAssign[next] = AssignFieldSlot(anchor);
-            flyFrom[next] = nextLanding;
             ppeokCauser[anchor.month] = seat;
             ppeokBonusPi[anchor.month] = joker;
 
@@ -4055,7 +4062,7 @@ public partial class GoStop3PGame : MonoBehaviour
             yield break;
         }
 
-        // 뻑 아님 — 조커는 유저 소유로 확정.
+        // 뻑 아님 — next를 이미 보여준 뒤에야 조커를 유저 소유로 확정한다.
         yield return StartCoroutine(CaptureBonusJokerImmediately(seat, joker, cap, null));
 
         // 2026-09-07 버그 수정 — couldBePpeok 페어가 조커 때문에 보류돼
@@ -4074,21 +4081,8 @@ public partial class GoStop3PGame : MonoBehaviour
         }
 
         // next는 독립적인 새 카드로 정상 매칭 로직을 그대로 탄다(기존
-        // "extra 카드" 처리와 동일한 경로 — Resolve→선택→매칭 판정).
-        // 2026-09-08 — 위 couldBury 분기와 같은 이유로 고스트+SlamDown을
-        // 추가했다. 매칭 여부에 따른 완급은 PlaySeq/DeckOnlySeq의 일반
-        // 뒷패 슬램과 동일한 공식(LandingMood)을 그대로 쓴다.
-        var nextTarget2 = FieldSlotTransform(next);
-        bool nextWillCapture = nextTarget2.childCount > 0;
-        bool nextBigCapture = nextWillCapture && nextTarget2.childCount >= 3;
-        var nextMood = LandingMood(nextWillCapture, nextBigCapture);
-        var nextGhost2 = SpawnGhostCard(next, nextTarget2);
-        var nextLanding2 = nextGhost2.transform.position;
-        yield return StartCoroutine(SlamDown(nextGhost2.transform as RectTransform, nextTarget2,
-            dropHeight: nextMood.dropHeight, dropDur: nextMood.dropDur, punchDur: nextMood.punchDur, punchScale: nextMood.punchScale,
-            cardMonth: next.month, suspensePulses: 2));
-        DestroyGhost(nextGhost2);
-        flyFrom[next] = nextLanding2;
+        // "extra 카드" 처리와 동일한 경로 — Resolve→선택→매칭 판정). 등장
+        // 연출은 이미 위에서 끝났다 — 여기부터는 순수하게 결과 판정만.
         var r = GoStopRules.Resolve(next, field);
 
         if (r.choiceCandidates != null)

@@ -13378,3 +13378,37 @@ suspensePulses: 2))` → `DestroyGhost` 순서로 실제 상태 변경(`field.Ad
 > 3장(`Joker_2, August_Tane, August_Hikari`)만 깔끔하게 잡혔다 — 이
 > 프로젝트에 이미 여러 번 기록된 "리플렉션 테스트가 실제 게임과
 > 경합한다"는 함정과 같은 계열.
+
+## 고스톱 — "왜 보너스패가 cap에 이동한 다음 뒷패를 까?" (2026-09-08)
+
+바로 위 애니메이션 통일 작업 직후 나온 정확한 지적 — "뻑 아님"으로
+확정되는 경로에서 **조커가 먼저 Cap으로 날아간 뒤에야 next(운명을 정한
+그 카드)가 화면에 나타났다.** 원인: `CaptureBonusJokerImmediately(seat,
+joker, cap, null)`를 먼저 호출하고, 그 다음에야 next의 고스트+SlamDown을
+실행하는 순서였다 — **결과(조커가 Cap으로 감)를 원인(next가 anchor와
+다른 달이라 묻힐 수 없음)보다 먼저 보여준 셈**이라 인과관계가 거꾸로
+보였다. couldBury(뻑 형성) 분기는 애초에 next를 먼저 보여준 뒤 필드에
+쌓는 순서였어서 문제가 없었다 — "뻑 아님" 분기만 어긋나 있었다.
+
+**고침 — next의 등장(고스트+SlamDown)을 couldBury 분기 여부와 무관하게
+한 곳으로 합쳐서 맨 앞으로 끌어올렸다.** `couldBury`가 최종 확정된
+직후(용량 가드까지 반영된 뒤), `FieldSlotTransform(next)` 하나로 목적지를
+계산한다 — couldBury가 참이면 `next.month == anchor.month`이므로
+`AssignFieldSlot`이 월 기준으로 자연히 anchor와 같은 슬롯을 돌려줘서
+별도 분기가 필요 없다. 완급(mood)만 갈린다 — couldBury면 뻑-형성 고정값
+(힘없이), 아니면 `LandingMood(target.childCount>0, ...)`로 매칭 여부에
+따라 계산. 이 하나의 reveal 뒤에야 두 분기(뻑으로 묻기 / 조커
+캡처+next 정상 판정)로 갈린다 — "먼저 보여주고 나서 결과를 확정한다"는
+이 프로젝트 전역의 기존 순서 원칙과 맞췄다.
+
+**검증(Play 모드 라이브).** 코드 리뷰로 `SpawnGhostCard(next, ...)`
+호출(line 4033)이 `CaptureBonusJokerImmediately`(line 4066, "뻑 아님"
+분기)보다 먼저 온다는 걸 소스에서 직접 확인. 두 시나리오(couldBury=
+`JokerPark` 디버그 시나리오, "뻑 아님"=3월 무매칭+8월 필드매칭 조합)를
+완전히 새 Play 세션에서 재생 — 둘 다 기존과 동일한 최종 결과(뻑 무더기
+3장 정확히 쌓임 / 조커+매칭 페어 정확히 캡처)를 유지하는 것 확인, 콘솔
+`error`/`exception` 0건. (리플렉션 라운드트립이 전체 시퀀스보다 느려서
+"조커가 아직 field에 있고 next가 막 날아가는 중"인 정확한 중간 프레임을
+직접 캡처하지는 못했다 — 이 프로젝트가 이미 여러 번 겪은 한계라, 순서
+자체는 소스 코드 검토로, 결과는 최종 상태로 각각 확인하는 조합으로
+대신했다.)
