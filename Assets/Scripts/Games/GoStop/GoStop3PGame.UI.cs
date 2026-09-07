@@ -2653,24 +2653,78 @@ public partial class GoStop3PGame
 
     GameObject SpawnGhostCard(HwatuCard card, RectTransform target)
     {
-        int existing = target.childCount;
-        // 2026-09-06 버그 수정 — "이 카드까지 포함한 최종 장수" 기준
-        // step(FieldStackStep(existing+1))을 쓰면, 이미 화면에 떠 있는
-        // 기존 카드들은 아직 "그 이전 장수" 기준 step으로 그려진 채라서
-        // (DrawField가 다시 돌기 전까지) 두 step이 달라 새 카드가 기존
-        // 카드와 정확히 같은 좌표로 계산될 수 있었다(예: 2장→3장 전환에서
-        // 우연히 숫자가 겹침 — "1월 두 장 위에 내면 딱 겹치게 놓인다"
-        // 신고). 지금 화면에 이미 떠 있는 카드들과 **같은** step
-        // (FieldStackStep(existing), 단 existing<2면 겹칠 대상 자체가
-        // 없으므로 최종 2장 기준으로 미리 맞춘다)을 그대로 이어서 쓰면
-        // 항상 "마지막 카드 바로 다음 자리"라 절대 겹칠 수 없다 — 이후
-        // DrawField가 최종 step으로 다시 그릴 때 생기는 미세한 차이는
-        // 이미 있는 SlamIn 보정(위 flyFrom 처리)이 부드럽게 메워준다.
-        float step = FieldStackStep(Mathf.Max(existing, 2));
+        // 2026-09-07 버그 수정 — 아래 finalCount 계산에 raw target.childCount를
+        // 그대로 썼더니 이 슬롯에 이미 붙어있던 StackTooltipTrigger(2장 이상
+        // 쌓인 슬롯마다 DrawField가 얹어두는 투명 오버레이, 실카드가 아니다)
+        // 까지 "카드 한 장"으로 잘못 세었다 — 실카드 2장짜리 슬롯인데도
+        // existing=3(오버레이 포함)으로 계산돼 finalCount=4, step=10이 나와서
+        // 진짜 정답(3장 기준 step=15)과 다른 값으로 착지/재배치가 됐다(우연히
+        // 고스트 자신의 좌표만 숫자가 겹쳐 맞아 보였을 뿐, 기존 카드는 실제로
+        // 틀린 자리로 재배치됐다 — 라이브 리플렉션 실측으로 발견). 오버레이·
+        // 고스트를 뺀 "진짜 카드 수"만 세는 RealFieldCardCount로 교체했다.
+        int existing = RealFieldCardCount(target);
+        // 2026-09-07 재수정 — "슬램다운 되자마자 오프셋을 다시 맞춰줄 수
+        // 있나" 요청. 예전엔(2026-09-06) 기존 카드와 같은 "그 이전 장수"
+        // 기준 step으로 고스트를 착지시키고, 나중에 DrawField가 최종 장수
+        // 기준으로 다시 그릴 때 생기는 차이를 SlamIn(플레인 슬라이드)으로
+        // "나중에" 보정했다 — 그런데 이 보정이 고스트가 슬램다운 임팩트+
+        // 펀치스케일을 끝내고 사라진 **다음**(RebuildUI가 다시 돌 때)에야
+        // 일어나서, 카드가 "쾅! 착지 → (한 박자 뒤) 슬쩍 밀림" 2단 동작으로
+        // 보였다. 게다가 같은 슬롯의 다른 카드들(이미 화면에 떠 있던 것)은
+        // flyFrom 등록이 없어 그 보정 때 애니메이션 없이 그냥 조용히
+        // 스냅됐다 — 그것도 어색함의 원인이었다.
+        //
+        // 지금은 고스트를 만들기 **직전에** 이 슬롯의 기존 카드들을 최종
+        // 장수(existing+1) 기준 step으로 먼저 재배치(RelayoutFieldSlotSiblings,
+        // 애니메이션 포함)해 두고, 고스트 자신도 처음부터 그 최종 offset으로
+        // 곧장 슬램다운한다 — "착지 = 최종 자리"라 이후 RebuildUI가 다시
+        // 그려도 위치가 안 바뀌므로 2차 보정 자체가 필요 없다. 형제 카드
+        // 재배치는 고스트가 도착하기 전(또는 동시)에 조용히 끝나므로,
+        // "쾅! 착지"가 이제 진짜 최종 착지가 된다.
+        int finalCount = Mathf.Max(existing + 1, 2);
+        RelayoutFieldSlotSiblings(target, finalCount);
+        float step = FieldStackStep(finalCount);
         var offset = new Vector2(existing * step, -existing * step);
         var go = HwatuUI.MakeCard(card, target, offset, FIELD_W, FIELD_H, null, false);
         go.AddComponent<GhostMarker>();
         return go;
+    }
+
+    /// <summary>이 슬롯의 자식 중 "진짜 카드"만 센다 — StackTooltipTrigger
+    /// (겹친 패 확인용 투명 오버레이)는 카드가 아니므로 제외한다. 고스트
+    /// (GhostMarker)는 "곧 이 슬롯에 자리 잡을 카드"라 포함한다.</summary>
+    static int RealFieldCardCount(RectTransform target)
+    {
+        int n = 0;
+        for (int k = 0; k < target.childCount; k++)
+            if (target.GetChild(k).name != "StackTooltipTrigger") n++;
+        return n;
+    }
+
+    /// <summary>이 슬롯에 이미 떠 있는 실카드(고스트·오버레이 제외)들을
+    /// newCount 기준 최종 step으로 즉시(애니메이션과 함께) 재배치한다 —
+    /// SpawnGhostCard가 새 카드를 최종 자리에 곧장 슬램다운시키기 직전에
+    /// 불러서, 형제 카드들도 같은 타이밍에 맞춰 옮겨간다.</summary>
+    void RelayoutFieldSlotSiblings(RectTransform target, int newCount)
+    {
+        float step = FieldStackStep(newCount);
+        int i = 0;
+        for (int k = 0; k < target.childCount; k++)
+        {
+            var child = target.GetChild(k) as RectTransform;
+            if (child == null) continue;
+            if (child.GetComponent<GhostMarker>() != null) continue;
+            if (child.name == "StackTooltipTrigger") continue;
+
+            var newOffset = new Vector2(i * step, -i * step);
+            i++;
+            if (child.anchoredPosition == newOffset) continue;
+
+            var oldWorldPos = child.position;
+            child.anchoredPosition = newOffset;
+            if ((child.position - oldWorldPos).sqrMagnitude > 1f)
+                StartCoroutine(SlideHandCard(child, oldWorldPos));
+        }
     }
 
     /// <summary>슬램다운 고스트 카드 — 2026-09-02: 매칭된 필드 카드처럼 곧
