@@ -13025,3 +13025,90 @@ handArea.active=False`(같은 자리에서 서로 안 부딪히는 것 확인),
 (청단 3장+파트너)이 다 들어간 뒤에야 `achievedFired.Count=1`, 효과
 타이틀이 정확히 `"나님이 청단 완성!"`으로 뜬 것까지 확인했다. 이
 테스트 세션 전체 콘솔 `error`/`exception` 0건.
+
+## 고스톱 — 연출·팝업 전체 시퀀스 재점검: "팝업이 뜨고 나서 연출이
+나온다" (2026-09-08)
+
+바로 위 achievement-defer 수정 직후 "전체적으로 문제인거같아... 팝업이
+뜨고나서 연출이 나오니까 지저분해보여"라는 재신고. 코드를 다시 추적해서
+**내가 방금 만든 수정 자체가 새로운 레이스 컨디션을 만들었다는** 걸
+확인했다: `FireAchievementDeferred`가 `WaitUntil(() => !actionBusy)`로
+"이번 턴이 끝나는 순간"을 기다리는데, 정확히 그 "턴이 끝나는 순간"은
+`PlaySeq`의 `actionBusy = false; onDone?.Invoke();`가 **동기로 즉시**
+`AfterAction` → `AdvanceTurn()`/`EndGame()`을 실행하는 바로 그 순간이다.
+`WaitUntil`은 **다음 프레임에야** 풀리므로, 완성 이펙트는 이 경쟁에서
+구조적으로 항상 진다 — 결과: 결과 오버레이(또는 고/스톱 오버레이)가
+먼저 뜨고, 그 위에 완성 이펙트가 0.3초쯤 뒤늦게 겹쳤다. "팝업이 뜨고
+나서 연출이 나온다"는 정확히 이 증상이었다.
+
+**고침 — `pendingSetEffectCount`(진행 중인 이펙트 개수) + 3개 화면
+전환 지점을 이 카운터로 게이팅.**
+- `CheckEmergencies()`가 완성 이펙트를 스케줄링하는 순간(+1), 실제
+  재생이 끝나는 순간(-1) — `GoStopVectorEffect.Play`/`PlayEmergency`를
+  `void`→`Coroutine`으로 바꿔서(기존 호출부는 반환값을 버리므로 무해)
+  `FireAchievementDeferred`/`FireGwangAchievementDeferred`가
+  `yield return`으로 실제 재생 완료까지 기다린 뒤 감소시킨다.
+- `AdvanceTurn()` — 기존 본문을 `AdvanceTurnImmediate()`로 이름만
+  옮기고, `AdvanceTurn()` 자체는 `pendingSetEffectCount>0`이면
+  `WaitUntil`로 미뤘다가 실행하는 얇은 게이트로 바꿨다. 기존 호출부는
+  전부 그대로 `AdvanceTurn()`을 부르면 되므로 단 한 곳도 안 고쳤다.
+- `EndGame()` — 상태/정산(state=GameOver, dealerSeat, 머니 이동,
+  SaveMoney 등)은 전부 그대로 즉시 실행하되, 화면에 결과 오버레이를
+  실제로 띄우는 마지막 동작만 `ShowResultOverlayDeferred(() => { ... })`
+  로 감쌌다 — 8개 `ui?.ShowOverlay(...)` 호출부 전부(나가리 2개+승리
+  분기 6개) 같은 패턴으로 래핑. 네트워크 브로드캐스트처럼 화면과 무관한
+  동작은 클로저 밖에 그대로 둬서 예전처럼 즉시 실행된다.
+- `ShowGoStopPrompt()`(고/스톱 오버레이) — `EndGame`과 똑같은 레이스가
+  있었다(캡처가 동시에 점수선을 넘기고 족보도 완성시키는 경우). 같은
+  `ShowResultOverlayDeferred` 헬퍼를 재사용해서 오버레이 표시+타임아웃
+  코루틴 시작을 같이 미뤘다(`state`/`RebuildUI()`는 즉시 — 작은
+  상태박스 표시라 완성 이펙트와 안 부딪힌다).
+- `FireGoEffect`(1~8고 화면 정중앙 대형 이펙트) — 스톱 쪽은 이미
+  `EndGameAfterStop`이 `yield return FireStopEffect(seat)`로 명시적으로
+  기다린 뒤에야 `EndGame`을 불러서 문제가 없었는데, **고 쪽만 빠져
+  있었다**(`FireGoEffect(...); AdvanceTurn();`가 곧장 이어져서, 이
+  대형 이펙트가 재생 중인데도 바로 다음 턴이 진행됐다). `FireGoEffect`
+  안에서 `pendingSetEffectCount++`, `GoEffectSeq`를 `try/finally`로
+  감싸 정확히 한 번(프리팹 로드 실패로 조기 종료되는 경로 포함) `--`
+  하도록 고쳤다 — `AdvanceTurn()`의 새 게이트가 이 경우도 자동으로
+  커버한다(호출부 변경 없음).
+- `FireBlockedDeferred`(실패 이펙트) — `FireAchievementDeferred`와
+  똑같이 즉시 발동하던 문제가 있어 같은 방식으로 defer했다. 다만
+  실패/비상은 alt-큐(`EnqueueAlt`) 기반이라 정확한 재생완료 시점을
+  밖에서 못 잡아 `pendingSetEffectCount`에는 안 넣었다 — `state ==
+  State.GameOver`면 조용히 생략하는 방어만 추가(제대로 하려면
+  `GoStopVectorEffect`의 alt 큐 자체를 손봐야 한다, 이번 범위 밖).
+
+**FieldChoicePopup/DualPiPopup은 왜 안 건드렸나 — 이미 구조적으로
+안전하다.** 이 둘은 캡처가 확정되기 *전*(뻑/폭탄/필드선택 등 판정
+도중)에만 뜨는데, `CheckEmergencies()`는 캡처가 **확정된 뒤**
+(`RebuildUI`의 "④ Cap 배치" 단계)에만 완성을 감지한다 — 같은 턴 안에서
+이 둘이 겹칠 수 없다. 다음 턴의 FieldChoicePopup/DualPiPopup은
+`AdvanceTurn()`의 새 게이트가 그 턴 자체의 시작을 미루므로 자동으로
+보호된다. ScoreDetailPopup도 사용자가 직접 눌러야 열리는 버튼이라
+"이미 정상적으로 뜬 결과 오버레이 이후"에만 열릴 수 있어, EndGame
+수정으로 그대로 안전해졌다.
+
+**검증(Play 모드 라이브, 리플렉션).**
+1. `pendingSetEffectCount=1`로 강제한 뒤 `EndGame(0,null,1)` 직접 호출 →
+   `state=GameOver`(즉시 반영) `overlayVisible=False`(안 뜸) 확인 →
+   카운터를 0으로 되돌리자 `overlayVisible=True`로 바뀌는 것 확인.
+2. `pendingSetEffectCount=1`로 강제한 뒤 `AdvanceTurn()` 호출 →
+   `currentSeat` 안 바뀜 확인 → 카운터 0으로 되돌리자 실제로
+   `currentSeat`가 바뀌는 것 확인.
+3. `FireGoEffect(0,3)` 직접 호출 → 호출 직후 `pendingSetEffectCount=1`,
+   이펙트 재생이 끝난 뒤 `pendingSetEffectCount=0`(try/finally 정상
+   동작) 확인.
+4. **실전 시나리오 — 초단 완성이 캡처와 동시에 점수선을 넘기는 경우를
+   실제로 재현.** 캡에 4·5월 띠를 미리 채우고 손패 7월 띠로 완성시킴 —
+   필드에 우연히 7월이 2장이라 FieldChoicePopup까지 뜬 상태(무기한
+   대기)에서도 `pendingSetEffectCount=0`(안 끼어듦) 확인 → 팝업 응답 →
+   충분한 시간 경과 후 확인한 결과: **`state=GoStopChoice`,
+   `overlayVisible=True`(고/스톱 오버레이가 정상적으로 뜸),
+   `achievementCardRowCount=0`(완성 이펙트는 이미 재생을 끝내고
+   스스로 정리된 상태)** — 완성 이펙트가 먼저 끝난 뒤에야 고/스톱
+   오버레이가 떴다는 뜻으로, 사용자가 요청한 "연출나오고 팝업"
+   순서가 실전 시나리오에서 정확히 재현됐다.
+5. 이어서 고를 선택(`OnPlayerGo`, 새로 게이팅된 `FireGoEffect`/
+   `AdvanceTurn` 경로를 실제로 태움) → 이후 5턴 이상 자연 진행(조커
+   처리 포함) → 콘솔 `error`/`exception` 0건.

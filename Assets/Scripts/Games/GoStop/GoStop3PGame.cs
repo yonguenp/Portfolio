@@ -338,6 +338,18 @@ public partial class GoStop3PGame : MonoBehaviour
     // 참고 — 매 순간 막히는 세트마다 쏘면 스팸이라 emergencyFired가 이미
     // 켜진 것만 대상으로 좁혔다).
     readonly HashSet<(int seat, int setIdx)> blockedFired = new();
+    // 2026-09-08 — "연출과 팝업이 뒤죽박죽으로 겹쳐 보인다" 신고로 도입.
+    // 족보완성(FireAchievementDeferred/FireGwangAchievementDeferred)이
+    // actionBusy 해제를 기다렸다가 뜨는데, 그 해제 시점은 AdvanceTurn/
+    // EndGame이 다음 화면(다음 턴·결과 오버레이)을 보여주는 바로 그
+    // 시점과 정확히 겹친다 — WaitUntil은 다음 프레임에야 풀리므로 이
+    // 카운터가 0이 아닌 동안은 AdvanceTurn/EndGame의 화면 전환 쪽이
+    // "레이스에서 항상 이겨" 팝업이 먼저 뜨고 연출이 그 위에 뒤늦게
+    // 겹치는 형태로 보였다. 완성 이펙트를 스케줄링하는 순간 +1, 실제
+    // 재생이 끝나는 순간 -1 — AdvanceTurn/EndGame이 이 값이 0이 될
+    // 때까지 자기 화면 전환을 미루면 "연출이 다 끝난 뒤에 다음 화면"
+    // 순서가 구조적으로 보장된다.
+    int pendingSetEffectCount;
     // 2026-08-26 정정(사용자 확인) — "첫뻑/첫따닥/첫뻑먹기"의 "첫"은 판
     // 전체의 첫 장(선의 첫 수)이 아니라 **각 유저 자신의 손패 첫 장(1번째로
     // 내는 카드)**을 가리킨다 — "마지막 턴"을 각자 손패 마지막 장으로
@@ -2198,10 +2210,18 @@ public partial class GoStop3PGame : MonoBehaviour
     /// 2배"라는 위기감(주황 톤 + 살짝 흔들림), 4~5고는 더 화려하게(파티클
     /// 확대 + 확장 링), 6고 이상은 이론상 거의 안 나오므로 5고 연출을
     /// 그대로 재사용한다(tier를 5로 클램프).</summary>
+    /// <summary>2026-09-08 — 이 효과는 항상 곧바로 <c>AdvanceTurn()</c>이
+    /// 뒤따르는데(고를 부른 세 호출부 전부), `AdvanceTurn()`은 이제
+    /// <see cref="pendingSetEffectCount"/>가 0이 될 때까지 다음 턴 전환을
+    /// 미룬다 — 그 게이트가 이 화면 정중앙 대형 이펙트에도 적용되도록
+    /// 여기서 카운터를 직접 세운다(스톱 쪽은 이미 <see cref="EndGameAfterStop"/>
+    /// 가 `yield return FireStopEffect(seat)`으로 명시적으로 기다린 뒤에야
+    /// EndGame을 부르므로 같은 문제가 없었다 — 고만 빠져 있었다).</summary>
     void FireGoEffect(int seat, int goNumber)
     {
         var canvasRoot = GoStopCanvasRoot();
         if (canvasRoot == null) return;
+        pendingSetEffectCount++;
         StartCoroutine(GoEffectSeq(canvasRoot, seat, goNumber));
     }
 
@@ -2217,6 +2237,17 @@ public partial class GoStop3PGame : MonoBehaviour
     /// <c>GoEffect.prefab</c>(<see cref="GoStopGoEffectView"/>)에 담겨
     /// 있다. 여기서는 티어별 텍스트·색·크기·활성 여부만 채운다.</summary>
     IEnumerator GoEffectSeq(RectTransform canvasRoot, int seat, int goNumber)
+    {
+        // 2026-09-08 — FireGoEffect가 이미 pendingSetEffectCount++ 해뒀다.
+        // 어느 경로로 빠져나가든(프리팹 로드 실패로 조기 종료든, 정상
+        // 완주든) 정확히 한 번 -- 되도록 try/finally로 감쌌다 — 안 그러면
+        // 카운터가 영원히 안 풀려 AdvanceTurn/EndGame이 무한정 멈추는,
+        // 지금 고치려는 버그보다 훨씬 나쁜 사고가 된다.
+        try { yield return StartCoroutine(GoEffectBody(canvasRoot, seat, goNumber)); }
+        finally { pendingSetEffectCount--; }
+    }
+
+    IEnumerator GoEffectBody(RectTransform canvasRoot, int seat, int goNumber)
     {
         int tier = Mathf.Min(goNumber, 5);
         bool tense = tier >= 3;
@@ -2432,12 +2463,13 @@ public partial class GoStop3PGame : MonoBehaviour
                 if (needAchieve && state == GoStopRules.SetState.Achieved)
                 {
                     achievedFired.Add((seat, i));
+                    pendingSetEffectCount++;
                     StartCoroutine(FireAchievementDeferred(seat, EmergencySets[i].name, mine.Where(EmergencySets[i].pred).ToList()));
                 }
                 else if (needBlocked && state == GoStopRules.SetState.Blocked)
                 {
                     blockedFired.Add((seat, i));
-                    FireBlocked(seat, EmergencySets[i].name, mine.Where(EmergencySets[i].pred).ToList());
+                    StartCoroutine(FireBlockedDeferred(seat, EmergencySets[i].name, mine.Where(EmergencySets[i].pred).ToList()));
                 }
             }
 
@@ -2465,12 +2497,13 @@ public partial class GoStop3PGame : MonoBehaviour
                     if (needAchieve && state == GoStopRules.SetState.Achieved)
                     {
                         achievedFired.Add((seat, GwangEmergencyIdx));
+                        pendingSetEffectCount++;
                         StartCoroutine(FireGwangAchievementDeferred(seat, mine));
                     }
                     else if (needBlocked && state == GoStopRules.SetState.Blocked)
                     {
                         blockedFired.Add((seat, GwangEmergencyIdx));
-                        FireBlocked(seat, "3광", mine.Where(c => c.kind == HwatuKind.Gwang).ToList());
+                        StartCoroutine(FireBlockedDeferred(seat, "3광", mine.Where(c => c.kind == HwatuKind.Gwang).ToList()));
                     }
                 }
             }
@@ -2539,6 +2572,12 @@ public partial class GoStop3PGame : MonoBehaviour
     {
         yield return new WaitForSeconds(1.0f);
         if (achievedFired.Contains((seat, setIdx))) yield break; // 그 사이 완성돼버렸다 — 비상은 생략, 완성 이펙트만 보여준다
+        // 2026-09-08 — "연출과 팝업이 뒤죽박죽" 점검 중 추가한 방어망.
+        // 비상은 alt-큐(EnqueueAlt) 기반이라 정확한 재생완료 시점을 밖에서
+        // 못 잡아 pendingSetEffectCount에는 안 넣지만(제대로 하려면
+        // GoStopVectorEffect의 alt 큐 자체를 손봐야 한다 — 이번 범위 밖),
+        // 최소한 "판이 이미 끝난 뒤에 뜨는" 최악의 경우는 막는다.
+        if (state == State.GameOver) yield break;
         FireEmergency(seat, setName, cards);
     }
 
@@ -2553,12 +2592,30 @@ public partial class GoStop3PGame : MonoBehaviour
     /// 때까지 기다렸다가 보여준다 — 필드선택/9월열끗 등 팝업이 떠 있는
     /// 동안도 `actionBusy`가 계속 true라 자동으로 안 끼어든다.
     /// `achievedFired`는 `CheckEmergencies()`에서 이미 동기로 기록해 두므로
-    /// (재검사 방지) 이 코루틴은 순수하게 "언제 보여줄지"만 다룬다.</summary>
+    /// (재검사 방지) 이 코루틴은 순수하게 "언제 보여줄지"만 다룬다.
+    /// <br/>2026-09-08 — 후속 신고("팝업이 뜨고 나서 연출이 나온다")로
+    /// `pendingSetEffectCount` 추적을 추가했다. `actionBusy`가 풀리는
+    /// 시점은 `AdvanceTurn`/`EndGame`이 다음 화면(다음 턴·결과 오버레이)을
+    /// 보여주는 바로 그 시점과 겹치는데, 이 `WaitUntil`은 다음 프레임에야
+    /// 풀려서 그 경쟁에서 구조적으로 항상 진다 — 그래서 예전엔 결과
+    /// 오버레이가 먼저 뜨고 그 위에 완성 이펙트가 뒤늦게 겹쳤다.
+    /// `pendingSetEffectCount`를 `CheckEmergencies()`가 스케줄링하는
+    /// 순간(+1) ~ 여기서 실제 재생이 끝나는 순간(-1)까지 세워두고,
+    /// `AdvanceTurn`/`EndGame`이 이 값이 0이 될 때까지 자기 화면 전환을
+    /// 미루게 했다(아래 참고) — 이제 "연출이 다 끝난 뒤에 다음 화면"
+    /// 순서가 구조적으로 보장된다. 판이 이미 끝난 뒤라면(예: 이 좌석이
+    /// 아닌 다른 좌석의 승리로 먼저 게임오버) 완성 이펙트 자체가
+    /// 무의미하므로 조용히 생략한다.</summary>
     IEnumerator FireAchievementDeferred(int seat, string setName, List<HwatuCard> cards)
     {
         yield return new WaitUntil(() => !actionBusy);
         yield return new WaitForSeconds(0.3f); // 턴이 막 끝난 화면이 한 번 정착할 여유
-        FireAchievement(seat, setName, cards);
+        if (state != State.GameOver)
+        {
+            var co = FireAchievement(seat, setName, cards);
+            if (co != null) yield return co;
+        }
+        pendingSetEffectCount--;
     }
 
     /// <summary>위 <see cref="FireAchievementDeferred"/>와 같은 이유·같은
@@ -2568,7 +2625,25 @@ public partial class GoStop3PGame : MonoBehaviour
     {
         yield return new WaitUntil(() => !actionBusy);
         yield return new WaitForSeconds(0.3f);
-        FireGwangAchievement(seat, mine);
+        if (state != State.GameOver)
+        {
+            var co = FireGwangAchievement(seat, mine);
+            if (co != null) yield return co;
+        }
+        pendingSetEffectCount--;
+    }
+
+    /// <summary>2026-09-08 — "실패(막힘)"도 완성과 완전히 같은 문제(손패
+    /// 캡처 직후 즉시 발동해 뒷패 처리를 덮는 것)를 겪고 있었다 — 같은
+    /// 원칙으로 defer한다. 다만 실패는 alt-큐 기반이라(비상과 공유하는
+    /// 채널) `pendingSetEffectCount`에는 안 넣는다 — 위 `FireEmergencyDeferred`
+    /// 주석 참고.</summary>
+    IEnumerator FireBlockedDeferred(int seat, string setName, List<HwatuCard> cards)
+    {
+        yield return new WaitUntil(() => !actionBusy);
+        yield return new WaitForSeconds(0.3f);
+        if (state == State.GameOver) yield break;
+        FireBlocked(seat, setName, cards);
     }
 
     /// <summary>3광 비상 판정 — 광 5장 중 3장을 채우면 되므로, 상대가 광을
@@ -2663,9 +2738,9 @@ public partial class GoStop3PGame : MonoBehaviour
     /// 그대로 남겨서 두 이펙트가 겹치며 화려함을 더한다. 비상(2/3 경고)
     /// 쪽은 이번 범위에서 안 건드렸다 — 여전히 GoStopEffectPopup 래스터
     /// 프리팹을 쓴다(FireEmergency 참고).</summary>
-    void FireAchievement(int seat, string setName, List<HwatuCard> cards)
+    Coroutine FireAchievement(int seat, string setName, List<HwatuCard> cards)
     {
-        if (fieldArea == null) return;
+        if (fieldArea == null) return null;
 
         // 2026-09-06 버그 수정 — "뻑 이펙트가 뻑난 카드 위가 아니라
         // 한칸반정도 어긋나게 나온다" 신고로 발견. fieldArea가 가리키는
@@ -2682,10 +2757,11 @@ public partial class GoStop3PGame : MonoBehaviour
 
         GoStopIcons.SpawnBurst(canvasRoot, local, EmergencyColor(setName), 30);
 
-        GoStopVectorEffect.Ensure().Play($"{SeatName(seat)}님이 {setName} 완성!", EmergencyColor(setName), cards);
+        var co = GoStopVectorEffect.Ensure().Play($"{SeatName(seat)}님이 {setName} 완성!", EmergencyColor(setName), cards);
 
         ShowTimedToast($"{SeatName(seat)}님이 {setName} 완성!");
         GoStopAudio.Instance?.Fanfare(); // 2026-09-05 — 기존 Win()보다 웅장한 전용 사운드로 교체(실제 게임 승리와는 다른 소리여야 구분된다)
+        return co;
     }
 
     /// <summary>광 완성 이펙트 — 사용자 확인(2026-08-25)에 따라 <b>완성만</b>
@@ -2702,7 +2778,7 @@ public partial class GoStop3PGame : MonoBehaviour
     /// "고정 이미지"를 보여줬는데, 이제는 좌석이 실제로 들고 있는
     /// 광 카드 그대로(3~5장, 어느 달인지도 그대로) 보여준다 — 프리팹
     /// 4개를 갈라 관리할 필요 자체가 없어졌다(라벨 문구만 갈리면 된다).</summary>
-    void FireGwangAchievement(int seat, List<HwatuCard> mine)
+    Coroutine FireGwangAchievement(int seat, List<HwatuCard> mine)
     {
         var gwangCards = mine.Where(c => c.kind == HwatuKind.Gwang).ToList();
         int count = gwangCards.Count;
@@ -2714,7 +2790,7 @@ public partial class GoStop3PGame : MonoBehaviour
         else if (hasBiGwang) label = "비삼광";
         else                 label = "3광";
 
-        if (fieldArea == null) return;
+        if (fieldArea == null) return null;
 
         // 2026-09-06 버그 수정 — "뻑 이펙트가 뻑난 카드 위가 아니라
         // 한칸반정도 어긋나게 나온다" 신고로 발견. fieldArea가 가리키는
@@ -2732,10 +2808,11 @@ public partial class GoStop3PGame : MonoBehaviour
 
         GoStopIcons.SpawnBurst(canvasRoot, local, color, 30);
 
-        GoStopVectorEffect.Ensure().Play($"{SeatName(seat)}님이 {label} 완성!", color, gwangCards);
+        var co = GoStopVectorEffect.Ensure().Play($"{SeatName(seat)}님이 {label} 완성!", color, gwangCards);
 
         ShowTimedToast($"{SeatName(seat)}님이 {label} 완성!");
         GoStopAudio.Instance?.Fanfare();
+        return co;
     }
 
     /// <summary>총통(딜 직후 같은 달 4장으로 즉시 승리) 전용 족보 이펙트 —
@@ -4301,26 +4378,38 @@ public partial class GoStop3PGame : MonoBehaviour
         state = State.GoStopChoice;
         pendingGoRawScore = rawScore;
         int displayScore = rawScore + goCount[PLAYER_SEAT]; // 이미 쌓인 고 보너스까지 반영해서 보여준다
-        ui?.ShowOverlay(HwatuTheme.Gold, $"{displayScore}점 달성!", displayScore.ToString(),
-            "고 하시겠습니까, 스톱 하시겠습니까?", "고", OnPlayerGo, "스톱", OnPlayerStop);
 
         // 2026-08-20: 이 함수는 항상 호스트 자신(PLAYER_SEAT)의 결정에서만
         // 불린다(AfterAction의 seat==PLAYER_SEAT 분기) — 예전엔 여기서
         // state만 바뀌고 아무도 다시 그리지 않아서, 다른 좌석들은 호스트가
         // 왜 멈췄는지 몰랐다(RemoteGoStopSeq와 같은 버그, 2인판에서도
         // 똑같이 겪었다). RebuildUI()가 FillSlot의 "▶ 고/스톱 선택 중"
-        // 표시를 갱신하고 게스트에게도 브로드캐스트한다.
+        // 표시를 갱신하고 게스트에게도 브로드캐스트한다 — 이건 즉시 실행
+        // (작은 상태박스 표시라 족보완성 이펙트와 안 부딪힌다).
         RebuildUI();
 
-        // design.md §50.1 — 무응답 10초면 스톱 처리(RemoteGoStopSeq의
-        // 원격 좌석 기본값과 동일). 이 함수는 항상 호스트 자신(PLAYER_SEAT)
-        // 의 결정에서만 불리므로 isNetworkHost만 확인하면 된다 — 오프라인
-        // (vs AI) 판은 절대 걸지 않는다. hasAnswered는 state 자체로 판단한다
-        // — OnPlayerGo/OnPlayerStop 둘 다 AdvanceTurn/EndGame을 거쳐
-        // GoStopChoice에서 벗어난다.
-        if (isNetworkHost)
-            StartCoroutine(RunLocalInputTimeout(() => state != State.GoStopChoice,
-                t => ui?.SetOverlaySub(t), "고 하시겠습니까, 스톱 하시겠습니까?", OnPlayerStop));
+        // 2026-09-08 — 방금 낸 카드가 점수선을 넘기면서 동시에 족보를
+        // 완성시키는 드문 경우, 예전엔 이 오버레이가 먼저 뜨고 완성
+        // 이펙트가 그 위에 뒤늦게 겹쳤다("팝업이 뜨고 나서 연출이 나온다"
+        // 신고, EndGame과 같은 원인). ShowResultOverlayDeferred로 같은
+        // pendingSetEffectCount 게이트를 공유한다 — 무응답 타임아웃
+        // 코루틴도 오버레이가 실제로 뜨는 시점에 맞춰 같이 시작해야
+        // 카운트다운이 화면과 어긋나지 않는다.
+        ShowResultOverlayDeferred(() =>
+        {
+            ui?.ShowOverlay(HwatuTheme.Gold, $"{displayScore}점 달성!", displayScore.ToString(),
+                "고 하시겠습니까, 스톱 하시겠습니까?", "고", OnPlayerGo, "스톱", OnPlayerStop);
+
+            // design.md §50.1 — 무응답 10초면 스톱 처리(RemoteGoStopSeq의
+            // 원격 좌석 기본값과 동일). 이 함수는 항상 호스트 자신(PLAYER_SEAT)
+            // 의 결정에서만 불리므로 isNetworkHost만 확인하면 된다 — 오프라인
+            // (vs AI) 판은 절대 걸지 않는다. hasAnswered는 state 자체로 판단한다
+            // — OnPlayerGo/OnPlayerStop 둘 다 AdvanceTurn/EndGame을 거쳐
+            // GoStopChoice에서 벗어난다.
+            if (isNetworkHost)
+                StartCoroutine(RunLocalInputTimeout(() => state != State.GoStopChoice,
+                    t => ui?.SetOverlaySub(t), "고 하시겠습니까, 스톱 하시겠습니까?", OnPlayerStop));
+        });
     }
 
     void OnPlayerGo()
@@ -4356,7 +4445,27 @@ public partial class GoStop3PGame : MonoBehaviour
         StartCoroutine(EndGameAfterStop(PLAYER_SEAT));
     }
 
+    /// <summary>2026-09-08 — "연출과 팝업이 뒤죽박죽" 점검으로 추가한
+    /// 게이트. 기존 <c>AdvanceTurn()</c>의 실제 본문은 아래
+    /// <see cref="AdvanceTurnImmediate"/>로 이름만 옮겼을 뿐 전혀 안
+    /// 바뀌었다 — 이 래퍼가 <see cref="pendingSetEffectCount"/>(방금
+    /// 이번 턴에 감지된 족보완성 이펙트가 아직 재생 중인지)를 확인해서,
+    /// 남아있으면 그게 다 끝날 때까지 다음 턴 전환(=다음 좌석의 카드
+    /// 애니메이션·팝업이 뜨는 것)을 미룬다. 기존 호출부는 전부 그대로
+    /// `AdvanceTurn()`을 부르면 되므로 단 한 곳도 안 고쳐도 된다.</summary>
     void AdvanceTurn()
+    {
+        if (pendingSetEffectCount > 0) { StartCoroutine(AdvanceTurnAfterPendingEffects()); return; }
+        AdvanceTurnImmediate();
+    }
+
+    IEnumerator AdvanceTurnAfterPendingEffects()
+    {
+        yield return new WaitUntil(() => pendingSetEffectCount == 0);
+        AdvanceTurnImmediate();
+    }
+
+    void AdvanceTurnImmediate()
     {
         if (CheckHandsEmpty()) return;
 
@@ -4589,6 +4698,31 @@ public partial class GoStop3PGame : MonoBehaviour
         return parts.Count > 0 ? string.Join(" · ", parts) : null;
     }
 
+    /// <summary>2026-09-08 — "연출과 팝업이 뒤죽박죽" 점검으로 추가.
+    /// `EndGame()`의 상태/정산 계산(state=GameOver, dealerSeat, 머니 이동,
+    /// SaveMoney 등)은 전부 그대로 즉시 실행하지만, 화면에 실제로 결과
+    /// 오버레이를 띄우는 이 마지막 한 동작만은 이번 판 도중 감지된 족보완성
+    /// 이펙트(<see cref="pendingSetEffectCount"/>)가 다 끝날 때까지 미룬다.
+    /// 안 그러면 마지막 캡처가 승리와 족보완성을 동시에 만드는 드문 경우,
+    /// 결과 오버레이가 먼저 뜨고(같은 프레임에 동기로 진행) 완성 이펙트가
+    /// 그 위에 0.3초쯤 뒤늦게 겹쳐서 "팝업이 뜨고 나서 연출이 나온다"는
+    /// 신고와 정확히 같은 증상이 났다. `showAction`은 그 분기의
+    /// `ui?.ShowOverlay(...)`(및 시점을 맞춰야 하는 `HostAutoRestartSeq`
+    /// 시작 등 화면과 바로 연결된 후속 동작)를 그대로 담은 클로저다 —
+    /// 네트워크 브로드캐스트처럼 화면과 무관한 동작은 이 안에 안 넣고
+    /// 예전처럼 즉시 실행한다.</summary>
+    void ShowResultOverlayDeferred(System.Action showAction)
+    {
+        if (pendingSetEffectCount == 0) { showAction(); return; }
+        StartCoroutine(ShowResultOverlayAfterPendingEffects(showAction));
+    }
+
+    IEnumerator ShowResultOverlayAfterPendingEffects(System.Action showAction)
+    {
+        yield return new WaitUntil(() => pendingSetEffectCount == 0);
+        showAction();
+    }
+
     void EndGame(int winnerSeat, int? fixedBaseScore = null, int extraMultiplier = 1)
     {
         state = State.GameOver;
@@ -4629,12 +4763,16 @@ public partial class GoStop3PGame : MonoBehaviour
                 // (게스트는 원래도 버튼이 없었다 — 이제 호스트도 같은
                 // 방식으로 통일). 게스트 쪽은 ShowGuestGameOverOverlay가
                 // 같은 문구로 카운트다운만(연출용) 보여준다.
-                ui?.ShowOverlay(new Color(.6f, .6f, .6f), "나가리", "-", nagariSub, "타이틀", GoToTitle);
-                StartCoroutine(HostAutoRestartSeq(nagariSub));
+                ShowResultOverlayDeferred(() =>
+                {
+                    ui?.ShowOverlay(new Color(.6f, .6f, .6f), "나가리", "-", nagariSub, "타이틀", GoToTitle);
+                    StartCoroutine(HostAutoRestartSeq(nagariSub));
+                });
             }
             else
             {
-                ui?.ShowOverlay(new Color(.6f, .6f, .6f), "나가리", "-", nagariSub, "다시 시작", NewGame, "타이틀", GoToTitle);
+                ShowResultOverlayDeferred(() =>
+                    ui?.ShowOverlay(new Color(.6f, .6f, .6f), "나가리", "-", nagariSub, "다시 시작", NewGame, "타이틀", GoToTitle));
             }
             if (isNetworkHost)
             {
@@ -4782,7 +4920,8 @@ public partial class GoStop3PGame : MonoBehaviour
             // §49.4 "방 폭파"). §50.2 확장 전의 OnGuestLeftDuringGame
             // 즉시-종료 동작을 그대로 재사용한다.
             sub += $" · {permaGoneNames} 연결이 끊겨 더 이상 진행할 수 없습니다";
-            ui?.ShowOverlay(col, title, finalScore.ToString(), sub, "타이틀", GoToTitle); // "다시 시작" 없음
+            ShowResultOverlayDeferred(() =>
+                ui?.ShowOverlay(col, title, finalScore.ToString(), sub, "타이틀", GoToTitle)); // "다시 시작" 없음
             GoStopNetLobby.Instance?.BroadcastToGuests(
                 new GoStopNetMessage { type = GoStopNetMessage.Type.Bye, text = $"{permaGoneNames} 연결이 끊겨 게임을 종료합니다." });
         }
@@ -4812,8 +4951,11 @@ public partial class GoStop3PGame : MonoBehaviour
             // networkDowngrade는 permaGoneSeats가 isNetworkHost일 때만
             // 채워지므로(위 계산부 참고) 이 분기는 항상 네트워크 호스트다
             // — "다시 시작" 버튼 없이 3초 자동 재시작으로 통일한다.
-            ui?.ShowOverlay(col, title, finalScore.ToString(), sub, "타이틀", GoToTitle, "점수 상세", ShowScoreDetail);
-            StartCoroutine(HostAutoRestartSeq(sub));
+            ShowResultOverlayDeferred(() =>
+            {
+                ui?.ShowOverlay(col, title, finalScore.ToString(), sub, "타이틀", GoToTitle, "점수 상세", ShowScoreDetail);
+                StartCoroutine(HostAutoRestartSeq(sub));
+            });
         }
         else if (downgrade)
         {
@@ -4821,25 +4963,29 @@ public partial class GoStop3PGame : MonoBehaviour
             // 이 아래로는 SEATS/좌석 번호가 이미 새 구성이다.
             ApplyDowngrade(bankruptSeats);
             sub += $" · {bankruptNames} 잔액을 모두 잃어 퇴장 — 남은 {SEATS}명으로 계속합니다";
-            ui?.ShowOverlay(col, title, finalScore.ToString(), sub,
-                "다시 시작", NewGame, "타이틀", GoToTitle, "점수 상세", ShowScoreDetail);
+            ShowResultOverlayDeferred(() => ui?.ShowOverlay(col, title, finalScore.ToString(), sub,
+                "다시 시작", NewGame, "타이틀", GoToTitle, "점수 상세", ShowScoreDetail));
         }
         else if (bankruptSeats.Count > 0)
         {
             sub += $" · {bankruptNames} 잔액을 모두 잃어 이 판을 끝으로 세션을 종료합니다";
-            ui?.ShowOverlay(col, title, finalScore.ToString(), sub, "타이틀", GoToTitle); // "다시 시작" 없음
+            ShowResultOverlayDeferred(() =>
+                ui?.ShowOverlay(col, title, finalScore.ToString(), sub, "타이틀", GoToTitle)); // "다시 시작" 없음
         }
         else if (isNetworkHost)
         {
             // 2026-09-05(사용자 확인) — 정상적으로 승부가 갈린 판도 네트워크
             // 대전이면 "다시 시작" 버튼 없이 3초 뒤 자동으로 다음 판.
-            ui?.ShowOverlay(col, title, finalScore.ToString(), sub, "타이틀", GoToTitle, "점수 상세", ShowScoreDetail);
-            StartCoroutine(HostAutoRestartSeq(sub));
+            ShowResultOverlayDeferred(() =>
+            {
+                ui?.ShowOverlay(col, title, finalScore.ToString(), sub, "타이틀", GoToTitle, "점수 상세", ShowScoreDetail);
+                StartCoroutine(HostAutoRestartSeq(sub));
+            });
         }
         else
         {
-            ui?.ShowOverlay(col, title, finalScore.ToString(), sub,
-                "다시 시작", NewGame, "타이틀", GoToTitle, "점수 상세", ShowScoreDetail);
+            ShowResultOverlayDeferred(() => ui?.ShowOverlay(col, title, finalScore.ToString(), sub,
+                "다시 시작", NewGame, "타이틀", GoToTitle, "점수 상세", ShowScoreDetail));
         }
 
         if (isNetworkHost)

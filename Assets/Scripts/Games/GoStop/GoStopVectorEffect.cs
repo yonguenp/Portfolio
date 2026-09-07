@@ -185,12 +185,19 @@ public class GoStopVectorEffect : MonoBehaviour
     /// 실제로 가진 광 카드 전부) — 하드코딩된 고정 목록이 아니라 호출부가
     /// 그 순간의 <c>captured</c>에서 걸러 넘긴다. 광처럼 3~5장으로 장수가
     /// 갈리는 경우도 이 하나의 함수가 자동으로 대응한다.</summary>
-    public void Play(string title, Color accent, IEnumerable<HwatuCard> cards)
+    /// <summary>2026-09-08 — 반환형을 void→Coroutine으로 바꿨다(기존
+    /// 호출부는 반환값을 그냥 버리므로 전혀 안 깨진다). 호출부가
+    /// "이 완성 이펙트가 실제로 다 끝난 뒤에" 다음 화면(결과 오버레이 등)을
+    /// 보여주고 싶을 때 `yield return Play(...)`로 이어붙일 수 있게 하려는
+    /// 목적 — GoStop3PGame.FireAchievementDeferred/pendingSetEffectCount
+    /// 참고.</summary>
+    public Coroutine Play(string title, Color accent, IEnumerable<HwatuCard> cards)
     {
         var list = cards?.Where(c => c != null).ToList() ?? new List<HwatuCard>();
-        if (list.Count == 0) return;
+        if (list.Count == 0) return null;
         if (playing != null) StopCoroutine(playing);
         playing = StartCoroutine(PlaySeq(title, accent, list));
+        return playing;
     }
 
     IEnumerator PlaySeq(string title, Color accent, List<HwatuCard> cards)
