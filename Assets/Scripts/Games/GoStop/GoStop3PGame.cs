@@ -183,13 +183,25 @@ public partial class GoStop3PGame : MonoBehaviour
         }
     }
 
+    /// <summary>화면 금액 숫자 + 세션 시작 대비 변동(SetMoneyDelta)만 즉시
+    /// 갱신한다 — RebuildUI() 전체를 다시 돌리는 무거운 경로 없이, 돈이
+    /// 실제로 움직인 그 순간(광팔이·첫뻑/연뻑/첫따닥/첫뻑먹기·최종 정산)
+    /// 바로 반영하기 위한 가벼운 헬퍼. 2026-09-08(사용자 재신고 — "광팔고
+    /// 난 금액은 업데이트 안되네... 돈이변할때는 계속 업데이트해줘야될거
+    /// 같아") — 예전엔 EndGame(최종 정산) 끝에서만 이걸 불렀는데,
+    /// 광팔이/ApplyMoneyBonus는 money[]를 직접 바꾸고 코인 날아가는 연출
+    /// (FlyMoneyFX)만 재생할 뿐 화면 텍스트는 안 건드려서, 다음 우연한
+    /// RebuildUI가 돌 때까지 숫자가 그대로 멈춰 있었다. 슬롯 4개
+    /// 전부(쉬는 좌석 포함 — money가 바뀌는 데 굳이 참가 여부를 가릴
+    /// 이유가 없다) 여기서 한 번에 반영한다.</summary>
     void RefreshMoneyLabelsOnly()
     {
         for (int slot = 0; slot < 4; slot++)
         {
             int seat = slot == 0 ? (slotSeat[0] < 0 ? PLAYER_SEAT : slotSeat[0]) : slotSeat[slot];
-            if (seat < 0 || moneyText[slot] == null) continue;
-            moneyText[slot].text = FormatMoneyText(seat);
+            if (seat < 0) continue;
+            if (moneyText[slot] != null) moneyText[slot].text = FormatMoneyText(seat);
+            statusBoxView[slot]?.SetMoneyDelta(MoneyDeltaFor(seat));
         }
     }
 
@@ -1906,6 +1918,7 @@ public partial class GoStop3PGame : MonoBehaviour
                 payAmounts[payer] = pay;
                 FlyMoneyFX(payer, sittingOutSeat, pay, "광팔이");
             }
+            RefreshMoneyLabelsOnly(); // 2026-09-08 — 광팔이 직후 즉시 화면 반영
             GoStopAudio.Instance?.Money();
             // 어떤 패로 팔았는지·총 얼마인지·누가 내는지를 화면에 직접
             // 보여준다 — 토스트 한 줄("광팔이! (N장)")만으로는 근거를 알 수
@@ -2079,6 +2092,7 @@ public partial class GoStop3PGame : MonoBehaviour
             money[o] -= pay; money[seat] += pay;
             FlyMoneyFX(o, seat, pay, reason);
         }
+        RefreshMoneyLabelsOnly(); // 2026-09-08 — 첫뻑/연뻑/첫따닥/첫뻑먹기 등 직후 즉시 화면 반영
     }
 
     // ── 토스트 ───────────────────────────────────────────
