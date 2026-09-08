@@ -150,12 +150,37 @@ public partial class GoStop3PGame : MonoBehaviour
     string FormatMoneyText(int seat) => $"{money[seat]:N0}원";
 
     /// <summary>그 좌석의 세션 시작(선 정하기 이후) 대비 누적 머니 변동.
-    /// 처음 불리는 순간 그 시점의 money[seat]를 기준선으로 지연 캡처한다
-    /// (FormatMoneyText가 예전에 하던 것과 같은 방식 — 좌석별 독립).</summary>
+    /// 기준선은 정상적으로는 <see cref="CaptureSessionStartMoneyAllSeats"/>가
+    /// 전 좌석을 한 번에 캡처해 둔다 — 이 함수의 지연 캡처는 그 훅이 어떤
+    /// 이유로든 아직 안 불린 경우(예: 네트워크 게스트 경로)를 위한
+    /// 안전망일 뿐이다.</summary>
     int MoneyDeltaFor(int seat)
     {
         if (!sessionStartMoneyCaptured[seat]) { sessionStartMoney[seat] = money[seat]; sessionStartMoneyCaptured[seat] = true; }
         return money[seat] - sessionStartMoney[seat];
+    }
+
+    // 2026-09-08 버그 수정 — "방의 유저 총 변동금액 합산이 0이 안 된다"는
+    // 신고로 발견. MoneyDeltaFor의 옛 "좌석별 독립 지연 캡처"는 그 좌석의
+    // 상태박스가 처음 그려지는 순간(=DrawBadgeStrip이 처음 불리는 순간)을
+    // 기준선으로 삼았는데, 쉬는 좌석(광팔이/참가포기)은 그 판 동안
+    // DrawBadgeStrip 자체가 안 불린다(FillSlot이 sittingOutSeat==seat일
+    // 때 DrawBadgeStrip 호출 전에 return한다) — 그 좌석이 나중에 실제로
+    // 참가하는 판이 돼서야 처음 캡처되는데, 그 사이 광팔이로 이미
+    // money[seat]가 움직인 뒤라 "세션 시작"이 아니라 "이미 한두 번 돈이
+    // 오간 뒤"가 기준선이 돼 버린다 — 이 좌석의 delta가 실제보다 작게
+    // 잡혀서 전체 합이 0이 안 됐다. 고침: 전 좌석을 딜링 시작 전(광팔이
+    // 정산보다 먼저) 같은 순간에 한꺼번에 캡처한다 — 쉬는 좌석이든
+    // 아니든 전부 같은 시점 기준이 되므로 이후 어떤 이체가 일어나도
+    // 합계가 항상 0으로 맞는다.
+    void CaptureSessionStartMoneyAllSeats()
+    {
+        for (int s = 0; s < SEATS_MAX; s++)
+        {
+            if (sessionStartMoneyCaptured[s]) continue; // 이미 캡처됨(다운그레이드로 이어받은 값 등) — 안 건드림
+            sessionStartMoney[s] = money[s];
+            sessionStartMoneyCaptured[s] = true;
+        }
     }
 
     void RefreshMoneyLabelsOnly()
@@ -170,6 +195,11 @@ public partial class GoStop3PGame : MonoBehaviour
 
     void RefreshStatusBoxIdentitiesBeforeDeal()
     {
+        // 이 함수는 매 판 딜링 시작 전, 광팔이 정산보다도 먼저, 전 좌석에
+        // 대해 예외 없이 불린다 — "세션 시작 잔액"을 전 좌석이 같은 순간에
+        // 캡처하기에 가장 이르고 가장 확실한 지점이다(위 CaptureSessionStartMoneyAllSeats
+        // 주석 참고).
+        CaptureSessionStartMoneyAllSeats();
         for (int slot = 0; slot < 4; slot++)
         {
             int seat = slot == 0 ? (slotSeat[0] < 0 ? PLAYER_SEAT : slotSeat[0]) : slotSeat[slot];
