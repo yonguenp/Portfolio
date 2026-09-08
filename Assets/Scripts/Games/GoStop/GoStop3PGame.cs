@@ -128,28 +128,31 @@ public partial class GoStop3PGame : MonoBehaviour
     /// 있으므로, 그 이후(모든 분기가 합류하는 함수 맨 끝)에 한 번만
     /// 부른다.</summary>
     // 2026-09-08(사용자 요청) — "게임에 입장하여 선 정하고 이후의 머니
-    // 변동량을 보고 싶다." 새 UI 요소를 안 늘리고 기존 금액 텍스트 한
-    // 줄에 누적 변동을 괄호로 덧붙인다(이 파일이 이미 여러 번 써 온
-    // "압축된 정보 슬롯" 원칙). 세션 시작 잔액은 이 함수가 처음
-    // 불리는 순간 지연 캡처한다 — 오프라인/호스트는 Start()에서 이미
-    // money[]가 최종값이라 그대로 맞고, 네트워크 게스트는 이 함수의
-    // 첫 호출 시점엔 이미 첫 StateSync를 받아 진짜 값으로 덮어써진
-    // 뒤이므로(Start() 시점의 임시 seed값이 아니라) 세 경로 전부에서
-    // 안전하다. 다른 좌석(AI/상대)은 변동량을 보여줄 이유가 없어
-    // PLAYER_SEAT에만 적용한다.
-    bool sessionStartMoneyCaptured;
-    int sessionStartMoney;
+    // 변동량을 보고 싶다." 처음엔 금액 텍스트 옆에 괄호로 덧붙였다가,
+    // 사용자가 "괄호 대신 각 유저 statusbox의 ScoreRow 두번째 Sub(원래
+    // 광멍피 카운트를 보여주던 자리, Cap에서 다 보이니 굳이 필요없다)에
+    // 넣어달라"고 재요청 — 실제 표시는 GoStopStatusBoxView.SetMoneyDelta로
+    // 옮겼다(DrawBadgeStrip에서 호출). 여기 남은 건 순수 데이터(좌석별
+    // 세션 시작 잔액)뿐 — FormatMoneyText는 다시 평범한 금액 텍스트만
+    // 돌려준다. 세션 시작 잔액은 그 좌석의 정보가 처음 그려지는 순간
+    // 지연 캡처한다(좌석별로 독립) — 오프라인/호스트는 이미 money[]가
+    // 최종값이라 그대로 맞고, 네트워크 게스트는 첫 호출 시점엔 이미 첫
+    // StateSync를 받아 진짜 값으로 덮어써진 뒤이므로 세 경로 전부에서
+    // 안전하다. ApplyDowngrade(파산 좌석 압축)에서 money[]/seatCharName[]과
+    // 같은 방식으로 같이 압축한다 — 안 하면 압축 후 새 인덱스가 압축 전
+    // 다른 사람의 기준 잔액을 가리켜 변동량이 엉뚱하게 나온다.
+    readonly bool[] sessionStartMoneyCaptured = new bool[SEATS_MAX];
+    readonly int[] sessionStartMoney = new int[SEATS_MAX];
 
-    string FormatMoneyText(int seat)
+    string FormatMoneyText(int seat) => $"{money[seat]:N0}원";
+
+    /// <summary>그 좌석의 세션 시작(선 정하기 이후) 대비 누적 머니 변동.
+    /// 처음 불리는 순간 그 시점의 money[seat]를 기준선으로 지연 캡처한다
+    /// (FormatMoneyText가 예전에 하던 것과 같은 방식 — 좌석별 독립).</summary>
+    int MoneyDeltaFor(int seat)
     {
-        if (!sessionStartMoneyCaptured) { sessionStartMoney = money[PLAYER_SEAT]; sessionStartMoneyCaptured = true; }
-        string baseText = $"{money[seat]:N0}원";
-        if (seat != PLAYER_SEAT) return baseText;
-        int delta = money[seat] - sessionStartMoney;
-        if (delta == 0) return baseText;
-        string sign = delta > 0 ? "+" : "";
-        string color = delta > 0 ? "#4CD97B" : "#FF6B6B";
-        return $"{baseText} <color={color}>({sign}{delta:N0})</color>";
+        if (!sessionStartMoneyCaptured[seat]) { sessionStartMoney[seat] = money[seat]; sessionStartMoneyCaptured[seat] = true; }
+        return money[seat] - sessionStartMoney[seat];
     }
 
     void RefreshMoneyLabelsOnly()
@@ -291,6 +294,8 @@ public partial class GoStop3PGame : MonoBehaviour
         var survivorTier = new List<GoStopTier>();
         var survivorSkills = new List<GoStopSkillProfile>();
         var survivorLossStreak = new List<int>();
+        var survivorSessionStartMoney = new List<int>();
+        var survivorSessionStartCaptured = new List<bool>();
         for (int s = 0; s < SEATS; s++)
         {
             if (bankruptSeats.Contains(s)) continue;
@@ -300,6 +305,8 @@ public partial class GoStop3PGame : MonoBehaviour
             survivorTier.Add(seatTier[s]);
             survivorSkills.Add(seatSkills[s]);
             survivorLossStreak.Add(lossStreak[s]);
+            survivorSessionStartMoney.Add(sessionStartMoney[s]);
+            survivorSessionStartCaptured.Add(sessionStartMoneyCaptured[s]);
         }
         int newSeats = survivorMoney.Count;
         for (int i = 0; i < newSeats; i++)
@@ -312,6 +319,9 @@ public partial class GoStop3PGame : MonoBehaviour
             seatCharName[i] = survivorCharName[i]; seatTier[i] = survivorTier[i];
             // 2026-09-07 — 스킬 프로필·연패 기록도 같은 이유로 같이 압축한다.
             seatSkills[i] = survivorSkills[i]; lossStreak[i] = survivorLossStreak[i];
+            // 2026-09-08 — 세션 머니 변동 기준선도 같은 이유로 같이 압축한다.
+            sessionStartMoney[i] = survivorSessionStartMoney[i];
+            sessionStartMoneyCaptured[i] = survivorSessionStartCaptured[i];
         }
         SetSeatCount(newSeats);
         dealerSeat = 0; // 다운그레이드 직후엔 선을 단순하게 나로 리셋한다(누가 이겼는지와 무관하게)
@@ -4407,6 +4417,28 @@ public partial class GoStop3PGame : MonoBehaviour
         }
         if (rawScore >= CaptureLine && rawScore > lastGoScore[seat])
         {
+            // 2026-09-08(사용자 확인) — "손비면 자동승리가 특정 점수를
+            // 달성했을 때(=바로 이 조건, rawScore>=CaptureLine이면서
+            // 직전 고 시점보다 실제로 올랐을 때)는 맞는 행동이지만,
+            // 점수달성을 못했을 때는 다음 유저턴으로 넘어가야지." — 예전
+            // 단축(2026-09-08 초반에 제거)은 lastGoScore 비교 없이
+            // rawScore>=CaptureLine만 봐서, 이미 고를 부른 뒤로 점수가
+            // 하나도 안 올라도 손이 비는 순간 계속 승리 처리되는 게
+            // 문제였다(그래서 제거를 요청하셨다). 지금은 이 if 블록
+            // 자체가 이미 "새로 그 기준을 넘었을 때"만 걸리므로, 그
+            // 조건 위에 "손패도 폭탄크레딧도 더는 없다"만 추가하면
+            // 정확히 사용자가 원하는 좁은 조건이 된다 — 더 낼 방법이
+            // 없는데 방금 막 기준을 넘긴 경우에만 프롬프트 없이 즉시
+            // 승리, 나머지(아직 손이 남았거나 크레딧이 있어 더 낼 수
+            // 있는 경우)는 기존처럼 정상적으로 고/스톱을 묻는다. 좌석을
+            // 안 가려 AI/원격에도 동일하게 적용한다 — 어차피 못 내는
+            // 처지에서 물어보는 건 누구에게든 의미가 없다.
+            if (hand[seat].Count == 0 && bombCredits[seat] == 0)
+            {
+                EndGame(seat);
+                return;
+            }
+
             if (seat == PLAYER_SEAT)
             {
                 ShowGoStopPrompt(rawScore);

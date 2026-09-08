@@ -118,13 +118,21 @@ public class GoStopStatusBoxView : MonoBehaviour
     /// <summary>선(딜러) 여부 — 슬롯 자체는 항상 같은 자리, 표시만 껐다 켠다.</summary>
     public void SetDealer(bool isDealer) => dealerIcon.gameObject.SetActive(isDealer);
 
-    /// <summary>ScoreRow 우측의 "광 X · 멍 Y · 피 Z" 요약 — 목업에 있고 이
-    /// 프리팹엔 빠져 있던 항목이라 새로 추가했다. 피는 장수가 아니라
-    /// EffectivePiValue 합(쌍피=2)으로 넘겨받는다 — 실제 점수 집계와
-    /// 같은 기준이라야 숫자가 의미 있다.</summary>
-    public void SetCounts(int gwang, int meong, int pi)
+    /// <summary>2026-09-08(사용자 요청) — ScoreRow 우측(두번째 Sub)이
+    /// 원래 보여주던 "광 X · 멍 Y · 피 Z"는 획득패(Cap) 실물 카드를 보면
+    /// 이미 다 알 수 있는 중복 정보라, 그 자리를 세션 시작(선 정하기) 이후
+    /// 누적 머니 변동으로 바꿨다 — "이게 더 중요한 정보인 것 같다"는
+    /// 판단. 변동 0이면 "변동 없음", +면 초록(HwatuTheme.DarkGreen — 크림
+    /// 배경 위에서도 대비되는 오리엔탈 팔레트 색), -면 빨강(HwatuTheme.
+    /// HwatuRed)으로 표시한다. 예전 SetCounts(gwang,meong,pi)는 이 메서드로
+    /// 완전히 대체됐다(호출부가 하나뿐이라 API를 그대로 바꿨다).</summary>
+    public void SetMoneyDelta(int delta)
     {
-        if (countsText) countsText.text = $"광 {gwang} · 멍 {meong} · 피 {pi}";
+        if (!countsText) return;
+        if (delta == 0) { countsText.text = "변동 없음"; return; }
+        string sign = delta > 0 ? "+" : "";
+        string hex = ColorUtility.ToHtmlStringRGB(delta > 0 ? HwatuTheme.DarkGreen : HwatuTheme.HwatuRed);
+        countsText.text = $"<color=#{hex}>{sign}{delta:N0}원</color>";
     }
 
     // 오리엔탈 목업(panel_cream/panel_cream_gold, ui.md §9·§10) 참고 —

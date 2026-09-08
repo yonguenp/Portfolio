@@ -1227,12 +1227,10 @@ public partial class GoStop3PGame
         view.SetCountBadge(true, Mathf.Min(shookMonths[seat].Count, 2), ShakeDotColor);
         view.SetCountBadge(false, Mathf.Min(ppeokTotalCount[seat], 2), PpeokDotColor);
 
-        // 목업 ScoreRow의 "광 X · 멍 Y · 피 Z" — 피는 장수가 아니라
-        // EffectivePiValue 합(쌍피=2)이라야 실제 점수 집계와 일치한다.
-        int gwangCount = mine.Count(c => c.EffectiveKind == HwatuKind.Gwang);
-        int meongCount = mine.Count(c => c.EffectiveKind == HwatuKind.Yeolkkeut);
-        int piCount = mine.Where(c => c.EffectiveKind == HwatuKind.Pi).Sum(c => c.EffectivePiValue);
-        view.SetCounts(gwangCount, meongCount, piCount);
+        // 2026-09-08(사용자 요청) — ScoreRow 두번째 Sub는 원래 "광 X · 멍 Y
+        // · 피 Z"를 보여줬는데(획득패 실물 카드로 이미 다 보이는 중복
+        // 정보), 세션 시작(선 정하기 이후) 누적 머니 변동으로 교체했다.
+        view.SetMoneyDelta(MoneyDeltaFor(seat));
     }
 
     /// <summary>상대 좌석 한 블록(상태줄→뒷패 줄→획득패 존) — 상단(seat2)·

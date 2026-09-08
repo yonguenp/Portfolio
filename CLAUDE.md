@@ -14147,3 +14147,132 @@ cards)`를 부른다. 기존 파티클 버스트(`GoStopIcons.SpawnBurst`)는
 
 세 가지 전부 컴파일 클린, 이 세션 테스트 전체 콘솔 `error`/
 `exception` 0건.
+
+## 고스톱 — 조커 필드→Cap 고스트 시작 위치 확인 (2026-09-08)
+
+"필드에서 조커패가 cap으로 이동할때 고스트 생성 시 초기위치를 오프셋
+안주고 생성하나?"라는 질문에 코드 추적 + 라이브 검증으로 답했다.
+
+**결론 — 버그 아님.** `SlamToCap`의 `HwatuUI.MakeCard(card, stableParent,
+Vector2.zero, ...)`가 `Vector2.zero`로 만들어지긴 하지만, 바로 다음 줄
+`ghost.position = from;`(월드 좌표 직접 대입)으로 즉시 덮어써진다 —
+이 프로젝트가 이미 확립한 "월드 좌표에 정확히 놓을 땐 생성 직후
+`.position`을 직접 대입할 것" 패턴 그대로다. `from` 자체는
+`CaptureBonusJokerImmediately`의 `flyFrom[joker] = jokerGo.position`
+(조커가 실제로 렌더링돼 있던, 스택 오프셋 포함한 진짜 위치)이라 정확한
+시작점에서 출발한다.
+
+라이브로 확인하려다 함정 하나를 겪었다 — `capFlightGhosts[joker]`를
+`coroutine.MoveNext()` 한 번으로 즉시 읽어보니 예상 위치와 17px가량
+어긋났는데, 원인은 `FlyAndPunchGhost`의 `while(t<flyDur)` 루프가 **첫
+`yield return null`에 도달하기 전에 이미 한 프레임분 Lerp를 밟는다**는
+것이었다(`t=0`에서 시작해 `t+=Time.deltaTime`이 먼저 실행되므로) — 즉
+"StartCoroutine은 첫 yield까지 동기 실행"이라는 이 프로젝트의 기존
+트릭이, 중첩 코루틴(`yield return SomeMethod()`)에서는 "가장 안쪽
+코루틴의 첫 yield"까지 실행되므로 겉보기엔 "시작점"을 재려던 게 실제로는
+이미 한 스텝 진행된 상태였다. 소스상 `ghost.position = from;`이
+그 앞에서 무조건 실행되는 대입문이라는 게 이미 결정적 증거라, 이
+어긋남은 측정 방법의 한계였을 뿐 실제 버그가 아니다.
+
+## 고스톱 — 손패+크레딧 없이 새로 점수 기준을 넘긴 경우만 자동승리
+(2026-09-08, "즉시승리 단축 제거" 정정)
+
+바로 앞서 제거했던 "손패 다 떨어지면 즉시 승리" 단축을, 사용자가 실제
+플레이 사례로 정확한 조건을 다시 정리해서 요청 — 두 번의
+`AskUserQuestion`으로 정확한 시나리오를 확인한 결과:
+
+> "손비면 자동승리가 내가 특정 점수를 달성했을때(기본적으로 3점, 맞고
+> 7점 이상 달성, 만약 이전 턴에 고를 했다면 고를했을 시점보다 높은
+> 점수)는 맞는 행동이지만, 점수달성을 못했을때는 다음 유저턴으로
+> 넘어가야지."
+
+**핵심 — 예전 단축이 진짜 문제였던 지점은 "손패 다 떨어짐" 자체가
+아니라 `lastGoScore` 비교 누락이었다.** 예전 코드
+(`hand.Count==0 && bombCredits==0 && rawScore>=CaptureLine`)는 이미
+고를 부른 뒤로 점수가 하나도 안 올라도(`rawScore`가 CaptureLine을
+넘긴 채 정체) 손이 빌 때마다 계속 승리 처리했다 — 그게 "고를
+하고나서 내 마지막턴까지 아무것도 못먹고 추가점수없어도 승리처리되?"
+라는 첫 신고의 원인이었다. 이번엔 그 게이트(`rawScore >
+lastGoScore[seat]`)를 반드시 같이 확인하도록 좁혀서 재구현했다.
+
+```csharp
+if (rawScore >= CaptureLine && rawScore > lastGoScore[seat])
+{
+    if (hand[seat].Count == 0 && bombCredits[seat] == 0)
+    {
+        EndGame(seat);
+        return;
+    }
+    if (seat == PLAYER_SEAT) { ShowGoStopPrompt(rawScore); return; }
+    ...
+}
+```
+
+바깥 `if`가 이미 "이번에 새로 그 기준을 넘겼을 때"만 걸리므로, 그 안에
+"더 낼 손패도 크레딧도 없다"만 추가하면 정확히 사용자가 원하는 좁은
+조건이 된다 — **더 낼 방법이 없는데 방금 막 기준을 새로 넘긴 경우에만**
+프롬프트 없이 즉시 승리, 점수가 안 올랐거나(이미 그 점수로 고를 부른
+뒤 정체) 아직 손/크레딧이 남아있으면 기존처럼 정상 동작(프롬프트 또는
+`AdvanceTurn()`)한다. 좌석을 안 가려 AI/원격에도 동일 적용했다 — 어차피
+못 내는 처지에서 물어보는 건 누구에게든 의미가 없다.
+
+**검증 전에 실제 시나리오를 먼저 정확히 특정했다.** 사용자에게 "그
+상황에서 다른 좌석/덱이 이미 다 비어있었나, 아직 카드가 남아있었나"를
+`AskUserQuestion`으로 확인 — **다른 좌석은 카드가 남아있었다**는 답을
+받고서야(즉 `CheckHandsEmpty()`가 이 시점에 이미 알아서 처리해줄 수 없는,
+진짜로 새 로직이 필요한 경우라는 게 확정됨) 코드를 고쳤다. 순서를
+바꿔 먼저 코드부터 고쳤다면, "다른 좌석/덱도 이미 다 빈 진짜 마지막
+턴" 케이스(별도로 라이브 검증까지 마쳤고 `CheckHandsEmpty()`가 이미
+정확히 처리하고 있었다 — 버그 없음)와 헷갈려 불필요한 코드를 건드릴
+뻔했다.
+
+검증(Play 모드 라이브, 리플렉션): ① 홍단 3장으로 정확히 3점 확보, 손패
+마지막 1장(무매칭)을 내 손을 비우면서 `lastGoScore=-1`(첫 달성) —
+다른 좌석 3명 전부 카드가 남은 상태에서도 **프롬프트 없이 즉시**
+`state=GameOver, pendingWinnerSeat=0`으로 확인. ② 같은 조건이지만
+`lastGoScore=3`(이미 이 점수로 고를 부른 적 있음 — 점수 안 오름)으로
+재현 — `state=Turn`으로 정상적으로 다음 좌석까지 진행되는 것(자동승리
+없음) 확인, 예전 수정이 안 깨졌음을 재확인. 콘솔 `error`/`exception`
+0건.
+
+## 고스톱 — 머니 변동 표시를 괄호에서 ScoreRow 두번째 Sub로 이동, 전
+좌석 적용 (2026-09-08)
+
+바로 전 세션에 만든 "금액 텍스트 옆 괄호" 방식을 사용자가 두 단계로
+재요청해서 최종 형태로 정리했다.
+
+**1차 — "다른 유저들은 안 나오네?"** 처음엔 PLAYER_SEAT에만 적용했는데
+(다른 좌석은 안 궁금할 거라 판단했던 것), 사용자가 전 좌석 다 보고
+싶다고 확인 — `sessionStartMoney`/`sessionStartMoneyCaptured`를 단일
+값에서 좌석별 배열(`[SEATS_MAX]`)로 바꾸고 `FormatMoneyText`의
+`seat != PLAYER_SEAT` 제한을 없앴다. `ApplyDowngrade`(파산 좌석 압축)
+에도 `money[]`/`seatCharName[]`과 같은 방식으로 같이 압축하는 코드를
+추가했다 — 안 하면 압축 후 새 인덱스가 압축 전 다른 사람의 기준
+잔액을 가리켜 변동량이 엉뚱하게 나온다.
+
+**2차 — "괄호 대신 ScoreRow 두번째 Sub에."** "보유머니 변동량을
+보유금액 옆에 괄호치고 보여주지말고 각 유저 statusbox의 scoreRow안에
+두번째 Sub에 보유머니 변동을 적어주자. 원래 이 영역이 광멍피 갯수
+보여주는건데 cap에서 다보여서 굳이 필요없을것같아" — 프리팹을
+직접 파싱해서 `ScoreRow`의 두 자식(둘 다 이름이 "Sub")이 각각
+`goScoreText`(첫번째, 왼쪽 절반)와 `countsText`(두번째, 오른쪽 절반 —
+"광 X · 멍 Y · 피 Z")로 와이어링돼 있는 걸 확인하고, `countsText`를
+재활용했다.
+
+- `GoStopStatusBoxView.SetCounts(gwang,meong,pi)` → `SetMoneyDelta(int delta)`
+  로 API 자체를 교체(호출부가 하나뿐이라 안전) — 변동 0이면 "변동
+  없음", +면 `HwatuTheme.DarkGreen`(#193523, 크림 배경 위에서도 잘
+  보이는 오리엔탈 팔레트 다크그린), -면 `HwatuTheme.HwatuRed`(#C93A32)로
+  색칠한다 — 이전 세션에 임의로 골랐던 네온 그린/레드(#4CD97B/#FF6B6B)
+  대신 이 프로젝트의 기존 팔레트에 맞췄다.
+- `GoStop3PGame.FormatMoneyText`는 다시 평범한 금액 텍스트만 돌려주는
+  걸로 되돌리고, 델타 계산·지연 캡처 로직은 새 `MoneyDeltaFor(int seat)`
+  헬퍼로 옮겨서 `DrawBadgeStrip`이 `view.SetMoneyDelta(MoneyDeltaFor(seat))`
+  로 호출한다 — 예전에 광/멍/피 카운트를 계산하던 자리를 그대로
+  대체했다.
+
+검증(Play 모드 라이브, 리플렉션): 4개 슬롯의 `countsText` 값을 직접
+읽어 `slot0=[<color=#193523>+500,000원</color>]`(내가 테스트로 만든
+큰 변동), `slot1~3=[변동 없음]`(아직 안 건드린 좌석들)로 정확히
+표시되는 것 확인 — 전 좌석에 정상 적용됨을 재확인했다. 컴파일 클린,
+콘솔 `error`/`exception` 0건.
