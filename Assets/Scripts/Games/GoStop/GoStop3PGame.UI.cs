@@ -2514,10 +2514,22 @@ public partial class GoStop3PGame
     IEnumerator SlamIn(RectTransform rt, Vector3 fromWorld)
     {
         if (rt == null) yield break;
-        float t01 = CaptureFlightDistanceT(Vector3.Distance(fromWorld, rt.position));
+        // 2026-09-08 버그 수정("뒷패에서 보너스패가 나올 때 손패로 낸 카드와
+        // 딱 겹쳐 보인다" 실전 재현) — 예전엔 FlyAndPunch(rt, fromWorld, rt, ...)
+        // 로 rt 자기 자신을 "추적할 타겟"으로 넘겼다. 그 RectTransform 오버로드는
+        // 매 프레임 target.position(=rt.position)을 다시 읽는데, target이 곧
+        // rt라 "방금 이 루프가 스스로 옮겨놓은 위치"를 다음 프레임의 목표로 또
+        // 읽는 자기참조 피드백이 생긴다 — p(진행률)가 매 프레임 곱해지며
+        // 수렴하는 목표 자체가 fromWorld 쪽으로 계속 줄어들어, 결국 의도한
+        // 오프셋(예: 20px)의 극히 일부(실측 1.25px)에서 멈춰 사실상 겹쳐
+        // 보였다. 카드 자신의 최종 위치(이미 HwatuUI.MakeCard가 offset을
+        // 적용해 확정해 둔 값)를 미리 Vector3로 스냅샷해서 정적 목적지로
+        // 넘기면(Vector3 오버로드) 이 피드백이 구조적으로 불가능해진다.
+        Vector3 to = rt.position;
+        float t01 = CaptureFlightDistanceT(Vector3.Distance(fromWorld, to));
         float flyDur = Mathf.Lerp(0.11f, 0.38f, t01);
         float punchDur = Mathf.Lerp(0.14f, 0.22f, t01);
-        yield return FlyAndPunch(rt, fromWorld, rt, flyDur, punchDur);
+        yield return FlyAndPunch(rt, fromWorld, to, flyDur, punchDur);
     }
 
     /// <summary>필드의 짝을 실제로 쳐서 맞추는 2단 연출 — 손/더미에서 <b>맞은
@@ -2537,8 +2549,11 @@ public partial class GoStop3PGame
         yield return FlyAndPunch(rt, fromWorld, hitWorld, Mathf.Lerp(0.09f, 0.30f, t1), Mathf.Lerp(0.10f, 0.16f, t1));
         if (rt == null) yield break;
 
-        float t2 = CaptureFlightDistanceT(Vector3.Distance(hitWorld, rt.position));
-        yield return FlyAndPunch(rt, hitWorld, rt, Mathf.Lerp(0.14f, 0.34f, t2), Mathf.Lerp(0.16f, 0.22f, t2));
+        // 2026-09-08 — SlamIn과 같은 자기참조 버그(위 SlamIn 주석 참고)가
+        // 2구간(경유지→최종 자리)에도 있었다 — 같은 방식으로 스냅샷해 고친다.
+        Vector3 finalTo = rt.position;
+        float t2 = CaptureFlightDistanceT(Vector3.Distance(hitWorld, finalTo));
+        yield return FlyAndPunch(rt, hitWorld, finalTo, Mathf.Lerp(0.14f, 0.34f, t2), Mathf.Lerp(0.16f, 0.22f, t2));
     }
 
     /// <summary>이동(감속) + 도착 시 임팩트 플래시 + 펀치 스케일 — 목적지가
