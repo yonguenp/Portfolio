@@ -13737,3 +13737,63 @@ position=(1360.57, 775.46)`(예전 버그가 냈을 값)과는 명확히 다른
 > `flyFrom[...]` 계열 할당 지점을 전수 검색하는 식으로 넓게 훑을
 > 것** — 이번에 `grep -n "flyFrom\["`로 전체 목록을 뽑아 하나하나
 > 대조한 것이 나머지 두 버그를 놓치지 않고 잡아낸 결정적 방법이었다.
+
+## 고스톱 4인판 — "고 부른 뒤 마지막 손패까지 추가 득점 없어도 즉시
+승리" 단축 로직 제거 (2026-09-08)
+
+"내가 고를하고나서 내 마지막턴까지 아무것도 못먹고 추가점수없어도
+승리처리되?"라는 질문에 `AfterAction(int seat)`를 읽어보니 정확히 그
+경우를 즉시 승리로 처리하는 코드가 있었다 — 사용자가 곧바로 명확히
+정정: "승리처리되는 단축이 왜들어갔는지 모르겠어. 손패다할때까지
+점수를 내지못하면 다른사람이 승리하던, 나가리판이되던해야됨."
+
+**문제의 코드** (`GoStop3PGame.cs`, `AfterAction`):
+```csharp
+if (seat == PLAYER_SEAT && hand[PLAYER_SEAT].Count == 0 && bombCredits[PLAYER_SEAT] == 0 && rawScore >= CaptureLine)
+{
+    EndGame(PLAYER_SEAT);
+    return;
+}
+```
+이미 고를 불러 `CaptureLine` 이상 점수를 낸 상태에서, 플레이어 손패가
+떨어지고 폭탄 크레딧도 없으면 — 다른 좌석이 아직 손패를 들고 있어도,
+점수가 그 이후로 조금도 안 올랐어도 — **그 즉시 플레이어를 승자로
+확정**했다. 실제 고스톱 규칙과 명백히 안 맞는다 — 손이 먼저 떨어진다고
+승패가 정해지는 게 아니라, 전원의 손+덱이 모두 소진돼야(`CheckHandsEmpty()`
+의 원래 조건) 그 시점 최고점자가 승자다.
+
+**왜 이 단축이 안전하게 제거되는지** — `AdvanceTurnImmediate()`를
+읽어보면 손패가 빈 플레이어도 이미 정상적으로 계속 게임에 남는다:
+```csharp
+if (currentSeat == PLAYER_SEAT)
+{
+    if (hand[PLAYER_SEAT].Count == 0 && bombCredits[PLAYER_SEAT] == 0) StartCoroutine(DelayedPlayerHandEmpty());
+    else { RebuildUI(); if (isNetworkHost || isNetworkGuest) StartCoroutine(TurnPlayTimeoutSeq()); }
+}
+```
+`DelayedPlayerHandEmpty()`는 0.6초 뒤 `DeckOnlySeq(PLAYER_SEAT, () =>
+AfterAction(PLAYER_SEAT))`를 돌려 손 없는 플레이어도 자기 차례마다
+덱만 계속 넘기게 해준다 — **이 메커니즘이 이미 존재하므로**, 위
+단축을 걷어내도 게임이 멈추거나 막히지 않는다. 그냥 지워도
+`AfterAction`의 나머지 흐름(`rawScore > lastGoScore[seat]`가 거짓이면
+`AdvanceTurn()`으로 자연스럽게 떨어짐)이 그대로 이어받는다.
+
+**고침** — 위 블록을 통째로 삭제했다. 그 아래 `[GoStopGate]` 진단
+로그(별도의 미해결 버그를 위해 영구로 남겨둔 것 — 삭제하지 말 것)와
+그 뒤 `if (rawScore >= CaptureLine && rawScore > lastGoScore[seat])`
+조건 분기는 그대로 뒀다.
+
+**검증(Play 모드 라이브, 리플렉션).** 4인 게임을 새로 만든 뒤
+(`sittingOutSeat=-1`로 전원 참가 강제), 플레이어에게 홍단 3장(정확히
+`CaptureLine=3`)을 쥐어주고 손패를 0장으로, `lastGoScore[0]`을
+`rawScore`와 같게 세팅해 "이미 이 점수로 고를 불렀고 그 이후 더 못
+먹은" 상황을 정확히 재현 — `AfterAction(0)`을 직접 호출한 결과
+`state`는 `GameOver`로 안 바뀌고 `currentSeat`만 1로 정상 전진
+(`before: rawScore=3 lastGoScore[0]=3 hand0=0 || after: state=Turn
+currentSeat=1`). 이어서 나머지 좌석들의 자연 진행을 몇 초 지켜본
+결과, 전 좌석 손패+덱이 모두 소진돼 `CheckHandsEmpty()`가 정상적으로
+게임을 끝냈는데 **승자는 플레이어(seat 0)가 아니라 계속 카드를
+냈던 seat 3**(`state=GameOver pendingWinnerSeat=3`)이었다 — 사용자가
+요구한 "손패 다 떨어져도 다른 사람이 이기거나 나가리가 될 수 있어야
+한다"는 동작이 실전 시나리오 그대로 정확히 재현됐다. 콘솔
+`error`/`exception` 0건(warn만 기존 노이즈 수준).

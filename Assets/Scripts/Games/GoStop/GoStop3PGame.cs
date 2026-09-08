@@ -4365,14 +4365,6 @@ public partial class GoStop3PGame : MonoBehaviour
 
         int rawScore = GoStopRules.CalcScore(captured[seat], sweeps[seat]).Total;
 
-        // 더 낼 손패도, 쓸 폭탄 크레딧도 없으면 점수 변동 여부와 무관하게
-        // 그 자리에서 끝난다 — 더 진행할 방법이 없다.
-        if (seat == PLAYER_SEAT && hand[PLAYER_SEAT].Count == 0 && bombCredits[PLAYER_SEAT] == 0 && rawScore >= CaptureLine)
-        {
-            EndGame(PLAYER_SEAT);
-            return;
-        }
-
         // lastGoScore보다 실제로 더 올라갔을 때만 다시 묻는다 — 안 그러면
         // 아무것도 못 먹어 점수가 그대로인 턴에도 매번 고/스톱을 물어보게
         // 된다("점수 변동이 없어도 계속 팝업이 뜬다"는 신고).
