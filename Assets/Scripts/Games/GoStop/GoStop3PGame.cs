@@ -71,6 +71,9 @@ public partial class GoStop3PGame : MonoBehaviour
     // 확인 규칙. SEATS==2일 때만 맞고 기준(7)을 쓴다 — GoStopRules.CAPTURE_LINE
     // (값은 7로 동일하지만 별개 상수)과는 별개다.
     int CaptureLine => SEATS == 2 ? 7 : 3;
+    // 2026-09-08(사용자 확인) — "마지막턴" 판정용 딜링 손패 장수(맞고 10,
+    // 3~4인 고스톱 7 — GoStopRules.DealNew/DealNew3P/DealNew4PFull과 일치).
+    int HandSizeLimit => SEATS == 2 ? 10 : 7;
     // 2026-08-19: 네트워크 대전용 — 게스트 기기는 실제로 1~3번 좌석을
     // 배정받으므로 더 이상 상수로 고정할 수 없다. 기본값 0은 기존
     // 싱글플레이·호스트(항상 좌석 0) 동작을 그대로 유지한다. SetSeatCount와
@@ -392,6 +395,15 @@ public partial class GoStop3PGame : MonoBehaviour
     // 플래그라 선 말고는 이 보너스를 받을 기회 자체가 없었다 — 좌석별로
     // 독립 추적한다.
     readonly bool[] playedFirstHandCard = new bool[SEATS_MAX];
+    // 2026-09-08(사용자 확인) — "마지막턴" 판정은 손패가 빈 순간(h.Count==0)
+    // 이 아니라 이 좌석의 정확히 몇 번째 개인 턴인가(HandSizeLimit번째)로
+    // 해야 한다. 폭탄(손패 3장을 한 턴에 소모)이나 조커(같은 턴 안에서
+    // 카드를 이어서 냄, 턴이 안 끝남)로 손패가 일찍 비어도 "마지막턴"
+    // 자체는 안 당겨져야 한다 — 그 경우 손이 빈 뒤 이어지는 덱-only
+    // 턴들 중 정확히 HandSizeLimit번째에서 뒤늦게 적용된다. PlaySeq/
+    // DeckOnlySeq가 각각 "진짜 턴 하나"를 시작할 때만 +1(조커 자체를
+    // 처리하는 PlayJokerFromHandSeq는 턴을 안 끝내므로 증가 안 시킴).
+    readonly int[] personalTurnCount = new int[SEATS_MAX];
     int currentSeat;
 
     // 광팔이 — 매판 시작마다 4명이 화투 한 장씩 뽑아 가장 높은 패를 뽑은
@@ -1701,6 +1713,7 @@ public partial class GoStop3PGame : MonoBehaviour
             calledGo[s] = false;
             lastGoScore[s] = -1; // CAPTURE_LINE보다 항상 작게 — 첫 도달은 반드시 걸리게
             shookMonths[s].Clear();
+            personalTurnCount[s] = 0;
         }
 
         // 2026-08-23: "조커도 손패로 나와야 한다" 요청으로 딜링을 50장(48+조커2)
@@ -3198,6 +3211,11 @@ public partial class GoStop3PGame : MonoBehaviour
             yield break;
         }
 
+        // 2026-09-08 — 조커 처리(위 if 블록)는 턴을 안 끝내므로 여기,
+        // "진짜 카드를 내는 지점"에서만 정확히 1번 증가한다(폭탄도 카드
+        // 3장을 한 번에 내지만 이 지점은 한 번만 지나가므로 자동으로
+        // "1턴"으로 셈해진다).
+        personalTurnCount[seat]++;
         GoStopAudio.Instance?.CardPlay();
         // 2026-08-28: "채팅창에 아무것도 안 올라온다" 신고 — 그동안은
         // 뻑/따닥/쪽/폭탄/흔들기 등 "특별한" 사건만 Toast()를 거쳐 로그에
@@ -3238,7 +3256,12 @@ public partial class GoStop3PGame : MonoBehaviour
         // 넘기는 턴(DeckOnlySeq)은 이미 그 마지막 턴이 지난 뒤라 이 예외가
         // 다시 적용되지 않는다(사용자 확인 — 손이 빈 이후 턴부터는 정상적으로
         // 쪽/따닥/싹쓸이가 붙는다).
-        bool isLastHandCard = h.Count == 0;
+        // 2026-09-08 정정(사용자 확인) — h.Count==0(손패가 이 카드로
+        // 빈다)이 아니라 personalTurnCount[seat]가 HandSizeLimit에 도달
+        // 했는지로 판정한다 — 위 8-26 정정 코멘트의 "각자 손패의 마지막
+        // 장"이라는 취지는 유지하되, 폭탄/조커로 손패가 일찍 비어도
+        // 이 판정 자체는 안 당겨지게 만든 것.
+        bool isFinalPersonalTurn = personalTurnCount[seat] == HandSizeLimit;
 
         // 따닥 — 필드에 같은 달이 2장 있어 손패로 그중 하나를 고른 뒤, 같은
         // 턴의 뒷패가 남은 나머지 한 장과 마저 맞아떨어지는 것(사용자 확인
@@ -3700,7 +3723,7 @@ public partial class GoStop3PGame : MonoBehaviour
                 // 캡처되게 한다(안 그러면 이 페어가 field에 영원히 미아로
                 // 남아 다음에 아무나 가져가 버린다 — 실전 재현된 버그).
                 HwatuCard pendingPartner = anchor != null && matchedFieldCard != null ? matchedFieldCard : null;
-                yield return StartCoroutine(ResolveBonusJoker(seat, drawn, anchor, cap, isLastHandCard, handActualLanding, pendingPartner));
+                yield return StartCoroutine(ResolveBonusJoker(seat, drawn, anchor, cap, isFinalPersonalTurn, handActualLanding, pendingPartner));
                 // 조커 연쇄가 뻑으로 이어져 쓰리뻑 즉시승리(EndGame)까지
                 // 갈 수 있다 — 게임을 끝내는 분기 뒤에 아래 트레일링
                 // onDone을 부르면 안 된다(이 프로젝트가 이미 겪은 "3연뻑
@@ -3759,13 +3782,13 @@ public partial class GoStop3PGame : MonoBehaviour
                         if (r2FieldCard != null && flyFrom.TryGetValue(r2FieldCard, out var r2Pos))
                             comboEffectWorldPos = r2Pos;
                     }
-                    bool chok = r1.placedOnField && r2.captured.Contains(card) && !isLastHandCard;
+                    bool chok = r1.placedOnField && r2.captured.Contains(card) && !isFinalPersonalTurn;
                     // 따닥: 손패로 필드 2장 중 하나를 고른 뒤(ddadakWatch=고르지
                     // 않은 나머지 한 장), 같은 턴의 뒷패가 그 나머지 한 장마저
                     // 잡았다. chok과는 조건이 겹치지 않는다(chok은 r1.placedOnField,
                     // 즉 손패가 아무것도 못 먹은 경우에만 성립하는데, ddadakWatch는
                     // 반대로 손패가 선택 캡처로 뭔가를 먹었을 때만 채워진다).
-                    bool ddadak = ddadakWatch != null && r2.captured.Contains(ddadakWatch) && !isLastHandCard;
+                    bool ddadak = ddadakWatch != null && r2.captured.Contains(ddadakWatch) && !isFinalPersonalTurn;
 
                     if (seat == PLAYER_SEAT || IsRemoteSeat(seat))
                     {
@@ -3823,7 +3846,7 @@ public partial class GoStop3PGame : MonoBehaviour
                             Toast(seat, "싹쓸이");
                         }
                     }
-                    else stole2 = ApplyMatchBonus(seat, r2, false, allowLastTurnBonus: !isLastHandCard);
+                    else stole2 = ApplyMatchBonus(seat, r2, false, allowLastTurnBonus: !isFinalPersonalTurn);
 
                     if (stole2)
                     {
@@ -3853,6 +3876,14 @@ public partial class GoStop3PGame : MonoBehaviour
 
         if (drawPile.Count == 0) { RebuildUI(); actionBusy = false; onDone?.Invoke(); yield break; }
 
+        // 2026-09-08 — 이 턴도 "진짜 개인 턴 하나"라 정확히 1번 증가한다.
+        // 손이 빈 뒤라 항상 예외 대상이 "아니었던" 예전 설계(h.Count==0
+        // 기반)와 달리, 이제는 폭탄/조커로 손이 일찍 빈 경우 그 밀린
+        // "진짜 N번째 턴"이 바로 여기(덱만 넘기는 턴들 중 하나)에서
+        // 뒤늦게 걸릴 수 있다.
+        personalTurnCount[seat]++;
+        bool isFinalPersonalTurn = personalTurnCount[seat] == HandSizeLimit;
+
         var drawn = drawPile[0]; drawPile.RemoveAt(0);
         // 2026-09-08 — PlaySeq의 뒷패 로그와 동일(손패 없이 덱만 넘기는
         // 턴에도 똑같이 남긴다).
@@ -3863,9 +3894,11 @@ public partial class GoStop3PGame : MonoBehaviour
         if (drawn.isJoker)
         {
             // 손패를 안 낸 턴(덱만 넘기기)이라 "이전 손패에서 선택한 패"가
-            // 없다 — 겹쳐놓을 대상이 없으므로 즉시 캡처로 단순화한다. 이미
-            // 손이 빈 뒤라 "마지막 손패 턴"이 아니다(isLastHandCard: false).
-            yield return StartCoroutine(ResolveBonusJoker(seat, drawn, null, cap, false));
+            // 없다 — 겹쳐놓을 대상이 없으므로 즉시 캡처로 단순화한다(anchor
+            // 자체가 없으니 chok/뻑 판정과 무관 — isFinalPersonalTurn을
+            // 넘기는 건 일관성을 위해서일 뿐, CaptureBonusJokerImmediately
+            // 경로는 이 값을 안 쓴다).
+            yield return StartCoroutine(ResolveBonusJoker(seat, drawn, null, cap, isFinalPersonalTurn));
         }
         else
         {
@@ -3913,7 +3946,13 @@ public partial class GoStop3PGame : MonoBehaviour
             {
                 cap.AddRange(r.captured);
                 GoStopAudio.Instance?.Capture();
-                ApplyMatchBonus(seat, r, false);
+                // 2026-09-08 — 예전엔 여기가 항상 기본값(allowLastTurnBonus=
+                // true)이라 덱만 넘기는 턴엔 마지막턴 예외가 절대 안 걸렸다
+                // (h.Count==0 기반 시절엔 "손이 이미 빈 뒤"라 항상 맞는
+                // 가정이었지만, 폭탄/조커로 손이 일찍 빈 경우엔 진짜
+                // HandSizeLimit번째 턴이 바로 이런 덱-only 턴에 걸릴 수
+                // 있다 — 그 경우엔 여기서도 억제해야 한다.
+                ApplyMatchBonus(seat, r, false, allowLastTurnBonus: !isFinalPersonalTurn);
                 RegisterFlyViaField(r);
                 if (seat == PLAYER_SEAT || IsRemoteSeat(seat))
                     dualPending = r.captured.FirstOrDefault(c => c.dualPi);
@@ -3979,11 +4018,14 @@ public partial class GoStop3PGame : MonoBehaviour
     /// 손패 슬램다운이 착지한 지점을 넘겨주면 그 자리에서 나타난다. 안
     /// 주어지면(DeckOnlySeq처럼 이번 턴에 손패를 안 낸 경우) 기존처럼
     /// 더미 자리에서 나타난다.</param>
-    /// <param name="isLastHandCard">2026-08-26 — 이 조커가 "손패의 마지막
-    /// 장을 낸 턴"에 뒤집힌 것인지(PlaySeq가 자기 turn-scope의 isLastHandCard를
-    /// 그대로 넘겨준다). DeckOnlySeq에서 호출될 때는 이미 손이 빈 뒤라
-    /// 항상 false를 넘긴다 — 쪽/싹쓸이 예외는 정확히 그 한 번의 턴에만
-    /// 적용된다(사용자 확인).</param>
+    /// <param name="isFinalPersonalTurn">2026-09-08 정정(사용자 확인) — 이
+    /// 좌석의 실제 개인 턴 횟수가 정확히 HandSizeLimit(고스톱 7/맞고 10)
+    /// 번째에 도달했는지(PlaySeq/DeckOnlySeq가 자기 turn-scope에서 계산한
+    /// 값을 그대로 넘겨준다). h.Count==0(손패가 이번 카드로 비는지) 기반
+    /// 판정을 대체했다 — 폭탄/조커로 손이 일찍 비어도 이 값 자체는 안
+    /// 당겨져야 하므로, DeckOnlySeq(손이 이미 빈 뒤의 턴들)에서도 더 이상
+    /// 무조건 false가 아니라 실제 계산값을 넘긴다. 쪽/싹쓸이 예외는 정확히
+    /// 이 값이 true인 그 한 번의 턴에만 적용된다.</param>
     /// <param name="pendingPartner">2026-09-07 버그 수정("12월 쌍피 매칭 후
     /// 보너스패 → 뻑 안 남 → 내가 낸 패가 필드에 그대로 남아 상대가
     /// 가져감" 실전 재현) — anchor가 "완전 무매칭"이 아니라 couldBePpeok
@@ -3998,7 +4040,7 @@ public partial class GoStop3PGame : MonoBehaviour
     /// 커밋해서 고친다. anchor가 진짜 완전 무매칭이면(원래도 field에
     /// 혼자 남아 있다가 나중에 정상적으로 캡처되는 게 의도된 동작) null로
     /// 넘어와 이 로직 자체가 스킵된다.</param>
-    IEnumerator ResolveBonusJoker(int seat, HwatuCard joker, HwatuCard anchor, List<HwatuCard> cap, bool isLastHandCard,
+    IEnumerator ResolveBonusJoker(int seat, HwatuCard joker, HwatuCard anchor, List<HwatuCard> cap, bool isFinalPersonalTurn,
         Vector3? revealFrom = null, HwatuCard pendingPartner = null)
     {
         if (anchor == null)
@@ -4033,6 +4075,14 @@ public partial class GoStop3PGame : MonoBehaviour
             yield break;
         }
         var next = drawPile[0]; drawPile.RemoveAt(0);
+        // 2026-09-08(사용자 신고 — "보너스패 다음 뒷패를 까면 그건 시스템
+        // 로그로 안 남아서 버그인줄 알았다") — PlaySeq/DeckOnlySeq의 일반
+        // 뒷패 로그(AppendChatLine)와 대칭되는 이벤트인데 이 함수만 빠져
+        // 있었다. "조커의 운명을 정하는 바로 그 카드"라는 걸 알 수 있게
+        // 같은 문구 패턴을 그대로 쓴다.
+        AppendChatLine(next.isJoker
+            ? $"{SeatNameFor(seat, -1)}님의 뒷패로 보너스패가 나왔습니다"
+            : $"{SeatNameFor(seat, -1)}님의 뒷패로 {next.month}월 패가 나왔습니다");
 
         if (next.isJoker)
         {
@@ -4040,7 +4090,7 @@ public partial class GoStop3PGame : MonoBehaviour
             // 으로 확정돼 유저 소유가 되고, 새 조커(next)에 같은 규칙을
             // 같은 anchor로 재귀 적용한다.
             yield return StartCoroutine(CaptureBonusJokerImmediately(seat, joker, cap, null));
-            yield return StartCoroutine(ResolveBonusJoker(seat, next, anchor, cap, isLastHandCard, drawPileArea.position, pendingPartner));
+            yield return StartCoroutine(ResolveBonusJoker(seat, next, anchor, cap, isFinalPersonalTurn, drawPileArea.position, pendingPartner));
             yield break;
         }
 
@@ -4155,7 +4205,7 @@ public partial class GoStop3PGame : MonoBehaviour
             // 쪽 — anchor가 이 next에 맞춰 잡혔다(anchor가 아직 field에
             // 남아있던 경우에만 성립 — Resolve가 실제 field 카드만 매칭
             // 하므로 이미 캡처돼 사라진 anchor는 자연히 걸리지 않는다).
-            bool chok = anchor != null && r.captured.Contains(anchor) && !isLastHandCard;
+            bool chok = anchor != null && r.captured.Contains(anchor) && !isFinalPersonalTurn;
             if (chok)
             {
                 StealPiFromEachOther(seat, 1);
@@ -4168,7 +4218,7 @@ public partial class GoStop3PGame : MonoBehaviour
                     Toast(seat, "싹쓸이");
                 }
             }
-            else ApplyMatchBonus(seat, r, false, allowLastTurnBonus: !isLastHandCard);
+            else ApplyMatchBonus(seat, r, false, allowLastTurnBonus: !isFinalPersonalTurn);
 
             if (seat == PLAYER_SEAT || IsRemoteSeat(seat))
             {
@@ -4252,12 +4302,12 @@ public partial class GoStop3PGame : MonoBehaviour
             // 하나로 통일한다.
             int month = r.captured[0].month;
             // 2026-09-08(사용자 확인, 표준 규칙) — 뻑/자뻑도 쪽·따닥·싹쓸이와
-            // 같은 "마지막 턴" 예외 대상이다: 마지막 손패로 뻑을 완성해도
-            // 캡처(4장 획득) 자체는 그대로지만 피는 못 뺏는다. 새 매개변수를
-            // 따로 안 만들고 allowLastTurnBonus(호출부가 이미 싹쓸이용으로
-            // 계산해 둔 값 — 3668=!willDraw, 3826/4171=!isLastHandCard)를
-            // 그대로 재사용한다 — "이번이 이 턴의 마지막 이벤트인가"라는
-            // 완전히 같은 개념이라서다.
+            // 같은 "마지막 턴" 예외 대상이다: 그 좌석의 진짜 마지막 개인
+            // 턴(HandSizeLimit번째)에 뻑을 완성해도 캡처(4장 획득) 자체는
+            // 그대로지만 피는 못 뺏는다. 새 매개변수를 따로 안 만들고
+            // allowLastTurnBonus(호출부가 이미 싹쓸이용으로 계산해 둔
+            // isFinalPersonalTurn 기반 값)를 그대로 재사용한다 — "이번이
+            // 이 턴의 마지막 이벤트인가"라는 완전히 같은 개념이라서다.
             if (ppeokCauser.TryGetValue(month, out int causer))
             {
                 bool selfPpeok = causer == seat;
