@@ -13649,3 +13649,91 @@ false)`, 이름 "Impact")으로 가짜 오버레이를 직접 끼워 넣은 뒤
 > (0.05~0.08) 낮추면 몇 초 안에 착지까지 도달하면서도 각 단계를 놓치지
 > 않고 볼 수 있는 균형점을 찾았다. **애니메이션 중간 상태(순간이동/
 > 오프셋 어긋남 등)를 조사할 때는 앞으로도 이 기법을 우선 고려할 것.**
+
+## 고스톱 — 보너스패 위치 버그 2차 수정: `handActualLanding` 피벗 오류 +
+`fieldArea.position` 폴백 남용 (2026-09-08)
+
+바로 전 "Impact 오버레이 오카운트" 수정 직후에도 "아직도 보너스패
+포지션 안맞고"라는 재신고를 받아 다시 조사 — **완전히 별개인 두 번째,
+세 번째 버그**를 찾았다. 셋 다 "보너스패 위치가 이상하다"는 같은
+증상군이지만 원인은 서로 다르다.
+
+**버그 2 — `handActualLanding`이 카드가 아니라 슬롯 마커의 피벗
+좌표를 썼다.** `PlaySeq`의 "① 손패 카드 슬램다운" 맨 앞에서
+```csharp
+Vector3 handActualLanding = FieldSlotWorldPos(card); // 조커 리빌 지점 참조용
+```
+로 미리 스냅샷해 두고, 나중에 조커가 이 손패 자리에 파킹될 때
+`ResolveBonusJoker`의 `revealFrom` 인자로 넘겨(`flyFrom[joker] =
+revealFrom ?? ...`) SlamIn 애니메이션의 시작점으로 쓴다. 그런데
+`FieldSlotWorldPos(card)` = `FieldSlotTransform(card).position` —
+**pos 슬롯 마커 자신의 피벗(center) 좌표**다. 바로 몇 줄 아래
+non-bomb 분기의 기존 주석이 정확히 이 함정을 경고하고 있었다 —
+"카드 피벗(top-center)과 마커 피벗(center)이 달라 카드 반 장 높이
+(FIELD_H/2=98)만큼 어긋난다"는 이유로 그 분기는 `ghost.transform.
+position`(피벗 보정된 정확한 값)을 쓰는데, `handActualLanding`만
+그 교훈을 반영 못 하고 예전 방식 그대로 남아 있었다. 실측으로 걸린
+`Joker_1@(0.00, -98.00)`이라는 값이 정확히 `FIELD_H/2=98`과 일치해서
+바로 이 버그임을 확정했다.
+
+**고침** — `handActualLanding`의 초기값은 안전망으로만 남기고, 아래
+두 분기(폭탄 반복문의 매 카드, 일반 손패의 단일 카드) 모두 실제
+고스트 착지 좌표(`ghost.transform.position`, 이미 `landing` 변수로
+계산돼 있던 값)로 즉시 덮어쓰도록 고쳤다.
+
+**버그 3 — 필드→Cap 캡처 시 시작점을 필드 전체 컨테이너의 피벗으로
+뭉뚱그렸다.** 사용자가 곧이어 정확히 짚었다: "보너스패 필드에있다가
+cap으로 날아갈때 시작포지션이 이상한거같은데". 두 곳에서 같은 패턴이
+있었다:
+- `CaptureBonusJokerImmediately`(조커를 Cap으로 확정 이동시키는
+  공용 헬퍼): `flyFrom[joker] = fieldArea.position;`
+- `ApplyMatchBonus`의 뻑 먹기 분기(뻑 무더기에 묻혀있던 보너스피를
+  뻑 해소자가 같이 가져가는 지점): `flyFrom[bonus] = fieldArea.position;`
+
+`fieldArea`는 12개 슬롯을 전부 담는 **필드 전체 컨테이너**라 그
+`.position`은 필드 정중앙 근처의 고정된 한 점이다 — 조커가 실제로
+있던 슬롯(12곳 중 아무 데나)과는 보통 수백 px씩 떨어져 있다. 이미
+이 파일에 있던 **검증된 올바른 패턴**(`ApplyMatchBonus`의 다른 분기,
+line 3554 부근 — `FieldSlotTransform(card).Find(card.spriteName)`로
+실제 렌더링된 GameObject를 찾아 그 `.position`을 쓴다)을 그대로
+재사용해서 두 곳 다 고쳤다 — `field.Remove()` **전에** 미리 찾아야
+한다(그 뒤엔 GameObject가 아직 안 지워졌어도 로직상 이미 "없는
+카드"로 취급되므로 안전하게 찾으려면 순서가 중요하다).
+
+**검증(Play 모드 라이브, 리플렉션).**
+
+① **`handActualLanding` 수정** — `Time.timeScale=0.08`로 늦춘 채 실제
+`OnPlayerPlay`로 완전 무매칭 손패를 내고 다음 뒷패를 조커로 리깅 →
+조커가 SpawnGhostCard 리빌 단계에서 정확히 `(20.00, -20.00)`(2장
+슬롯 기준 step=20)에 안착하는 것을 여러 폴에 걸쳐 확인 — 예전에
+관측됐던 `(-98)`류의 어긋난 중간값이 이번엔 전혀 안 보였다.
+
+② **`CaptureBonusJokerImmediately` 수정** — 격리 테스트로 재현: 필드에
+카드 2장(anchor+조커)을 직접 구성하고 `CaptureBonusJokerImmediately`를
+`StartCoroutine`으로 직접 호출한 뒤, **같은 동기 실행 구간 안에서**
+(코루틴이 "첫 yield까지 동기 실행"하는 이 프로젝트의 확립된 특성 활용)
+`capFlightGhosts[joker]`(캡처-비행 고스트 추적 딕셔너리, 전 세션에
+race-condition 수정 때 만들어 둔 것)의 실제 위치를 즉시 읽었다 —
+`ghost.position=(1460.61, 725.29)`가 `jokerActualWorldPos=(1461.69,
+725.83)`(조커가 실제로 렌더링돼 있던 자리)과 거의 정확히 일치(1px
+이내, 아직 보간 시작 직후라 미세한 차이만 있음)하고, `fieldArea.
+position=(1360.57, 775.46)`(예전 버그가 냈을 값)과는 명확히 다른
+것을 확인했다.
+
+③ **`ApplyMatchBonus`의 세 번째 지점**은 코드 패턴이 ②와 완전히
+동일(같은 established pattern 재사용)이라 별도 라이브 재현 없이
+코드 검토로 정합성을 확인했다.
+
+3건 모두 컴파일 클린, 콘솔 `error`/`exception` 0건.
+
+> **교훈 — 같은 "위치가 이상하다"는 증상 신고가 반드시 같은 버그를
+> 가리키지는 않는다.** 이번 세션에서만 벌써 세 가지 서로 다른 원인
+> (StackTooltipTrigger/Impact 오버레이 오카운트, 마커 피벗 vs 카드
+> 피벗 혼동, fieldArea 전체 컨테이너 피벗을 특정 카드 위치의 대용으로
+> 오용)이 전부 "보너스패 위치가 이상하다"는 같은 표면 증상으로
+> 나타났다. 사용자가 "아직도 안 됨"이라고 재신고하면, 방금 고친
+> 그 버그가 진짜 안 고쳐진 건지 다시 확인하는 것도 중요하지만,
+> **완전히 다른 코드 경로의 별개 버그일 가능성도 항상 열어두고
+> `flyFrom[...]` 계열 할당 지점을 전수 검색하는 식으로 넓게 훑을
+> 것** — 이번에 `grep -n "flyFrom\["`로 전체 목록을 뽑아 하나하나
+> 대조한 것이 나머지 두 버그를 놓치지 않고 잡아낸 결정적 방법이었다.

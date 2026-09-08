@@ -3323,6 +3323,16 @@ public partial class GoStop3PGame : MonoBehaviour
         // DrawField가 나중에 실제로 그리는 자리가 절대 어긋날 수 없다
         // (예전엔 애니메이션은 월 기준 그리드 공식, 실제 렌더링은 다른
         // 공식을 따로 계산해서 싱크가 안 맞을 수 있었다 — 그 버그의 원인).
+        // 2026-09-08 버그 수정 — 조커 리빌 지점 참조용 스냅샷인데, 초기값
+        // 계산에 FieldSlotWorldPos(=pos 마커 자체의 피벗 좌표, center)를
+        // 그대로 썼다. 바로 아래 non-bomb 분기의 주석이 정확히 경고하는
+        // 그 함정이다 — "카드 피벗(top-center)과 마커 피벗(center)이 달라
+        // 카드 반 장 높이(FIELD_H/2)만큼 어긋난다." 실측으로 걸린 -98(=
+        // FIELD_H 196의 정확히 절반) 오프셋이 이 값이었다 — 조커가 anchor
+        // 자리에 파킹될 때(ResolveBonusJoker의 revealFrom) 이 잘못된
+        // 좌표에서 SlamIn을 시작해 눈에 띄게 어긋난 위치를 잠깐 거쳐갔다.
+        // 여기 초기값은 안전망일 뿐이고, 아래 두 분기(폭탄/일반) 모두 실제
+        // 고스트가 착지한 정확한 좌표(ghost.transform.position)로 덮어쓴다.
         Vector3 handActualLanding = FieldSlotWorldPos(card); // 조커 리빌 지점 참조용(Vector3 스냅샷 그대로 필요)
         var handGhosts = new List<GameObject>();
 
@@ -3368,6 +3378,7 @@ public partial class GoStop3PGame : MonoBehaviour
                     dropHeight: 230f, dropDur: 0.07f, punchDur: 0.12f, punchScale: 1.4f, cardMonth: hc.month));
                 handGhosts.Add(ghost);
                 flyFrom[hc] = landing;
+                handActualLanding = landing; // 위 버그 수정 — 정확한(피벗 보정된) 좌표로 갱신, 루프가 끝나면 마지막 카드 기준으로 남는다
                 yield return new WaitForSeconds(0.07f);
             }
             yield return new WaitForSeconds(0.10f); // 마지막 카드가 실제로 착지할 여유
@@ -3398,6 +3409,7 @@ public partial class GoStop3PGame : MonoBehaviour
                 cardMonth: card.month));
             handGhosts.Add(ghost);
             flyFrom[card] = landing;
+            handActualLanding = landing; // 위 버그 수정 — 정확한(피벗 보정된) 좌표로 갱신
         }
 
         // --- ② 뒷패 슬램다운(있다면) ---
@@ -4149,9 +4161,17 @@ public partial class GoStop3PGame : MonoBehaviour
             RebuildUI();
             yield return new WaitForSeconds(PLAY_STEP_DELAY * 0.5f);
         }
+        // 2026-09-08 버그 수정 — "필드에 있다가 Cap으로 날아갈 때 시작
+        // 포지션이 이상하다" 신고. fieldArea.position(필드 컨테이너
+        // 전체의 자기 피벗, 보통 중앙)을 그대로 썼는데, 조커는 12개 슬롯
+        // 중 어디든 있을 수 있어 실제 위치와 크게 어긋난다 — line 3554의
+        // 뻑 먹기 분기가 이미 쓰던 정확한 패턴(그 슬롯에 실제로 렌더링된
+        // GameObject를 찾아 그 위치를 쓴다)으로 통일했다. field.Remove
+        // 전에 찾아야 한다 — 이 지점까진 아직 살아있는 실제 GameObject다.
+        var jokerGo = FieldSlotTransform(joker).Find(joker.spriteName);
         field.Remove(joker);
         cap.Add(joker);
-        flyFrom[joker] = fieldArea.position;
+        flyFrom[joker] = jokerGo != null ? jokerGo.position : fieldArea.position;
         Toast(seat, "보너스 획득");
         RebuildUI();
         yield return new WaitForSeconds(PLAY_STEP_DELAY * 0.5f);
@@ -4229,9 +4249,14 @@ public partial class GoStop3PGame : MonoBehaviour
             // 지금 이걸 해소하는 사람이 그 보너스피도 같이 가져간다.
             if (ppeokBonusPi.TryGetValue(month, out var bonus))
             {
+                // 2026-09-08 버그 수정 — CaptureBonusJokerImmediately와
+                // 같은 원인(fieldArea.position은 필드 전체 컨테이너의
+                // 피벗이지 이 보너스피가 실제로 묻혀있던 슬롯 위치가
+                // 아니다). field.Remove 전에 실제 렌더링된 위치를 찾는다.
+                var bonusGo = FieldSlotTransform(bonus).Find(bonus.spriteName);
                 field.Remove(bonus);
                 captured[seat].Add(bonus);
-                flyFrom[bonus] = fieldArea.position;
+                flyFrom[bonus] = bonusGo != null ? bonusGo.position : fieldArea.position;
                 ppeokBonusPi.Remove(month);
                 Toast(seat, "보너스 획득");
                 did = true;
