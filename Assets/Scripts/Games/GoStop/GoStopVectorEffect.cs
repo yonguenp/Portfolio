@@ -66,6 +66,17 @@ public class GoStopVectorEffect : MonoBehaviour
     Label shakeLabel;
     Coroutine playingShake;
 
+    // 2026-09-08 — 총통(딜 직후 같은 달 4장으로 즉시 승리) 전용. CardRow와
+    // 같은 큰 카드지만, 제목이 카드 아래가 아니라 완전히 같은 영역에
+    // 겹쳐서(z-order 앞) 화면 정중앙에 큼직하게 뜬다 — 사용자가 명시적으로
+    // "그 레이어 앞쪽에" 텍스트를 얹어달라고 요청했다(비상/실패의
+    // AltRow/AltTitleLabel과 같은 겹침 원칙, 완성의 CardRow/TitleLabel과는
+    // 다르다). 총통은 판당 최대 1회, 다른 벡터 이펙트와 동시에 뜰 일이
+    // 없어 비상/실패처럼 큐잉(EnqueueAlt)이 필요 없다.
+    VisualElement chongtongRow;
+    Label chongtongTitleLabel;
+    Coroutine playingChongtong;
+
     /// <summary>2026-09-06(사용자 요청) — "한 턴에 청단비상+홍단비상처럼
     /// 이펙트가 여러 개 뜰 때는 큐에 쌓아 순차 재생하고, 대신 다음 유저의
     /// 이펙트가 등록되면 이전 유저 큐는 지우고 새 유저 것부터 우선
@@ -178,6 +189,8 @@ public class GoStopVectorEffect : MonoBehaviour
         sliceLine = root.Q<VisualElement>("SliceLine");
         shakeRow = root.Q<VisualElement>("ShakeRow");
         shakeLabel = root.Q<Label>("ShakeLabel");
+        chongtongRow = root.Q<VisualElement>("ChongtongRow");
+        chongtongTitleLabel = root.Q<Label>("ChongtongTitleLabel");
     }
 
     /// <summary>족보를 완성한 순간 부른다. <paramref name="cards"/>는 그 세트를
@@ -293,6 +306,76 @@ public class GoStopVectorEffect : MonoBehaviour
         float t = 0f;
         while (t < dur) { t += Time.deltaTime; apply(Mathf.Clamp01(t / dur)); yield return null; }
         apply(1f);
+    }
+
+    // ── 총통 — 화면 정중앙, 카드 4장 + 그 위에 겹친 큼직한 2줄 텍스트 ──
+    // 2026-09-08(사용자 요청): "총통에 해당되는 패를 전면에 4장 svg로
+    // 깔아주고 그 레이어 앞쪽에 가운데 큼직한 텍스트로 [N월 총통]\n누구누구
+    // 이렇게 박아줘. 글씨는 가운데 정렬로." 카드 슬램인은 완성 이펙트의
+    // SlamCard를 그대로 재사용(같은 손맛), 제목만 카드와 같은 영역에
+    // 겹치도록(완성처럼 아래 별도 구간이 아니라 비상/실패처럼 z-order
+    // 앞) ChongtongRow/ChongtongTitleLabel 전용 트리를 쓴다.
+    public Coroutine PlayChongtong(string title, IEnumerable<HwatuCard> cards)
+    {
+        var list = cards?.Where(c => c != null).ToList() ?? new List<HwatuCard>();
+        if (list.Count == 0) return null;
+        if (playingChongtong != null) StopCoroutine(playingChongtong);
+        playingChongtong = StartCoroutine(PlayChongtongSeq(title, list));
+        return playingChongtong;
+    }
+
+    IEnumerator PlayChongtongSeq(string title, List<HwatuCard> cards)
+    {
+        chongtongRow.Clear();
+        chongtongTitleLabel.text = title;
+        chongtongTitleLabel.style.opacity = 0f;
+
+        const float cardH = 440f; // 4장 고정이라 완성 이펙트의 n==4 크기와 동일
+        float cardW = cardH * 0.62f;
+        const float gap = 22f;
+
+        var wraps = new List<VisualElement>(cards.Count);
+        foreach (var card in cards)
+        {
+            var wrap = new VisualElement();
+            wrap.style.width = cardW; wrap.style.height = cardH;
+            wrap.style.marginLeft = gap * 0.5f; wrap.style.marginRight = gap * 0.5f;
+            wrap.style.opacity = 0f;
+
+            var img = new Image();
+            img.vectorImage = Resources.Load<VectorImage>(RES_PREFIX + card.spriteName);
+            img.scaleMode = ScaleMode.ScaleToFit;
+            img.style.width = Length.Percent(100);
+            img.style.height = Length.Percent(100);
+            wrap.Add(img);
+
+            chongtongRow.Add(wrap);
+            wraps.Add(wrap);
+        }
+
+        var slams = new List<Coroutine>(cards.Count);
+        for (int i = 0; i < wraps.Count; i++)
+            slams.Add(StartCoroutine(SlamCard(wraps[i], i * 0.08f)));
+        foreach (var c in slams) yield return c;
+
+        yield return Fade(a => chongtongTitleLabel.style.opacity = a, 0.2f);
+
+        yield return new WaitForSeconds(1.1f); // 승리 확정 이벤트라 완성/비상보다 조금 더 오래 홀드
+
+        float t = 0f;
+        const float outDur = 0.45f;
+        while (t < outDur)
+        {
+            t += Time.deltaTime;
+            float a = 1f - Mathf.Clamp01(t / outDur);
+            foreach (var wrap in wraps) wrap.style.opacity = a;
+            chongtongTitleLabel.style.opacity = a;
+            yield return null;
+        }
+
+        chongtongRow.Clear();
+        chongtongTitleLabel.style.opacity = 0f;
+        playingChongtong = null;
     }
 
     // ── 비상(Emergency) — 화면 최상단, 위→아래 슬라이드, 붉은 블링크 ──

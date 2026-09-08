@@ -1479,7 +1479,7 @@ public partial class GoStop3PGame
 
             statusBoxView[slot]?.ApplyTurnState(highlight);
 
-            if (moneyLbl != null) moneyLbl.text = $"{money[seat]:N0}원";
+            if (moneyLbl != null) moneyLbl.text = FormatMoneyText(seat);
 
             if (sittingOutSeat == seat)
             {
@@ -2345,9 +2345,15 @@ public partial class GoStop3PGame
             // 그것만으로 이미 4장 전부 계산이 끝난다(다른 좌석 손/덱에 남은
             // 카드가 없다는 뜻) — 기존 두 조건(1장+Cap2+필드1, 2장+Cap1+)과
             // 같은 "4장 전부 계산 끝남" 원리의 세 번째 조합이다.
+            // 2026-09-08(사용자 확인) — "필드에 3장 겹친 패(뻑이나 딜링 때
+            // 우연히 깔린 경우 둘 다)가 있고 내 손에 매칭되는 나머지 1장이
+            // 있으면" 굳은자 — 이 달 4장(field 3+hand 1)이 이미 다 계산
+            // 끝난 상태라 capsCount는 항상 0일 수밖에 없다(공간이 없다).
+            // 기존 세 조건과 같은 "4장 전부 소재 확정" 원리의 네 번째 조합.
             bool stuckPair = (sameMonthHand == 1 && capsCount == 2 && sameMonthField >= 1)
                            || (sameMonthHand == 2 && capsCount >= 1)
-                           || (sameMonthHand == 2 && capsCount == 0 && sameMonthField == 2);
+                           || (sameMonthHand == 2 && capsCount == 0 && sameMonthField == 2)
+                           || (sameMonthHand == 1 && sameMonthField == 3);
             // 2026-08-19: "아이콘이 겹친다"·"굳은자 아닌데 느낌표가 보인다"
             // 신고 — 실제로는 서로 다른 두 버그가 아니라 하나였다. 폭탄(우)·
             // 흔들기(좌)·굳은자(중앙)를 카드 하단에 나란히 흩어 놓았더니,

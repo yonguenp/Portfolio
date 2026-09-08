@@ -127,13 +127,38 @@ public partial class GoStop3PGame : MonoBehaviour
     /// 즉시 갱신한다 — `EndGame`이 좌석을 재배치(`ApplyDowngrade`)할 수도
     /// 있으므로, 그 이후(모든 분기가 합류하는 함수 맨 끝)에 한 번만
     /// 부른다.</summary>
+    // 2026-09-08(사용자 요청) — "게임에 입장하여 선 정하고 이후의 머니
+    // 변동량을 보고 싶다." 새 UI 요소를 안 늘리고 기존 금액 텍스트 한
+    // 줄에 누적 변동을 괄호로 덧붙인다(이 파일이 이미 여러 번 써 온
+    // "압축된 정보 슬롯" 원칙). 세션 시작 잔액은 이 함수가 처음
+    // 불리는 순간 지연 캡처한다 — 오프라인/호스트는 Start()에서 이미
+    // money[]가 최종값이라 그대로 맞고, 네트워크 게스트는 이 함수의
+    // 첫 호출 시점엔 이미 첫 StateSync를 받아 진짜 값으로 덮어써진
+    // 뒤이므로(Start() 시점의 임시 seed값이 아니라) 세 경로 전부에서
+    // 안전하다. 다른 좌석(AI/상대)은 변동량을 보여줄 이유가 없어
+    // PLAYER_SEAT에만 적용한다.
+    bool sessionStartMoneyCaptured;
+    int sessionStartMoney;
+
+    string FormatMoneyText(int seat)
+    {
+        if (!sessionStartMoneyCaptured) { sessionStartMoney = money[PLAYER_SEAT]; sessionStartMoneyCaptured = true; }
+        string baseText = $"{money[seat]:N0}원";
+        if (seat != PLAYER_SEAT) return baseText;
+        int delta = money[seat] - sessionStartMoney;
+        if (delta == 0) return baseText;
+        string sign = delta > 0 ? "+" : "";
+        string color = delta > 0 ? "#4CD97B" : "#FF6B6B";
+        return $"{baseText} <color={color}>({sign}{delta:N0})</color>";
+    }
+
     void RefreshMoneyLabelsOnly()
     {
         for (int slot = 0; slot < 4; slot++)
         {
             int seat = slot == 0 ? (slotSeat[0] < 0 ? PLAYER_SEAT : slotSeat[0]) : slotSeat[slot];
             if (seat < 0 || moneyText[slot] == null) continue;
-            moneyText[slot].text = $"{money[seat]:N0}원";
+            moneyText[slot].text = FormatMoneyText(seat);
         }
     }
 
@@ -152,7 +177,7 @@ public partial class GoStop3PGame : MonoBehaviour
                 continue;
             }
             statusText[slot].text = seat == PLAYER_SEAT ? "나" : SeatName(seat);
-            if (moneyText[slot] != null) moneyText[slot].text = $"{money[seat]:N0}원";
+            if (moneyText[slot] != null) moneyText[slot].text = FormatMoneyText(seat);
             if (goScoreText[slot] != null) goScoreText[slot].text = "";
             statusBoxView[slot]?.HideAllBadges();
             statusBoxView[slot]?.SetDim(false);
@@ -1857,7 +1882,7 @@ public partial class GoStop3PGame : MonoBehaviour
             if (GoStopRules.IsChongtong(hand[s]))
             {
                 Toast(s, "총통!");
-                FireChongtong(s);
+                FireChongtong(s, hand[s]);
                 // 2026-08-26(사용자 확인) — 총통은 고정 3점으로 정산한다.
                 // 예전엔 extraMultiplier:4를 곱해 최종 12점이 나왔는데,
                 // 3점(배수 없음)이 맞는 값이었다.
@@ -2843,14 +2868,16 @@ public partial class GoStop3PGame : MonoBehaviour
         return co;
     }
 
-    /// <summary>총통(딜 직후 같은 달 4장으로 즉시 승리) 전용 족보 이펙트 —
-    /// 예전엔 프리팹 없이 코드가 직접 금색 파티클만 뿌렸는데, 다른 족보
-    /// (고도리/홍단/초단/청단/광)와 같은 패턴으로 통일했다. 프리팹
-    /// (EffectChongtong)이 "총통!" 등 정적 문구·기본색을 담당하고, 코드는
-    /// 좌석 이름만 얹는다(FireAchievement류와 동일한 원칙). 사운드는
-    /// Toast(s, "총통!")가 이미 GoStopAudio.PlayForLabel을 거쳐
+    /// <summary>총통(딜 직후 같은 달 4장으로 즉시 승리) 전용 족보 이펙트.
+    /// 2026-09-08(사용자 요청) — "총통에 해당되는 패를 전면에 4장 svg로
+    /// 깔아주고 그 레이어 앞쪽에 가운데 큼직한 텍스트로 [N월 총통]\n누구누구,
+    /// 가운데 정렬로" — 예전 래스터 팝업(EffectChongtong)을 걷어내고 족보
+    /// 완성과 같은 벡터 카드 자산(GoStopVectorEffect)의 전용 트리
+    /// (ChongtongRow/ChongtongTitleLabel)로 교체했다. 파티클 버스트는
+    /// 그대로 유지 — 카드+텍스트와 별개의 부가 연출이라 안 건드렸다.
+    /// 사운드는 Toast(s, "총통!")가 이미 GoStopAudio.PlayForLabel을 거쳐
     /// Chongtong() 전용 음을 재생하므로 여기서 또 부르지 않는다.</summary>
-    void FireChongtong(int seat)
+    void FireChongtong(int seat, List<HwatuCard> cards)
     {
         if (fieldArea == null) return;
         // 2026-09-06 버그 수정 — "뻑 이펙트가 뻑난 카드 위가 아니라
@@ -2869,12 +2896,9 @@ public partial class GoStop3PGame : MonoBehaviour
 
         GoStopIcons.SpawnBurst(canvasRoot, local, color, 30);
 
-        var fx = HwatuUI.InstantiateEffect<GoStopEffectPopup>("EffectChongtong", canvasRoot);
-        if (fx != null)
-        {
-            fx.root.anchoredPosition = local;
-            fx.Play(SeatName(seat), color);
-        }
+        int month = cards.Count > 0 ? cards[0].month : 0;
+        string title = $"[{month}월 총통]\n{SeatName(seat)}";
+        GoStopVectorEffect.Ensure().PlayChongtong(title, cards);
     }
 
     /// <summary>나가리(승자 없음) 전용 이펙트 — EndGame(winnerSeat &lt; 0)이

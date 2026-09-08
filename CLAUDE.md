@@ -14043,3 +14043,107 @@ field: 4(시작) -> 1(뻑먹기 후,Δ-3) -> 2(조커 파킹,Δ+1) -> 1(조커 �
 줄어드는" 이벤트에서는 두 지표가 다른 조건에서 갈릴 수 있다** — 이후
 "필드 관련 홀짝/카운트" 질문을 받으면 어느 지표를 말하는 건지 먼저
 명확히 할 것.
+
+## 고스톱 — 굳은자 4번째 조건, 세션 머니 변동 표시, 총통 SVG 이펙트
+(2026-09-08)
+
+세 가지 독립 요청을 한 세션에서 처리했다.
+
+### 굳은자 — "필드 3장 무더기 + 손패 매칭 1장" 조건 추가
+
+"필드에 3장 겹친 패(뻑이나 딜링때 깔릴수도)가 있고 내 손에 매칭되는
+나머지 한장의 카드가 있을때도 굳은자 아이콘 표시해줘" — 기존 3가지
+조건(`sameMonthHand==1 && capsCount==2 && sameMonthField>=1` /
+`sameMonthHand==2 && capsCount>=1` / `sameMonthHand==2 && capsCount==0
+&& sameMonthField==2`)을 확인해보니 전부 `field=3, hand=1`(뻑 무더기가
+필드에 그대로 있고 손에 마지막 4번째 장이 있는 상태 — 캡처된 장수는
+당연히 0이라 `capsCount==2` 조건과 안 맞는다) 케이스를 놓치고 있었다.
+`(sameMonthHand == 1 && sameMonthField == 3)`를 4번째 OR 조건으로
+추가 — 기존 세 조건과 같은 "이 달 4장 전부 소재 확정" 원리다.
+
+검증(Play 모드 라이브, 리플렉션): 필드 11월 3장+손패 11월 1장으로
+`RebuildUI()` → 정확히 "!" 아이콘 표시 확인. 대조군(필드 2장+손패
+1장, 기존 조건 어디에도 안 걸림)으로 아이콘이 안 뜨는 것도 확인해
+오탐 없음을 재확인.
+
+### 머니 — "선 정하고 이후" 누적 변동을 상태박스 금액 옆에 표시
+
+"게임에 입장하여 선 정하고 이후의 머니 변동량을 좀 볼수있으면 좋을것
+같은데" — 새 UI 요소를 안 늘리고 기존 금액 텍스트 한 줄에 누적 변동을
+괄호로 덧붙였다(이 파일이 이미 여러 번 써 온 "압축된 정보 슬롯" 원칙).
+`FormatMoneyText(int seat)` 헬퍼를 새로 만들어 money 텍스트를 그리는
+4개 호출부(`RefreshMoneyLabelsOnly`/`RefreshStatusBoxIdentitiesBeforeDeal`
+/`FillSlot`)를 전부 이걸로 통일했다.
+
+세션 시작 잔액(`sessionStartMoney`)은 **이 함수가 처음 불리는 순간
+지연 캡처**한다(`sessionStartMoneyCaptured` 가드) — Start()의 정확한
+타이밍을 쫓는 대신, "money[]가 확실히 최종값인 시점에 처음 그려질 때"를
+그대로 기준점으로 삼는 방식이라 오프라인/호스트/네트워크 게스트 세
+경로 전부에서 안전하다(게스트는 이 함수가 처음 불릴 때 이미 첫
+StateSync로 진짜 값이 들어와 있다 — Start()의 임시 seed값을 잘못 낚아챌
+위험이 없다). 델타가 0이면 괄호를 아예 안 붙이고, +면 초록
+(`#4CD97B`), -면 빨강(`#FF6B6B`) 컬러 태그로 표시한다. 다른 좌석
+(AI/상대)은 변동을 보여줄 이유가 없어 PLAYER_SEAT에만 적용된다.
+
+검증(Play 모드 라이브, 리플렉션): `FormatMoneyText(0)`을 변동
+0/+17,350/-4,000 세 케이스로 직접 호출해 각각 "괄호 없음" /
+"618,100원 (+18,350)"(초록) / "595,750원 (-4,000)"(빨강)로 정확히
+포맷되는 것 확인 — 실제로는 자연 진행 중 이미 세션 시작 대비 +1,000
+변동이 있던 상태(광팔이 등)에 얹어서 확인한 것이라, 진짜 게임플레이
+변동을 델타 계산에 정확히 반영하고 있다는 것도 함께 확인됐다.
+
+### 총통 — 벡터 SVG 카드 4장 + 겹친 큼직한 2줄 텍스트로 교체
+
+"총통이펙트는 총통에 해당되는 패를 전면에 4장 svg로 깔아주고 그
+레이어 앞쪽에 가운데 큼직한 텍스트로 [N월 총통]\n누구누구 이렇게
+박아줘. 글씨는 가운데 정렬로" — 예전 `FireChongtong`은 래스터
+팝업(`EffectChongtong`, `GoStopEffectPopup`)+파티클 버스트만 썼는데,
+족보 완성/비상/실패/흔들기가 이미 쓰는 `GoStopVectorEffect`(UI
+Toolkit, 실제 SVG 카드) 파이프라인에 총통 전용 트리를 새로 추가했다.
+
+**"그 레이어 앞쪽에"라는 요구가 핵심 설계 포인트였다** — 기존 족보
+완성 효과(`CardRow`/`TitleLabel`)는 텍스트가 카드 **아래** 별도
+구간에 있어서 이 요청과 안 맞았고, 비상/실패(`AltRow`/`AltTitleLabel`)
+는 정확히 "카드와 같은 영역에 겹쳐서, z-order상 나중에 그려져 카드
+앞에 뜨는" 구조라 총통도 이 원칙을 그대로 따랐다 — 다만 비상/실패는
+화면 상단 작은 스트립(필드를 안 가리기 위해)인 반면 총통은 "전면에
+크게"라는 요구라, 완성 효과의 큰 카드 크기(440px, n==4 기준)를 그대로
+쓰되 화면 전체 영역에 걸쳐 텍스트가 겹치도록 **새 전용 트리**
+(`ChongtongRow`/`ChongtongTitleLabel`)를 만들었다 — 기존 비상/실패
+큐잉(`EnqueueAlt`)은 재사용하지 않았다(총통은 판당 최대 1회, 딜
+직후에만 발생해 다른 벡터 이펙트와 동시성 경쟁이 없다).
+
+`GoStopVectorEffect.uxml`에 두 요소 추가:
+```xml
+<ui:VisualElement name="ChongtongRow" .../>
+<ui:Label name="ChongtongTitleLabel"
+    style="...top:0; bottom:0; -unity-text-align: middle-center;
+    font-size: 56; white-space: normal; ..." />
+```
+`-unity-text-align: middle-center`가 `"[N월 총통]\n{이름}"` 2줄
+텍스트 블록 전체를 라벨 높이(화면 전체) 안에서 세로로도 가운데
+정렬한다. `PlayChongtong(title, cards)`/`PlayChongtongSeq`는 완성
+효과의 `SlamCard`/`Fade` 헬퍼를 그대로 재사용해 카드 스태거 슬램인 →
+제목 페이드인 → 홀드(1.1초, 완성/비상보다 살짝 길게 — "즉시 승리"라는
+결과의 무게에 맞춤) → 전체 페이드아웃 순으로 재생한다.
+
+`GoStop3PGame.FireChongtong(int seat, List<HwatuCard> cards)`로
+시그니처를 확장(카드 리스트 인자 추가)해서 `cards[0].month`로 월을,
+`SeatName(seat)`로 이름을 뽑아 `$"[{month}월 총통]\n{SeatName(seat)}"`
+타이틀을 조립하고 `GoStopVectorEffect.Ensure().PlayChongtong(title,
+cards)`를 부른다. 기존 파티클 버스트(`GoStopIcons.SpawnBurst`)는
+그대로 유지했다 — 카드+텍스트와 별개의 부가 연출이라 안 건드렸다.
+예전 `EffectChongtong` 프리팹은 삭제하지 않고 안 쓰는 채로 남겨뒀다
+(이 프로젝트의 기존 원칙 — 다른 완성 이펙트 리스킨 때도 옛 프리팹을
+그대로 뒀다).
+
+검증(Play 모드 라이브, 리플렉션): `PlayChongtong` 직접 호출 →
+`chongtongRow.childCount=4`, `chongtongTitleLabel.text="[11월
+총통]\n아귀"`(2줄 정확), `resolvedStyle.unityTextAlign=MiddleCenter`
+(가운데 정렬 확인) → 재생 완료 후 `childCount=0`,
+`playingChongtong=null`로 깨끗이 정리되는 것 확인. 실제
+`FireChongtong(seat, cards)` 전체 경로로도 `"[5월 총통]\n고광렬"`처럼
+월+실제 캐릭터 이름이 정확히 조립되는 것까지 확인했다.
+
+세 가지 전부 컴파일 클린, 이 세션 테스트 전체 콘솔 `error`/
+`exception` 0건.
