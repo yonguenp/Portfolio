@@ -3665,7 +3665,7 @@ public partial class GoStop3PGame : MonoBehaviour
             // 없앴다 — 덱을 마저 넘길 거면(willDraw=true) 그 결과까지
             // 보고 나서 싹쓸이를 판정해야 한다(일반 손패 플레이와 동일한
             // 규칙, bomb 여부와 무관).
-            bool stole = ApplyMatchBonus(seat, r1, bomb, allowSweep: !willDraw, wasFirstHandPlay: wasFirstPlay);
+            bool stole = ApplyMatchBonus(seat, r1, bomb, allowLastTurnBonus: !willDraw, wasFirstHandPlay: wasFirstPlay);
             if (stole)
             {
                 RebuildUI();
@@ -3823,7 +3823,7 @@ public partial class GoStop3PGame : MonoBehaviour
                             Toast(seat, "싹쓸이");
                         }
                     }
-                    else stole2 = ApplyMatchBonus(seat, r2, false, allowSweep: !isLastHandCard);
+                    else stole2 = ApplyMatchBonus(seat, r2, false, allowLastTurnBonus: !isLastHandCard);
 
                     if (stole2)
                     {
@@ -3873,7 +3873,7 @@ public partial class GoStop3PGame : MonoBehaviour
             // 마지막 한 장이 아니라 "각자 자기 손패의 마지막 장을 낼 때"를
             // 가리킨다. 이 턴은 손이 이미 다 떨어진 뒤(그 마지막 턴은 이미
             // 지났다)라 더 이상 예외 대상이 아니다 — 항상 정상적으로
-            // 쪽/따닥/싹쓸이가 붙는다(allowSweep 기본값 true 그대로).
+            // 쪽/따닥/싹쓸이/뻑먹기 피뺏기가 붙는다(allowLastTurnBonus 기본값 true 그대로).
             // 2026-09-04(사용자 확인) — "뒷패를 깔때마다" 요청으로 덱만
             // 넘기는 턴도 PlaySeq의 ② 뒷패 슬램다운과 같은 고스트+SlamDown
             // (긴장 펄스 + 결과별 완급)으로 통일했다 — 예전엔 이 턴만
@@ -4168,7 +4168,7 @@ public partial class GoStop3PGame : MonoBehaviour
                     Toast(seat, "싹쓸이");
                 }
             }
-            else ApplyMatchBonus(seat, r, false, allowSweep: !isLastHandCard);
+            else ApplyMatchBonus(seat, r, false, allowLastTurnBonus: !isLastHandCard);
 
             if (seat == PLAYER_SEAT || IsRemoteSeat(seat))
             {
@@ -4222,7 +4222,7 @@ public partial class GoStop3PGame : MonoBehaviour
     /// true를 넘긴다 — r2(뒷패)·DeckOnlySeq·ResolveBonusJoker는 손패를 낸
     /// 게 아니므로 항상 기본값(false) 그대로 둔다. matchCount==3(뻑 먹기)
     /// 분기에서만 쓰인다 — "첫뻑먹기" 판돈 보너스 판정용.</param>
-    bool ApplyMatchBonus(int seat, GoStopRules.CaptureResult r, bool bomb, bool allowSweep = true, bool wasFirstHandPlay = false)
+    bool ApplyMatchBonus(int seat, GoStopRules.CaptureResult r, bool bomb, bool allowLastTurnBonus = true, bool wasFirstHandPlay = false)
     {
         bool did = false;
         // 폭탄/뻑 먹기/자뻑은 전부 "필드의 특정 달 슬롯 하나"에서 일어나므로
@@ -4251,13 +4251,22 @@ public partial class GoStop3PGame : MonoBehaviour
             // 확인하는 용도로만 쓰고, 스틸 자체는 항상 StealPiFromEachOther
             // 하나로 통일한다.
             int month = r.captured[0].month;
+            // 2026-09-08(사용자 확인, 표준 규칙) — 뻑/자뻑도 쪽·따닥·싹쓸이와
+            // 같은 "마지막 턴" 예외 대상이다: 마지막 손패로 뻑을 완성해도
+            // 캡처(4장 획득) 자체는 그대로지만 피는 못 뺏는다. 새 매개변수를
+            // 따로 안 만들고 allowLastTurnBonus(호출부가 이미 싹쓸이용으로
+            // 계산해 둔 값 — 3668=!willDraw, 3826/4171=!isLastHandCard)를
+            // 그대로 재사용한다 — "이번이 이 턴의 마지막 이벤트인가"라는
+            // 완전히 같은 개념이라서다.
             if (ppeokCauser.TryGetValue(month, out int causer))
             {
                 bool selfPpeok = causer == seat;
-                StealPiFromEachOther(seat, selfPpeok ? 2 : 1);
+                if (allowLastTurnBonus) StealPiFromEachOther(seat, selfPpeok ? 2 : 1);
                 // 2026-08-26 — "첫뻑먹기"(손패 첫 장이 기존 뻑을 먹은 경우)는
                 // 자뻑/일반 뻑 먹기와 무관하게 항상 같은 판돈 보너스
                 // (PpeokMoney())가 추가로 붙는다 — 첫뻑/첫따닥과 같은 원칙.
+                // "마지막 턴" 예외는 피뺏기만 막을 뿐 이 판돈 보너스와는
+                // 무관한 별개 조건(이번 판의 첫 수인가)이라 그대로 둔다.
                 if (wasFirstHandPlay) { ApplyMoneyBonus(seat, PpeokMoney(), "첫뻑먹기비"); Toast(seat, "첫뻑먹기"); }
                 else Toast(seat, selfPpeok ? "자뻑" : "뻑 먹기");
                 ppeokCauser.Remove(month);
@@ -4275,7 +4284,7 @@ public partial class GoStop3PGame : MonoBehaviour
                 // "누가 이 무더기를 만들었는지"가 애초에 성립하지 않는
                 // 상황이라 자뻑 배수(2배)를 적용할 근거가 없다 — 일반
                 // 뻑 먹기와 같은 1배로, 각 상대에게서 1장씩 가져온다.
-                StealPiFromEachOther(seat, 1);
+                if (allowLastTurnBonus) StealPiFromEachOther(seat, 1);
                 Toast(seat, "뻑 먹기");
                 did = true;
             }
@@ -4297,7 +4306,7 @@ public partial class GoStop3PGame : MonoBehaviour
             }
         }
 
-        if (r.sweep && allowSweep)
+        if (r.sweep && allowLastTurnBonus)
         {
             sweeps[seat]++;
             StealPiFromEachOther(seat, 1);

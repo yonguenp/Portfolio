@@ -14276,3 +14276,57 @@ if (rawScore >= CaptureLine && rawScore > lastGoScore[seat])
 큰 변동), `slot1~3=[변동 없음]`(아직 안 건드린 좌석들)로 정확히
 표시되는 것 확인 — 전 좌석에 정상 적용됨을 재확인했다. 컴파일 클린,
 콘솔 `error`/`exception` 0건.
+
+## 고스톱 — 뻑/자뻑도 마지막 턴엔 피뺏기 안 됨 (2026-09-08)
+
+바로 앞서 정리해 둔 "마지막턴 예외 리스트업"(쪽·따닥·싹쓸이)에 사용자가
+표준 규칙 하나를 더 알려줬다 — "뻑이나 자뻑도 표준룰로는 마지막턴에 피를
+뺃어올수 없다." 조사해보니 `ApplyMatchBonus`의 `matchCount==3`(뻑 먹기/
+자뻑/원래 3장 깔린 뻑 셋 다 포함) 분기는 그동안 이 예외 대상에서
+빠져 있었다 — `StealPiFromEachOther`가 `bomb`/`allowSweep` 어느 것과도
+무관하게 항상 무조건 실행됐다.
+
+**고침 — 매개변수 이름을 `allowSweep`→`allowLastTurnBonus`로 바꾸고
+(6곳: 시그니처+콜사이트 3곳+싹쓸이 게이트+주석), 뻑 먹기/자뻑의
+`StealPiFromEachOther` 호출 두 곳(causer 있음/없음 분기 각각)에
+`if (allowLastTurnBonus)`를 씌웠다.** 새 매개변수를 따로 안 만들고
+기존 것을 재사용한 이유는 두 보너스가 완전히 같은 개념("이번이 이
+턴의 마지막 이벤트인가")을 게이트하기 때문 — 호출부(3668=`!willDraw`,
+3826/4171=`!isLastHandCard`)를 손대지 않고 그대로 넘어온다. **캡처
+자체(4장 획득)는 억제하지 않는다** — 쪽/따닥/싹쓸이와 같은 원칙,
+피뺏기 "보너스"만 막는다. 첫뻑먹기 판돈 보너스(`ApplyMoneyBonus`)는
+"이번 판의 첫 수인가"라는 완전히 무관한 조건이라 손 안 댔다 —
+마지막 손패로 첫뻑먹기가 성립하면(1장짜리 손패로 시작한 극단적 경우)
+피는 못 뺏어도 판돈 보너스는 그대로 받는다.
+
+검증(Play 모드 라이브) — 두 층위로 확인했다:
+1. **순수 함수 직접 호출**(`ApplyMatchBonus`) — 일반 뻑먹기(causer=상대)·
+   자뻑(causer=자신, 2배)·원래 3장 깔린 뻑(causer 없음, 1배) 세 경우
+   전부 `allowLastTurnBonus=false`일 때 상대 피 3명 전원 그대로(2→2×3),
+   `true`일 때 정확히 기존 배수대로(일반/원래뻑=1장씩, 자뻑=2장씩)
+   뺏기는 것 확인. `did`는 두 경우 다 `True`(캡처 자체는 인정).
+2. **실제 게임 플레이 경로**(`OnPlayerPlay`→`PlaySeq`) — 필드에 9월
+   3장짜리 뻑 무더기(causer=seat1)를 두고 내 손패 마지막 1장으로
+   완성시킴(`willDraw=true`라 r1도 이 예외를 탐, 이어지는 덱 뒤집기도
+   `isLastHandCard=true`라 마찬가지) → 9월 4장 전부 정상 캡처
+   (`cap0Count`에 4장 반영) + 덱에서 우연히 매칭된 6월 2장도 정상
+   캡처됐지만, **이 시점까지 seat1의 피 개수는 정확히 그대로**(2장
+   유지) — 뻑 먹기 피뺏기가 억제된 것을 실제 캡처 파이프라인에서
+   확인했다. 이 세션 내내(여러 차례 재시작 포함) 콘솔 `error`/
+   `exception` 0건.
+
+> **함정 — 손패/필드를 리플렉션으로 직접 스플라이스한 뒤 곧바로
+> `OnPlayerPlay`를 부르면 stale UI 참조로 NRE가 난다.** 손패 리스트만
+> 갈아치우고 `RebuildUI()`를 안 부르면, 애니메이션이 카드의 "실제
+> 렌더링된 자리"를 찾으려다(`FindHandSlot` 등) 존재하지 않는
+> GameObject를 참조해 죽는다 — 스플라이스 직후 반드시 `RebuildUI()`를
+> 한 번 불러 시각 상태를 동기화할 것(디버그 패널도 같은 순서를 쓴다).
+>
+> **함정 — `DealerDrawPopupView`/`ModalTwoButtonPopup` 등 팝업의
+> `dim` 필드는 `GameObject`가 아니라 `RectTransform`이다.** `as
+> UnityEngine.GameObject`로 캐스팅하면 항상 조용히 `null`이 되어
+> "팝업이 안 떠 있다"는 오탐이 난다 — `(RectTransform)` 캐스팅 후
+> `.gameObject.activeSelf`로 확인할 것. 이번에 이 캐스팅 버그 때문에
+> "선 뽑기 팝업이 응답을 기다리고 있는 정상 상태"를 "게임이 멈췄다"로
+> 오판할 뻔했다 — `dealerDetermined=true`를 미리 세팅해 이 연출을
+> 건너뛰는 기존 테스트 관행을 빠뜨린 것도 원인 중 하나였다.
