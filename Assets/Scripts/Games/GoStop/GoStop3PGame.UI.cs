@@ -506,8 +506,9 @@ public partial class GoStop3PGame
         else
         {
             skipResultBtn = UISkin.MakeKenneyButton(mySeatT, "SkipResultBtn", new Vector2(280f, 90f),
-                new Vector2(0f, 0f), UISkin.Accent.Blue, "결과 넘기기", OnSkipToResultClicked);
+                new Vector2(0f, 0f), UISkin.Accent.Blue, "결과 넘기기", OnSkipToResultClicked);                
         }
+
         skipResultBtnLabel = skipResultBtn.transform.Find("Label")?.GetComponent<TextMeshProUGUI>();
         skipResultBtn.gameObject.SetActive(false); // 매턴 RebuildUI가 실제 표시 여부를 판단
 
@@ -1543,11 +1544,6 @@ public partial class GoStop3PGame
         {
             bool showSkip = iAmSittingOut && !isNetworkHost && !isNetworkGuest;
             skipResultBtn.gameObject.SetActive(showSkip);
-            if (showSkip)
-            {
-                skipResultBtn.interactable = true;
-                if (skipResultBtnLabel != null) skipResultBtnLabel.text = "결과 넘기기";
-            }
         }
 
         DrawPlayerCaptured();
@@ -2040,7 +2036,7 @@ public partial class GoStop3PGame
         {
             if (rowCards.Count == 0) return;
             foreach (var c in rowCards) MakeOne(c);
-            int fillers = rowCards.Count(c => c.EffectivePiValue == 2);
+            int fillers = rowCards.Count(c => c.EffectivePiValue == 2) + (rowCards.Count(c => c.EffectivePiValue == 3) * 2);
             for (int i = 0; i < fillers; i++)
                 new GameObject("PiWeightFiller", typeof(RectTransform)).transform.SetParent(zone, false);
             rowCards.Clear();
@@ -2049,7 +2045,7 @@ public partial class GoStop3PGame
 
         foreach (var c in cards)
         {
-            int w = c.EffectivePiValue == 2 ? 2 : 1;
+            int w = c.EffectivePiValue;
 
             if (rowWeight + w <= 5)
             {
@@ -2059,7 +2055,7 @@ public partial class GoStop3PGame
             else // 수학적으로 rowWeight==4 && w==2인 경우뿐
             {
                 var last = rowCards[rowCards.Count - 1];
-                if (last.EffectivePiValue != 2)
+                if (last.EffectivePiValue == 1)
                 {
                     rowCards.RemoveAt(rowCards.Count - 1); // 마지막 홑피를 빼고
                     rowCards.Add(c);                        // 쌍피를 넣어 정확히 5
@@ -2121,6 +2117,7 @@ public partial class GoStop3PGame
     /// 동안 다시 움직일 리 없다).</summary>
     IEnumerator SlamToCap(RectTransform rt, HwatuCard card, Vector3 from, Vector2 fromSize, Vector3? hit)
     {
+
         if (rt == null) yield break;
         var cg = rt.gameObject.GetComponent<CanvasGroup>();
         if (cg == null) cg = rt.gameObject.AddComponent<CanvasGroup>();
@@ -2136,11 +2133,14 @@ public partial class GoStop3PGame
 
         var ghostGo = HwatuUI.MakeCard(card, stableParent, Vector2.zero, fromSize.x, fromSize.y, null, false);
         var ghost = ghostGo.transform as RectTransform;
+
+
         ghost.position = from;
         // 2026-09-08 — capFlightGhosts 문서 참고. 이 카드를 향한 비행이
         // 아직 안 끝났는데 다음 RebuildUI가 같은 카드를 다시 그리면, 그
         // 시점의 MakeOne이 이 고스트를 찾아 이어받는다.
         capFlightGhosts[card] = ghost;
+
 
         if (hit.HasValue)
         {
@@ -2319,7 +2319,7 @@ public partial class GoStop3PGame
             // (전통 규칙 (3,1) 폭탄, 3장 흔들기, 2장+필드매치0 굳은자) 서로
             // 배타적이지 않을 수 있어(흔들기·폭탄은 둘 다 "3장 보유" 조건을
             // 공유) 위치를 나눠 동시에 보여준다.
-            int sameMonthHand = h.Count(c => c.month == card.month);
+            int sameMonthHand = h.Count(c => c.month == card.month && !c.isJoker);
             int sameMonthField = field.Count(f => f.month == card.month);
             bool bombable = sameMonthHand == 3 && sameMonthField == 1;
             bool shakeable = sameMonthHand == 3 && !shookMonths[PLAYER_SEAT].Contains(card.month);
@@ -2412,7 +2412,7 @@ public partial class GoStop3PGame
         fieldImg.raycastTarget = false;
 
         var capLabel = HwatuUI.MakeLabel(go.transform, new Vector2(0f, -14f), new Vector2(HAND_W - 8f, 20f), 12f, new Color(1, 1, 1, 0.9f));
-        capLabel.text = "덱만";
+        capLabel.text = "더미";
         var numLabel = HwatuUI.MakeLabel(go.transform, new Vector2(0f, -HAND_H * 0.5f - 2f), new Vector2(HAND_W - 8f, 56f), 30f, Color.white);
         numLabel.text = bombCredits[PLAYER_SEAT].ToString();
         numLabel.font = HwatuTheme.FontBold;

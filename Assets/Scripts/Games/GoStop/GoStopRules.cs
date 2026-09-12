@@ -33,8 +33,9 @@ public static class GoStopRules
     static List<HwatuCard> BuildFullDeckWithJokers()
     {
         var deck = GoStopDeck.BuildFull();
-        deck.Add(new HwatuCard(0, HwatuKind.Pi, "Joker_1", piValue: 1, isJoker: true));
-        deck.Add(new HwatuCard(0, HwatuKind.Pi, "Joker_2", piValue: 2, isJoker: true));
+        deck.Add(new HwatuCard(0, HwatuKind.Pi, "Joker_single", piValue: 1, isJoker: true));
+        deck.Add(new HwatuCard(0, HwatuKind.Pi, "Joker_double", piValue: 2, isJoker: true));
+        deck.Add(new HwatuCard(0, HwatuKind.Pi, "Joker_triple", piValue: 3, isJoker: true));
         GoStopDeck.Shuffle(deck);
         return deck;
     }
@@ -226,17 +227,21 @@ public static class GoStopRules
     /// 고르게 하면 고르지 않은 1장과 조커가 필드에 영원히 남아버린다(아무도 못
     /// 가져가는 미아 카드 — "필드에 홀수 개가 남는다"는 신고의 원인). 호출자가
     /// 이 상황(그 달에 <c>ppeokBonusPi</c> 항목이 있음)을 감지하면 이 함수로
-    /// 조커까지 포함해 3장(월매칭 2장+조커) 전부를 통째로 쓸어간다 — 일반 뻑
-    /// 해소(matchCount==3)와 똑같이 처리되도록 matchCount를 3으로 맞춘다.
+    /// 조커까지 포함해 3장+(월매칭 2장+조커 1장 이상) 전부를 통째로 쓸어간다
+    /// — 일반 뻑 해소(matchCount==3)와 똑같이 처리되도록 matchCount를 3으로
+    /// 맞춘다. 2026-09-12: 조커가 홀피/쌍피/쓰리피 3종으로 늘어나면서 같은
+    /// 무더기에 조커가 2장 이상 겹쳐 쌓일 수 있게 됐다(ppeokBonusPi가
+    /// Dictionary&lt;int, List&lt;HwatuCard&gt;&gt;로 바뀐 이유) — 그래서
+    /// 단일 조커 대신 리스트 전체를 받는다.
     /// </summary>
-    public static CaptureResult ResolveJokerPpeok(HwatuCard played, List<HwatuCard> matched, HwatuCard joker, List<HwatuCard> field)
+    public static CaptureResult ResolveJokerPpeok(HwatuCard played, List<HwatuCard> matched, List<HwatuCard> jokers, List<HwatuCard> field)
     {
         foreach (var m in matched) field.Remove(m);
-        field.Remove(joker);
+        foreach (var j in jokers) field.Remove(j);
         var result = new CaptureResult { matchCount = 3 };
         result.captured.Add(played);
         result.captured.AddRange(matched);
-        result.captured.Add(joker);
+        result.captured.AddRange(jokers);
         result.sweep = field.Count == 0;
         return result;
     }
@@ -431,25 +436,26 @@ public static class GoStopRules
     {
         int moved = 0;
         int remaining = piValueOwed;
+
         while (remaining > 0)
         {
-            // 2026-08-20 정정(사용자 신고 — "뻑 해소할 때 피를 안 뺏어온다") —
-            // kind/piValue(원본)가 아니라 EffectiveKind/EffectivePiValue를
-            // 써야 한다(9월 열끗을 쌍피로 쓰기로 정한 카드는 kind가 여전히
-            // Yeolkkeut라 원본 필터로는 안 걸린다).
             var pool = from.Where(c => c.EffectiveKind == HwatuKind.Pi).ToList();
             if (pool.Count == 0) break;
 
             int singleCount = pool.Count(c => c.EffectivePiValue == 1);
+
             HwatuCard pick = singleCount >= remaining
                 ? pool.First(c => c.EffectivePiValue == 1)
                 : pool.FirstOrDefault(c => c.EffectivePiValue == remaining)
-                  ?? pool.OrderBy(c => c.EffectivePiValue).First();
+                ?? pool.OrderBy(c => c.EffectivePiValue).First();
 
-            from.Remove(pick); to.Add(pick);
+            from.Remove(pick);
+            to.Add(pick);
+
             remaining -= pick.EffectivePiValue;
             moved++;
         }
+
         return moved;
     }
 
@@ -537,7 +543,9 @@ public static class GoStopRules
     /// 방어적으로 제외한다.</summary>
     public static bool IsChongtong(List<HwatuCard> hand) =>
         hand.Where(c => c.month != 0).GroupBy(c => c.month).Any(g => g.Count() == 4);
-
+    public static List<HwatuCard> FilterChongtong(List<HwatuCard> hand) =>
+        hand.Where(c => c.month != 0).Where(c => c.month != 0).GroupBy(c => c.month).Where(g => g.Count() == 4).SelectMany(g => g).ToList();
+    
     // ── 고/스톱 배수 ─────────────────────────────────────
     /// <summary>고를 부른 횟수에 따른 기본 배수(역고가 아닐 때). 1~2회는 그대로, 3회부터 매판 2배씩.</summary>
     public static int GoMultiplier(int goCount)
@@ -700,7 +708,7 @@ public static class GoStopRules
     public static MultiPayout FinalScoreMulti(List<HwatuCard> myCaptured, int mySweeps, int myGoCount,
         int myHeundeulCount, int myBombCount, List<List<HwatuCard>> loserCaptured, int wonPerPoint,
         int dokbakLoserIndex = -1, int? overrideBaseScore = null, int extraMultiplier = 1,
-        int piBakThreshold = PI_BAK_THRESHOLD_3P)
+        int piBakThreshold = PI_BAK_THRESHOLD_3P, bool skipZeroCaptureExemption = false)
     {
         var cs = CalcScore(myCaptured, mySweeps);
         int baseScore = overrideBaseScore ?? cs.Total;
@@ -742,8 +750,15 @@ public static class GoStopRules
             result.gwangBakPerLoser.Add(gwangBak);
             result.piBakPerLoser.Add(piBak);
 
-            // 이번 판 한 장도 못 먹은 패자는 정산에서 빠진다(2인판과 같은 논리).
-            int amount = lc.Count == 0 ? 0 : baseScore * m * wonPerPoint;
+            // 이번 판 한 장도 못 먹은 패자는 정산에서 빠진다(2인판과 같은 논리) —
+            // 단, 총통처럼 딜 직후 즉시 끝나는 승리는 승자·패자 전원의
+            // captured가 구조적으로 항상 비어 있으므로(아직 한 턴도 안 돎)
+            // 이 예외를 그대로 적용하면 지급액이 항상 0이 된다(실제 버그로
+            // 신고됨, 2026-09-12). skipZeroCaptureExemption로 그 호출부만
+            // 이 예외를 끈다 — 3연뻑처럼 진짜로 캡처가 진행된 뒤 끝나는
+            // 즉시승리는 이 예외가 여전히 정상적으로 적용돼야 한다(그
+            // 경우의 "0장"은 진짜로 아무것도 못 먹은 것이므로).
+            int amount = (!skipZeroCaptureExemption && lc.Count == 0) ? 0 : baseScore * m * wonPerPoint;
             result.amounts.Add(amount);
             total += amount;
         }

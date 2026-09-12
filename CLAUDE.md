@@ -643,7 +643,7 @@ UGS 자동 생성 이름은 `TropicalMuffledPostcard#84949` 처럼 길다. `Shor
 var ca = GameUIManager.Instance.ContentArea;
 for (int i = 0; i < ca.childCount; i++) {
     var c = ca.GetChild(i);
-    Debug.Log(c.name + " scale=" + c.localScale + " active=" + c.gameObject.activeInHierarchy);
+    Logger.Log(c.name + " scale=" + c.localScale + " active=" + c.gameObject.activeInHierarchy);
 }
 ```
 
@@ -10936,7 +10936,7 @@ pendingGoRawScore`(고 배수 적용 전 원점수)로 정확히 이 정의를 �
 로그를 추가했다:
 ```csharp
 if (seat == PLAYER_SEAT)
-    Debug.Log($"[GoStopGate] seat={seat} rawScore={rawScore} lastGoScore={lastGoScore[seat]} " +
+    Logger.Log($"[GoStopGate] seat={seat} rawScore={rawScore} lastGoScore={lastGoScore[seat]} " +
         $"willPrompt={rawScore >= CaptureLine && rawScore > lastGoScore[seat]} " +
         $"capturedCount={captured[seat].Count} goCount={goCount[seat]} captureLine={CaptureLine}");
 ```
@@ -14582,3 +14582,199 @@ index 0/offset 0, joker는 index 1/offset `(FieldStackStep(2), -FieldStackStep(2
 - 실제 `OnPlayerPlay`로 정상 카드 플레이까지 예외 없이 이어지는 것
   확인.
 - 콘솔 `error`/`exception` 0건(이 세션 전체).
+
+## 고스톱 — 사용자 독립 작업 리뷰: 총통 머니 버그, 조커 3종 전환,
+Logger 래핑, ui.md 리디자인 기획 (2026-09-12)
+
+사용자가 며칠간 직접 코드 정리·연출 수정·조커 카드 구성 변경(홀피/쌍피/
+쓰리피 3종)을 진행한 뒤 "체크하고 md파일 업데이트, 문제/우려되는부분
+리스트업, 불필요한 주석·로그 정리"를 요청 — 전체 diff를 리뷰해서 실제
+회귀 3건 + 명시된 버그 1건을 고치고, 로그를 정리했다.
+
+### 확정 버그 1 — 총통 시 돈이 안 움직임 (명시적으로 신고된 버그)
+
+`GoStopRules.FinalScoreMulti`의 "한 장도 못 먹은 패자는 정산에서 뺀다"
+예외(`lc.Count == 0 → amount = 0`)가 **총통(딜 직후 즉시 승리)에도
+그대로 걸렸다** — 총통은 아직 한 턴도 안 돈 시점이라 승자·패자 전원의
+`captured`가 구조적으로 항상 비어 있으므로, 이 예외를 그대로 적용하면
+지급액이 무조건 0이 된다. `skipZeroCaptureExemption` 파라미터를
+추가해서 `EndGame(s, fixedBaseScore: 3, isChongtong: true)` 호출부에서만
+이 예외를 끈다 — 3연뻑처럼 진짜로 캡처가 진행된 뒤 끝나는 즉시승리는
+이 예외가 여전히 정상 적용돼야 한다(그 경우의 "0장"은 진짜로 아무것도
+못 먹은 것이므로 `isChongtong` 플래그로 정확히 구분했다).
+
+검증(Play 모드 라이브): `EndGame(0, fixedBaseScore:3, extraMultiplier:1,
+isChongtong:true)`을 직접 호출 — `before=[1318750,495250,463000,647800]`
+→ `after=[1324750,492250,460000,647800]`(승자 +6000, 패자 각 -3000,
+쉬는 좌석 무변동), `amounts=[3000,3000], baseTotal=3` 정확히 확인 —
+수정 전이었다면 `amounts=[0,0]`으로 돈이 전혀 안 움직였을 상황.
+
+### 확정 회귀 3건 — 사용자의 리팩터 도중 실수로 삭제된 코드
+
+`GoStop3PGame.cs`의 `PlaySeq`/`DeckOnlySeq`/`ResolveBonusJoker`를 이전
+세션들에서 검증된 버전과 대조해서 찾았다 — 조커 3종 전환 작업 중
+관련 없는 코드까지 함께 삭제된 것으로 보인다.
+
+1. **`if (drawPile.Count > 0) { ... }` 가드 전체가 사라져 있었다** —
+   `PlaySeq`가 덱이 비었는지 확인 없이 `drawPile[0]`에 무조건 접근하고
+   있어서, 손패가 덱보다 먼저 안 떨어지는 특정 조합에서
+   `IndexOutOfRangeException`이 날 수 있는 상태였다. 원래 있던 3분기
+   (`drawn.isJoker`/`couldBePpeok`/일반) 블록을 그 가드 안으로 다시
+   넣었다.
+2. **`ApplyMatchBonus`의 `allowLastTurnBonus` 인자가 누락**돼 있었다
+   (`r1` 호출부) — "마지막 턴엔 쪽/따닥/뻑먹기 피뺏기를 안 준다"는
+   기존 확정 규칙이 조용히 항상 켜진 채로(`true` 기본값) 동작하고
+   있었다. `allowLastTurnBonus: drawn == null`을 복원했다.
+3. **`ppeokBonusPi`(파킹된 조커) 스윕 분기 6곳이 통째로 빠져 있었다** —
+   `PlaySeq`의 `r1HadChoice`/`couldBePpeok`/r2 분기, `DeckOnlySeq`,
+   `ResolveBonusJoker`의 tail 분기, `ResolveBonusNextCardWithoutAnchor`
+   (사용자가 새로 추가한 조커 체이닝 함수)에 각각 있어야 할 "이 달에
+   파킹된 조커가 있으면 같이 쓸어 담는다" 체크가 없었다 — 방치하면
+   조커가 필드에 영원히 미아로 남는, 이 프로젝트가 여러 세션에 걸쳐
+   잡았던 그 버그 클래스가 재발할 상태였다. `ResolveJokerPpeok` 자체는
+   (다행히) 시그니처만 `HwatuCard joker`→`List<HwatuCard> jokers`로
+   바뀌어 있었을 뿐 로직은 살아있었지만, **호출하는 곳이 하나도 없어서
+   완전히 죽은 코드**였다 — 6곳 전부 복원 후 정상적으로 다시 연결됐다.
+
+**부수 발견 — `GoStopDeck.EnsureTemplates()`의 조커 템플릿 딕셔너리
+버그(리팩터와 무관한 별개의 기존 버그).** 조커 3종 전환 시 키를
+`"Joker_1"`/`"Joker_2"`(중복, 후자가 두 번 할당돼 쌍피 템플릿이
+쓰리피에 덮여 사라짐)로 넣었는데, `GoStopRules.BuildFullDeckWithJokers()`
+가 실제로 만드는 카드의 spriteName은 `"Joker_single"`/`"Joker_double"`/
+`"Joker_triple"`이라 — 키가 실제 카드 이름과 전혀 안 맞아서 **네트워크
+대전에서 조커가 통째로 유실**되는 상태였다(`Decode()`가 항상 못 찾아
+`null`을 돌려줌). 키를 실제 spriteName 3개로 정확히 맞춰 고쳤다.
+
+**검증(Play 모드 라이브, 실제 게임 플레이 경로).** 4인 게임을 딜링부터
+새로 시작(`dealerDetermined=true`로 선 뽑기 연출만 스킵, 실제 딜링·
+참가선언은 정상 경로)해서 정상 딜(7/7/7/0, 광팔이로 한 좌석 스큐즈)
+확인. 손패의 완전 무매칭 카드를 실제 `OnPlayerPlay`로 재생하면서 덱
+맨 위를 조커+독립적으로 처리될 다른 달 카드로 리깅 — 조커가 정상
+캡처되고("뻑 아님" 분기), next 카드가 필드에 정상 착지하고, 이후
+자연 진행되는 AI 턴들까지 예외 없이 흘러가 다시 내 턴으로 돌아오는
+것까지 확인. 이 세션 전체(딜링·플레이·수 회의 재시작 포함) 콘솔
+`error`/`exception`/`assert` **0건**.
+
+> **테스트 방법론 함정 재확인** — `BeginWithSeatCount`를 호출한 직후
+> (딜러뽑기 팝업이 응답을 기다리는 동안) `dealerDetermined`/`dealerSeat`
+> 를 바꾸고 **다시** `BeginWithSeatCount`를 부르면, 첫 번째 `NewGameSeq`
+> 코루틴이 여전히 살아있는 채로 `newGameStarting` 가드에 막혀 두 번째
+> 호출이 조용히 무시된다(hand가 계속 null인 채로 멈춘 것처럼 보임) —
+> 이 프로젝트가 이미 여러 번 기록한 함정과 같은 계열. **`dealerDetermined`
+> 는 반드시 첫 `BeginWithSeatCount` 호출 *전에* 세팅할 것**, 또는 완전히
+> 새 Play 세션에서 시작할 것.
+
+### 로그 정리 — `Logger.cs`(사용자 신규 작성) 검토 + 잔여 진단 로그 제거
+
+사용자가 만든 `Assets/Scripts/Logger.cs`:
+```csharp
+public class Logger : MonoBehaviour
+{
+    static public void Log(string msg, int level = 0) { if(level > 0) Debug.Log(msg); }
+}
+```
+`Debug.Log`/이전 세션들의 `[GoStopJokerDiag]`/`[CapFlight]`/`[StealPi]`류
+태그 진단 로그 전부를 이걸로 감쌌다 — 기본값(`level=0`)이 **항상 무음**이라
+호출부가 명시적으로 `level=1`을 안 넘기면 그 로그는 영원히 안 찍힌다.
+`GoStopJokerGhost`(이미 해결된 조커 애니메이션 버그의 진단용)와
+`StealPiFromEachOther`의 "피뺏기 발동" 진단 2곳은 이제 쓸모가 없어져서
+완전히 제거했다. **`[GoStopGate]`(고/스톱 재질문 게이트, 2026-09-08
+섹션에 기록된 미해결 재현 실패 버그의 진단용) 하나만 의도적으로
+남겨뒀다** — 다음에 사용자가 재현하면 이 로그로 바로 원인을 좁힐 수
+있다. `NewGameSeq`에 남아있던 커밋되지 않은 테스트용 주석 블록
+(`// //for test` + 조커 3장 강제 삽입 3줄)도 제거했다.
+
+**로그 설계에 대한 우려 — 사용자에게 그대로 전달할 것.** `Logger.cs`는
+"기본이 완전 무음"이라 실제로는 로그를 켜는 스위치가 없다(모든 호출부가
+`level=1`을 명시하지 않는 한 아무것도 안 찍힌다) — 지금은 그래서
+문제가 안 되지만, 나중에 "이 판만 자세히 보고 싶다"는 상황이 오면
+`level` 값을 매번 호출부에서 바꿔야 한다. `MonoBehaviour`를 상속하는
+것도 순수 정적 유틸리티에는 불필요하다(인스턴스화될 일이 없다). 당장
+고칠 필요는 없지만, 전역 verbosity 스위치(`static int Verbosity`
+같은 것)를 두면 다음에 비슷한 디버깅이 필요할 때 편할 것이다.
+
+### "옵저버 패턴" 확인 결과 — 미구현 (사용자 주장과 다름)
+
+"user status box는 옵저버 패턴을 써서 각 항목을 업데이트해줘"라고
+하셨는데, `GoStopStatusBoxView.cs`/`GoStop3PGame`을 확인한 결과 **진짜
+Observer 패턴(이벤트 구독/발행, `event`/`Action`/`INotifyPropertyChanged`
+등)은 어디에도 없다.** 실제 구조는 `GoStopStatusBoxView`가 `SetDealer`/
+`SetRisk`/`SetCountBadge`/`SetMoneyDelta`/`ApplyTurnState` 같은 public
+setter 메서드를 노출하는 순수 View이고, `GoStop3PGame.FillSlot`/
+`DrawBadgeStrip`이 매 `RebuildUI()`마다 이 메서드들을 직접(imperative)
+호출해서 값을 밀어넣는 구조다 — 이건 흔히 쓰이는 정상적인 MVP/View
+패턴이고 지금 규모에서 딱히 문제될 것은 없지만, **Observer(구독자가
+데이터 변경을 스스로 감지해 반응하는 방식)는 아니다.** 실제로 프로젝트
+전체(`grep "event \|Subscribe\|INotifyPropertyChanged"`)에서도 이런
+구독 기반 코드는 UI 쪽에 전혀 없었다. 이름만 다르고 실질은 같은 것을
+가리키신 거라면 문제없지만, 혹시 진짜 pub/sub 구조를 기대하셨다면
+현재는 아니라는 점을 알려드린다.
+
+### 로직/연출 분리 — ui.md가 이미 UI 구조 문제는 짚었지만, 이건 다른
+문제다
+
+새로 생긴 `ui.md`(1757줄, "고스톱 게임 UI 리디자인 및 Unity GameObject
+· Prefab 구조 개편 통합 기획서")를 확인했다 — 색상 시스템(`HwatuTheme.cs`
+가 이미 이 문서의 팔레트와 정확히 일치)·Prefab 기반 재사용·Editor에서
+직접 수정 가능한 구조를 목표로 하는 잘 정리된 자체 설계 문서였다.
+`Assets/Editor/Mockup/GoStopOrientalMockupBuilder.cs`(신규)로 먼저
+목업에서 검증 후 `HwatuTheme.cs`/각종 prefab(`CardFront`/`CardBack`/
+`StatusBoxView`/`OverlayCard`/팝업들)에 반영 중인 것으로 보인다 — 이
+작업은 **"UI 요소가 코드가 아니라 Prefab/GameObject로 존재해야 한다"**
+는, "코드 생성 UI를 어떻게 에디터에서 편집 가능하게 만드나"라는 문제를
+다룬다.
+
+**그런데 "로직과 연출이 같이돌아가서 코드가 정신없다"는 지적은 이것과는
+다른, 아직 안 풀린 문제다.** `GoStop3PGame.cs`(5505줄)의 `PlaySeq`/
+`DeckOnlySeq` 같은 핵심 턴 진행 함수 안에서 **규칙 판정 호출**
+(`GoStopRules.Resolve`/`ApplyMatchBonus`/`ResolveBonusJoker` 등, "무슨
+일이 일어났는가")과 **연출 오케스트레이션**(`SpawnGhostCard`/`SlamDown`/
+`yield return new WaitForSeconds(...)`/팝업 대기, "그걸 어떻게 보여줄
+것인가")이 한 코루틴 안에 촘촘히 섞여 있다 — 이번 세션에 찾은 회귀
+3건 전부가 정확히 이 얽힘 때문에 생겼다(조커 처리 로직 하나를 고치려다
+그 안에 끼어있던 애니메이션 순서/가드 코드까지 실수로 지워진 것으로
+보인다). ui.md의 Prefab화 작업이 끝나도 이 문제는 안 풀린다 — 그건
+"화면에 뭘 그릴지"를 Editor에서 편집 가능하게 만드는 것이고, 이건
+"게임 로직 함수 안에 애니메이션 대기 코드가 인터리브돼 있다"는 완전히
+별개의 C# 내부 구조 문제다.
+
+**구체적 제안(착수는 안 함, 사용자 판단 필요)** — `PlaySeq` 같은
+함수를 "①`GoStopRules`를 호출해 이번 턴에 뭐가 일어났는지 순수하게
+계산하는 단계"와 "②그 결과(어떤 카드가 어디서 어디로 이동했는지 등)를
+받아서 순서대로 재생만 하는 애니메이션 단계"로 나누면, 결과 계산
+로직을 만질 때 애니메이션 코드를 실수로 건드릴 위험이 구조적으로
+줄어든다 — 다만 이건 `PlaySeq`/`DeckOnlySeq`/`ResolveBonusJoker` 전체를
+다시 짜는 큰 리팩터라(조커 파킹처럼 "다음에 뭐가 나오는지에 따라 분기가
+갈리는" 로직이 많아서 "먼저 다 계산한 뒤 재생"이 깔끔하게 안 나뉠 수도
+있다), 이번 세션 범위 밖으로 남긴다.
+
+### 리스트업 — 문제/우려되는 부분
+
+1. **(고침) 총통 정산 시 돈이 안 움직이던 버그** — 위 참고, 라이브 검증 완료.
+2. **(고침) 조커 3종 전환 리팩터 중 삭제된 회귀 3건** — drawPile 가드,
+   allowLastTurnBonus, ppeokBonusPi 스윕 6곳 전부 복원, 라이브 검증 완료.
+3. **(고침, 리팩터와 무관한 별개 기존 버그) `GoStopDeck` 조커 템플릿
+   키 불일치** — 네트워크 대전에서 조커가 전부 유실되고 있었음.
+4. **(정보) `Logger.cs`가 기본 무음이라 verbosity 스위치가 없음** —
+   당장 문제는 아니지만 다음 디버깅 세션에 불편할 수 있음.
+5. **(정정) "Observer 패턴"은 실제로 구현돼 있지 않음** — 지금 있는
+   건 평범한 imperative View 패턴. 문제는 없지만 사용자의 이해와 코드
+   실태가 다름.
+6. **(미해결, 별도 작업 필요) 로직/연출 분리** — ui.md는 UI 구조
+   문제를 풀지만, `PlaySeq` 등 핵심 함수 안에서 규칙 판정과 애니메이션
+   시퀀싱이 섞여 있는 문제는 그대로다. 이번 회귀 3건의 근본 원인이기도
+   해서, 다음에 조커/뻑 관련 로직을 또 건드릴 계획이 있다면 먼저
+   분리해두는 게 안전할 것.
+7. **(미검토, 범위 밖으로 남김) prefab/폰트/Mockup 씬 변경 다수** —
+   `CardFront`/`CardBack`/`OverlayCard`/각종 팝업 prefab, Gmarket 폰트
+   에셋, `GoStopOrientalMockup.unity` 신규 씬, `GmarketFontAssetBuilder.cs`
+   신규 에디터 툴 — 전부 ui.md 리디자인 작업의 일부로 보이는 시각적
+   변경이라 이번 리뷰(로직/버그 중심)에서는 깊게 안 봤다. 실제 화면에서
+   의도대로 보이는지는 직접 플레이해보고 확인이 필요하다.
+8. **(경미, 낮은 우선순위, 미고침) `FillCapZone`의 가중치 줄바꿈 계산이
+   피 값이 3(트리플피)까지 늘어난 것을 완전히 다 반영했는지 재검토
+   필요** — 정확히 weight-4로 찬 줄(홑피로만 채워짐) 끝에 트리플피
+   카드가 들어오면 5를 초과하는(6) 경우가 발생할 수 있어 보인다(홑피/
+   쌍피 2종일 때는 이런 조합이 아예 안 생겼는데, 트리플피가 추가되며
+   생긴 새 엣지케이스로 추정). 화면이 살짝 넘치는 정도의 시각적 문제로,
+   실제로 발생하는지는 라이브로 재현해보지 않았다.
