@@ -170,7 +170,10 @@ public class GoStopNetMessage
     // "카드+흔들기 여부"가 한 번의 결정이라 메시지 두 개로 쪼갤 이유가 없다.
     public static GoStopNetMessage PlayWithShake(string cardId, bool shake) => new GoStopNetMessage { type = Type.PlayCard, cardId = cardId, boolValue = shake };
     public static GoStopNetMessage EventMsg(string label, int seat) => new GoStopNetMessage { type = Type.Event, text = label, seat = seat };
-    public static GoStopNetMessage ByeMsg() => new GoStopNetMessage { type = Type.Bye };
+    // 2026-09-12 정리: ByeMsg()(인자 없는 팩토리)는 죽은 코드였다 — 실제로
+    // 나가는 Bye 메시지는 전부 이탈 사유(text)를 실어야 해서
+    // `new GoStopNetMessage { type = Type.Bye, text = ... }`를 그때그때
+    // 직접 만들지, 이 팩토리를 쓴 적이 없었다(grep으로 호출부 0개 확인).
     public static GoStopNetMessage LobbyUpdateMsg(string[] names) => new GoStopNetMessage { type = Type.LobbyUpdate, playerNames = names };
     public static GoStopNetMessage StartGameMsg(int seat, int playerCount, int pointPrice) => new GoStopNetMessage { type = Type.StartGame, seat = seat, playerCount = playerCount, pointPrice = pointPrice };
     public static GoStopNetMessage SeatReassignMsg(int seat, int playerCount) => new GoStopNetMessage { type = Type.SeatReassign, seat = seat, playerCount = playerCount };

@@ -15,7 +15,6 @@ using UnityEngine;
 public static class HwatuShapes
 {
     static readonly Dictionary<int, Sprite> circleCache = new();
-    static readonly Dictionary<long, Sprite> triangleCache = new();
     static readonly Dictionary<long, Sprite> roundedCache = new();
     static readonly Dictionary<string, Sprite> borderedCache = new();
     static Sprite dotGridCache;
@@ -50,33 +49,11 @@ public static class HwatuShapes
     /// 위 꼭짓점 삼각형. 피벗은 <b>아래쪽 중앙</b> — 소나무처럼 여러 개를
     /// 쌓아 올릴 때 밑변 기준으로 위치를 잡기 편하다.
     /// </summary>
-    public static Sprite Triangle(int w = 64, int h = 64)
-    {
-        long key = ((long)w << 32) | (uint)h;
-        if (triangleCache.TryGetValue(key, out var cached)) return cached;
-
-        var tex = new Texture2D(w, h, TextureFormat.RGBA32, false);
-        var px = new Color32[w * h];
-        float cx = w * 0.5f;
-        for (int y = 0; y < h; y++)
-        {
-            float t = (float)y / Mathf.Max(h - 1, 1);      // 0 아래, 1 위
-            float halfWidth = (1f - t) * cx;                // 위로 갈수록 좁아진다
-            for (int x = 0; x < w; x++)
-            {
-                float d = Mathf.Abs(x - cx);
-                float a = Mathf.Clamp01(halfWidth - d + 1f); // 1px 안티에일리어싱
-                px[y * w + x] = new Color32(255, 255, 255, (byte)(a * 255f));
-            }
-        }
-        tex.SetPixels32(px); tex.Apply();
-        tex.hideFlags = HideFlags.HideAndDontSave;
-
-        var sp = Sprite.Create(tex, new Rect(0, 0, w, h), new Vector2(0.5f, 0f));
-        sp.hideFlags = HideFlags.HideAndDontSave;
-        triangleCache[key] = sp;
-        return sp;
-    }
+    // 2026-09-12 정리: Triangle()(소나무 가지 등에 쓰려던 삼각형 스프라이트)은
+    // 죽은 코드였다 — 이 도형을 쓰던 유일한 곳(HwatuCardArt.BuildJanuaryGwang,
+    // "1월 광 샘플 하나만 만들어서 퀄리티를 확인하는" 프로토타입)이 실제
+    // 화투 이미지(Wikimedia SVG 세트)로 완전히 대체되면서 그 파일 자체를
+    // 삭제했다 — 함께 정리했다.
 
     /// <summary>모서리 둥근 사각형(베벨 없음). 카드 배경·테두리용.</summary>
     public static Sprite RoundedRect(int size = 64, int radius = 14)

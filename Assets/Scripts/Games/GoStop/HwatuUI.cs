@@ -213,32 +213,12 @@ public static class HwatuUI
             Object.Destroy(t.GetChild(i).gameObject);
     }
 
-    /// <summary>카드 리스트를 줄(row) 단위로 묶는다. <paramref name="weighted"/>가
-    /// true면 장수가 아니라 카드 값(피의 쌍피=2/홑피=1 등, <see cref="HwatuCard.EffectivePiValue"/>)의
-    /// 합으로 <paramref name="maxPerRow"/>를 채운다 — "5장씩"이 아니라 "5피씩"
-    /// 쌓여야 하는 피 존에 쓴다(예: 쌍피1+홑피4 → 1줄에 쌍피1+홑피3(=5피), 다음
-    /// 줄에 홑피1). 광/열끗/띠처럼 장당 가치가 늘 1인 존은 weighted=false로
-    /// 두면 기존과 동일하게 장수 기준으로 묶인다.</summary>
-    public static List<List<HwatuCard>> GroupIntoRows(List<HwatuCard> cards, int maxPerRow, bool weighted)
-    {
-        var rows = new List<List<HwatuCard>>();
-        var cur = new List<HwatuCard>();
-        int weight = 0;
-        foreach (var c in cards)
-        {
-            int w = weighted ? c.EffectivePiValue : 1;
-            if (cur.Count > 0 && weight + w > maxPerRow)
-            {
-                rows.Add(cur);
-                cur = new List<HwatuCard>();
-                weight = 0;
-            }
-            cur.Add(c);
-            weight += w;
-        }
-        if (cur.Count > 0) rows.Add(cur);
-        return rows;
-    }
+    // 2026-09-12 정리: 카드를 "5피씩" 줄로 묶던 GroupIntoRows(단순 그리디
+    // 알고리즘)는 죽은 코드였다 — 2026-09-03 세션들에서 FillCapZone이
+    // "줄이 정확히 weight-4로 찼는데 다음 카드가 쌍피라 넘칠 때, 마지막
+    // 홑피 한 장을 다음 줄로 미루는" 스왑 로직까지 필요해지면서 더
+    // 정교한 패킹을 인라인으로 직접 구현했고, 그 뒤로 이 함수를 부르는
+    // 곳이 없어졌다.
 
     /// <summary>세로 스크롤 가능한 콘텐츠 영역을 만든다 — 점수 상세처럼 항목 수가
     /// 게임마다 달라져 고정 높이로는 넘칠 수 있는 팝업 본문에 쓴다. 반환하는
