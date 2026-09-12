@@ -1137,33 +1137,32 @@ public partial class GoStop3PGame
         return t as RectTransform;
     }
 
-    /// <summary>정보 슬롯(닉네임/고+점수/금액/상태아이콘, 4단) — 상단·좌·우·
-    /// 하단 전부 이 하나로 통일한다("정보슬롯을 쫌스럽게 쓰지 말고 크게
-    /// 크게" 요청). <paramref name="topY"/>부터 아래로 4줄을 쌓고, 이
-    /// 블록이 차지하는 가장 낮은 y를 돌려준다. 아이콘 줄의 y는
-    /// <see cref="badgeRowY"/>에 저장해 두어 RebuildUI가 그 자리에
-    /// 정확히 그리게 한다 — 예전엔 이 위치를 텍스트 rect에서 추정해서
-    /// 뒷패 영역과 겹치는 버그가 있었다.</summary>
-    /// <summary>2026-08-19: "상태 아이콘이 안 보인다, 패널을 반으로 갈라서
-    /// 좌측=닉네임/고점수/금액, 우측=아이콘을 큼직하게" 요청으로 레이아웃을
-    /// 좌우 분할로 다시 짰다. 우측 아이콘 영역(<see cref="badgeArea"/>)은
-    /// 매 RebuildUI마다 확실히 지워지는 전용 컨테이너다 — 예전엔 아이콘을
-    /// `ui.ContentArea`에 직접 그려서 **한 번도 안 지워졌다**(ContentArea
-    /// 자체는 RebuildUI의 클리어 목록에 없다 — 필드/손패/캡 영역만 지운다).
-    /// 그 결과 매턴 아이콘이 계속 누적돼, 이전 라운드에 그 좌석이 선이었을
-    /// 때 그려진 "선" 배지가 그 좌석이 광팔이로 쉬는 지금도 그대로 남아있는
-    /// 버그로 나타났다("광팔이한테 선 아이콘이 떠있다" 신고) — 전용 컨테이너를
-    /// 두고 매턴 `ClearChildren`하는 것으로 구조적으로 막는다.</summary>
-    /// <summary>2026-08-24: "statusbox 프리펩화해서 디자인 바꾸고 싶다"
-    /// 요청으로, 배경+이름+고점수+금액+배지 영역 전체를 하나의 자기완결형
-    /// 프리팹(<c>GoStopStatusBoxView</c>, <c>Assets/Resources/Prefabs/
-    /// GoStop/UI/StatusBoxView.prefab</c>)으로 교체했다 — 사용자가 그
-    /// 프리팹을 열어 배경 스프라이트·색·폰트를 직접 바꾸면 다음 실행부터
-    /// 바로 반영된다. 씬에 `statusBoxRefs[slot]`이 이미 이 프리팹의
-    /// 인스턴스로 연결돼 있으면 그대로 재사용(위치·너비 우선), 아직
-    /// 프리팹화 이전의 빈 배경 박스만 있으면(과거 세션 산출물) 그 위치만
-    /// 이어받아 새 프리팹 인스턴스로 갈아 끼운다 — 씬을 미리 손보지
-    /// 않아도 자동으로 마이그레이션된다.</summary>
+    /// <summary>정보 슬롯(닉네임/고+점수/금액/상태아이콘) — 상단·좌·우·
+    /// 하단 전부 이 하나로 통일한다. <paramref name="topY"/>부터 아래로
+    /// 쌓고, 이 블록이 차지하는 가장 낮은 y를 돌려준다.
+    ///
+    /// 2026-08-19~24 연혁(요약) — 원래는 한 줄짜리 압축 상태줄이었는데
+    /// "쫌스럽게 쓰지 말고 크게" 요청으로 다단 레이아웃이 됐고, 아이콘을
+    /// `ui.ContentArea`에 직접 그리다 보니 RebuildUI가 안 지워서(ContentArea
+    /// 자체는 클리어 목록에 없다 — 필드/손패/캡 영역만 지운다) 지난 라운드의
+    /// "선" 배지가 광팔이로 쉬는 좌석에 그대로 남는 버그가 났었다. 그 뒤
+    /// "statusbox 프리팹화해서 디자인 바꾸고 싶다" 요청으로 배경+이름+
+    /// 고점수+금액+배지 영역 전체를 자기완결형 프리팹(<c>GoStopStatusBoxView</c>,
+    /// <c>Assets/Resources/Prefabs/GoStop/UI/StatusBoxView.prefab</c>)으로
+    /// 교체하면서 위 문제들이 구조적으로 해소됐다 — 프리팹이 배지 6종을
+    /// 고정 슬롯으로 미리 갖고 있어 매턴 지우고 다시 그릴 필요가 없다.
+    /// 씬에 `statusBoxRefs[slot]`이 이미 이 프리팹의 인스턴스로 연결돼
+    /// 있으면 그대로 재사용(위치·너비 우선), 아직 프리팹화 이전의 빈
+    /// 배경 박스만 있으면(과거 세션 산출물) 그 위치만 이어받아 새 프리팹
+    /// 인스턴스로 갈아 끼운다 — 씬을 미리 손보지 않아도 자동으로
+    /// 마이그레이션된다.
+    ///
+    /// 2026-09-12(옵저버 패턴) — 뷰를 찾거나 새로 만든 뒤 <see
+    /// cref="GoStopStatusBoxView.Bind"/>로 그 좌석의 <see
+    /// cref="GoStopSeatStatus"/>를 구독시켜 둔다(멱등이라 재호출해도
+    /// 무해). 이후 매턴 갱신은 <c>seatStatus[slot]</c>의 프로퍼티만
+    /// 바꾸면 뷰가 알아서 반응한다 — 이 함수 밖에서 뷰를 직접 참조할
+    /// 일이 없어진다.</summary>
     float BuildInfoBlock(int slot, float centerX, float width, float topY, RectTransform root)
     {
         var existingBoxRT = statusBoxRefs[slot];
@@ -1187,51 +1186,34 @@ public partial class GoStop3PGame
         }
         view.Configure(width);
 
-        statusBoxImg[slot] = view.Background;
         statusText[slot] = view.NameText;
-        goScoreText[slot] = view.GoScoreText;
         moneyText[slot] = view.MoneyText;
-        badgeArea[slot] = view.BadgeArea;
         statusBoxView[slot] = view;
+        view.Bind(seatStatus[slot]);
 
         return topY - GoStopStatusBoxView.TotalHeight;
     }
 
-    // 배지 위험/카운트 색 — GoStopStatusBoxView 프리팹에 고정 슬롯으로
-    // 구워둔 배지(선/광박/멍박/피박/흔들기/뻑)의 상태만 여기서 갱신한다.
-    // 오리엔탈 팔레트 — "색은 하나의 의미만"(위험=레드, 턴/보상=골드) 원칙에 맞춰
-    // 광박/멍박/피박 3종을 전부 같은 레드로, 흔들기/뻑 카운트는 같은 골드로 통일했다
-    // (예전엔 보라/갈색/레드로 각자 달라서 "위험"이라는 의미가 색으로 안 읽혔다).
-    static readonly Color GwangBakColor = HwatuTheme.HwatuRed;
-    static readonly Color MeongBakColor = HwatuTheme.HwatuRed;
-    static readonly Color PiBakColor = HwatuTheme.HwatuRed;
-    static readonly Color ShakeDotColor = HwatuTheme.Gold;
-    static readonly Color PpeokDotColor = HwatuTheme.Gold;
-
-    /// <summary>선/광박/멍박/피박/흔들기/뻑 배지 — 2026-08-24부터
-    /// <c>GoStopStatusBoxView</c> 프리팹이 6개 슬롯을 고정으로 갖고 있어서
-    /// (씬에서 디자인 편집 가능), 여기서는 매턴 상태(표시 여부/색/카운트)만
-    /// 갱신한다 — 예전처럼 <c>GoStopIcons</c>로 매번 새로 그리거나
-    /// <c>ClearChildren</c>으로 지우지 않는다.</summary>
-    void DrawBadgeStrip(GoStopStatusBoxView view, int seat)
+    /// <summary>선/광박/멍박/피박/흔들기/뻑 배지 데이터 — 2026-09-12부터
+    /// 뷰를 직접 안 건드리고 <paramref name="status"/>(그 슬롯의
+    /// <see cref="GoStopSeatStatus"/>)의 프로퍼티만 채운다. 색 결정·점
+    /// 클램프 등 "어떻게 보여줄지"는 <see cref="GoStopStatusBoxView.Render"/>
+    /// 로 옮겨갔다 — 이 함수는 순수하게 "지금 무슨 상태인지"만 계산한다.</summary>
+    void DrawBadgeStrip(GoStopSeatStatus status, int seat)
     {
         var mine = captured[seat];
         var others = ActiveSeats().Where(s => s != seat).Select(s => captured[s]);
-        bool gwangBak = GoStopRules.IsLiveGwangBakRisk(mine, others);
-        bool meongBak = GoStopRules.IsLiveMeongBakRisk(mine, others);
-        bool piBak = GoStopRules.IsLivePiBakRisk(mine, others, GoStopRules.PI_BAK_THRESHOLD_3P);
-
-        view.SetDealer(seat == dealerSeat);
-        view.SetRisk(0, gwangBak, GwangBakColor, Color.white);
-        view.SetRisk(1, meongBak, MeongBakColor, Color.white);
-        view.SetRisk(2, piBak, PiBakColor, Color.white);
-        view.SetCountBadge(true, Mathf.Min(shookMonths[seat].Count, 2), ShakeDotColor);
-        view.SetCountBadge(false, Mathf.Min(ppeokTotalCount[seat], 2), PpeokDotColor);
+        status.IsDealer = seat == dealerSeat;
+        status.GwangBak = GoStopRules.IsLiveGwangBakRisk(mine, others);
+        status.MeongBak = GoStopRules.IsLiveMeongBakRisk(mine, others);
+        status.PiBak = GoStopRules.IsLivePiBakRisk(mine, others, GoStopRules.PI_BAK_THRESHOLD_3P);
+        status.ShakeCount = shookMonths[seat].Count;
+        status.PpeokCount = ppeokTotalCount[seat];
 
         // 2026-09-08(사용자 요청) — ScoreRow 두번째 Sub는 원래 "광 X · 멍 Y
         // · 피 Z"를 보여줬는데(획득패 실물 카드로 이미 다 보이는 중복
         // 정보), 세션 시작(선 정하기 이후) 누적 머니 변동으로 교체했다.
-        view.SetMoneyDelta(MoneyDeltaFor(seat));
+        status.MoneyDelta = MoneyDeltaFor(seat);
     }
 
     /// <summary>상대 좌석 한 블록(상태줄→뒷패 줄→획득패 존) — 상단(seat2)·
@@ -1460,40 +1442,39 @@ public partial class GoStop3PGame
         // state==Turn일 때만 켜져서, 정작 누군가 고/스톱을 고르는 동안엔
         // (state==GoStopChoice) 아무도 "▶" 표시를 못 받아 화면이 왜
         // 멈췄는지 알 길이 없었다.
+        // 2026-09-12(옵저버 패턴) — 이제 뷰의 SetXxx를 직접 안 부르고
+        // seatStatus[slot]의 프로퍼티만 채운 뒤 NotifyIfDirty()로 한 번에
+        // 알린다. 뷰가 비어있으면(아직 안 만들어짐) 채울 대상 자체가 없으니
+        // 조기 반환 — 예전 "nameLbl==null이면 반환" 가드와 같은 목적.
         void FillSlot(int slot, int seat, bool myTurn, bool decidingGoStop)
         {
-            var nameLbl = statusText[slot];
-            var goLbl = goScoreText[slot];
-            var moneyLbl = moneyText[slot];
-            if (nameLbl == null) return;
+            if (statusBoxView[slot] == null) return;
+            var s = seatStatus[slot];
 
             // 2026-08-20 정정(사용자 신고 — "화살표가 눈에 안 띈다") — 이름
             // 앞에 "▶ "를 붙이는 대신, 상태창 배경 자체를 강조색으로
             // 바꾼다. 2026-08-24 — 실제 배경/글자 색 값은
             // GoStopStatusBoxView(프리팹)의 SerializeField로 옮겼다 — 여기서는
             // "지금 강조 상태냐"만 넘긴다(디자인은 프리팹에서 직접 조정).
-            bool highlight = myTurn || decidingGoStop;
-            string who = seat == PLAYER_SEAT ? "나" : SeatName(seat);
-            nameLbl.text = who;
-
-            statusBoxView[slot]?.ApplyTurnState(highlight);
-
-            if (moneyLbl != null) moneyLbl.text = FormatMoneyText(seat);
+            s.Highlight = myTurn || decidingGoStop;
+            s.Name = seat == PLAYER_SEAT ? "나" : SeatName(seat);
+            s.MoneyText = FormatMoneyText(seat);
 
             if (sittingOutSeat == seat)
             {
-                if (goLbl != null) goLbl.text = $"쉬는 중 {sitOutReason}";
-                statusBoxView[slot]?.HideAllBadges(); // 쉬는 좌석은 이번 판 캡처가 없어 배지가 의미 없다 — 지난 상태가 안 남게 리셋
-                statusBoxView[slot]?.SetDim(true);
+                s.GoScoreText = $"쉬는 중 {sitOutReason}";
+                s.BadgesHidden = true; // 쉬는 좌석은 이번 판 캡처가 없어 배지가 의미 없다 — 지난 상태가 안 남게 리셋
+                s.Dim = true;
+                s.NotifyIfDirty();
                 return;
             }
-            statusBoxView[slot]?.SetDim(false); // 슬롯이 영구적이라 쉬다가 다시 참가한 판엔 명시적으로 꺼줘야 한다
+            s.Dim = false; // 슬롯이 영구적이라 쉬다가 다시 참가한 판엔 명시적으로 꺼줘야 한다
 
             int seatScore = GoStopRules.CalcScore(captured[seat], sweeps[seat]).Total;
-            if (goLbl != null)
-                goLbl.text = decidingGoStop ? "고/스톱 선택 중..." : $"{goCount[seat]}고 {seatScore}점";
-
-            if (statusBoxView[slot] != null) DrawBadgeStrip(statusBoxView[slot], seat);
+            s.GoScoreText = decidingGoStop ? "고/스톱 선택 중..." : $"{goCount[seat]}고 {seatScore}점";
+            s.BadgesHidden = false;
+            DrawBadgeStrip(s, seat);
+            s.NotifyIfDirty();
         }
 
         for (int slot = 1; slot <= 3; slot++)
@@ -1501,9 +1482,11 @@ public partial class GoStop3PGame
             int seat = slotSeat[slot];
             if (seat < 0)
             {
-                if (statusText[slot]) statusText[slot].text = "";
-                statusBoxView[slot]?.HideAllBadges();
-                statusBoxView[slot]?.SetDim(false); // 이 슬롯이 지난 판엔 쉬는 좌석이었을 수 있다 — dim이 안 남게 리셋
+                var s = seatStatus[slot];
+                s.Name = "";
+                s.BadgesHidden = true;
+                s.Dim = false; // 이 슬롯이 지난 판엔 쉬는 좌석이었을 수 있다 — dim이 안 남게 리셋
+                s.NotifyIfDirty();
                 continue;
             }
             bool myTurn = state == State.Turn && currentSeat == seat;

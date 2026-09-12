@@ -14778,3 +14778,77 @@ setter 메서드를 노출하는 순수 View이고, `GoStop3PGame.FillSlot`/
    쌍피 2종일 때는 이런 조합이 아예 안 생겼는데, 트리플피가 추가되며
    생긴 새 엣지케이스로 추정). 화면이 살짝 넘치는 정도의 시각적 문제로,
    실제로 발생하는지는 라이브로 재현해보지 않았다.
+
+## 고스톱 — 좌석 상태박스에 진짜 옵저버 패턴 도입 (2026-09-12)
+
+바로 위 리뷰 섹션의 "옵저버 패턴 미구현" 지적에 이어 "옵저버 패턴부터
+구현해볼까?"라는 요청으로 실제로 채워 넣었다.
+
+**설계 — Subject(모델)/Observer(뷰) 분리.** 새 파일
+`GoStopSeatStatus.cs`(순수 C# 클래스, MonoBehaviour 아님)를 만들었다 —
+좌석 정보 박스가 표시할 데이터(이름/강조/금액텍스트/금액변동/고점수텍스트/
+dim/배지숨김/선/광멍피위험/흔들기·뻑카운트)를 프로퍼티로 들고,
+`event Action<GoStopSeatStatus> Changed`를 노출한다. 각 세터는
+`EqualityComparer`로 실제 변경 여부를 확인해 `dirty` 플래그만 세우고,
+`NotifyIfDirty()`가 호출된 시점에 딱 한 번만 `Changed`를 쏜다 — 한
+프레임에 6~7개 프로퍼티를 연달아 바꿔도(FillSlot 하나가 그만큼 채운다)
+알림은 한 번만 나가고, 값이 실제로 안 바뀌면 아예 안 나간다.
+
+**`GoStopStatusBoxView`는 `Bind(GoStopSeatStatus)`로 모델을 구독한다.**
+바인딩 즉시 현재 값으로 한 번 그리고, 이후 `Changed`가 올 때마다
+`Render(s)`가 모델의 최신 값을 당겨가(pull) 실제 컴포넌트에 반영한다.
+`SetDealer`/`SetRisk`/`SetCountBadge`/`SetMoneyDelta`/`ApplyTurnState`/
+`SetDim`/`HideAllBadges`(예전엔 전부 `public`, `GoStop3PGame`이 매턴
+직접 호출)를 전부 `Render` 내부에서만 불리는 `private`로 좁혔다 — 이
+뷰를 갱신하는 유일한 경로가 구조적으로 "바인딩된 모델뿐"이 되도록
+강제한 것. 배지 색 상수(`GwangBakColor` 등, "위험=레드/보상=골드" 규칙)와
+점 클램프(`Mathf.Min(count, 2)`) 같은 "어떻게 보여줄지"도 `GoStop3PGame`
+에서 `Render`로 옮겼다 — 컨트롤러는 이제 순수하게 "지금 무슨 상태인지"만
+계산한다.
+
+**`GoStop3PGame`쪽 — 뷰 참조를 데이터 갱신에서 완전히 걷어냈다.**
+`FillSlot`/`DrawBadgeStrip`/`RefreshMoneyLabelsOnly`/
+`RefreshStatusBoxIdentitiesBeforeDeal`(돈이 바뀔 때마다 즉시 반영하는
+가벼운 헬퍼들, 2026-09-08 세션에서 만든 것) 전부 `statusBoxView[slot].
+SetXxx(...)` 호출을 `seatStatus[slot].Xxx = value` 대입 + 끝에서
+`NotifyIfDirty()` 한 번으로 바꿨다. `BuildInfoBlock`이 뷰를 찾거나
+새로 만든 직후 `view.Bind(seatStatus[slot])`을 한 번 호출해 둔다
+(멱등이라 재호출해도 무해 — `BuildStaticUI`가 여러 번 돌아도 안전).
+
+**부수 정리 — 죽은 캐시 3개 제거.** `statusBoxImg[]`(대입만 되고 아무도
+안 읽음, 2026-08-24 4차 리팩터 때 배경색 로직이 뷰 안으로 옮겨가며
+죽은 것으로 보임)와 `goScoreText[]`/`badgeArea[]`(마찬가지로 대입만
+되고 읽는 곳이 전혀 없었음 — grep으로 전체 GoStop 폴더 확인)를
+삭제했다. `view.Background`/`view.GoScoreText`/`view.BadgeArea` 공개
+프로퍼티도 같이 제거 — 전부 이 죽은 캐시들을 채우는 용도였다.
+`statusText[]`/`moneyText[]`(`view.NameText`/`view.MoneyText`)는
+남겨뒀다 — `FlyMoneyFX`/코인 애니메이션이 이 Text들의 실제 world
+position을 착지/출발 지점으로 읽는 **순수 기하 조회**라 옵저버 대상이
+아니다(데이터 표시가 아니라 화면 좌표 질의).
+
+**`BuildInfoBlock` 위에 3중으로 쌓여 있던 스테일 doc-comment도 정리.**
+`badgeRowY`/`badgeArea`처럼 이미 사라진 필드를 `<see cref>`로 계속
+가리키고 있던 옛 요약 2개를 최신 요약 하나로 합쳤다(역사적 맥락 —
+"선 아이콘이 안 지워지던 버그" 등 — 은 그대로 보존, 죽은 식별자
+포인터만 정리).
+
+**검증(Play 모드 라이브, 리플렉션) — 세 단계로 확인했다.**
+1. **최초 바인딩 정합성** — 4인 게임을 새로 딜링한 직후, `seatStatus[]`
+   각 프로퍼티(이름/강조/금액/고점수/dim/배지숨김/선)와 실제 뷰의
+   `NameText.text`가 정확히 일치하는 것 확인. 광팔이로 쉬는 좌석이
+   `Dim=True, BadgesHidden=True, Go="쉬는 중 (광팔이)"`로 정확히
+   반영된 것까지 확인.
+2. **진짜 push 기반 반응성 + 변경 감지** — `seatStatus[1].Name`을
+   `NotifyIfDirty()` 호출 **없이** 바꾸면 뷰 텍스트가 안 바뀌는 것
+   (모델과 뷰가 진짜로 분리돼 있다는 증거) → `NotifyIfDirty()`를
+   호출하면 그제서야 뷰가 즉시 갱신되는 것 → 같은 값을 다시 대입하면
+   내부 `dirty` 플래그가 `False`로 유지되는 것(변경 감지가 실제로
+   동작 — 값이 안 바뀌면 알림 자체가 안 나감) 전부 확인.
+3. **실제 게임 플로우 회귀** — 리플렉션으로 오염시킨 테스트용 이름을
+   그대로 두고 실제 `OnPlayerPlay`로 카드를 재생 → 자연스러운
+   `RebuildUI()`가 돌면서 오염된 값이 정상 값("안인길")으로 자동
+   복구되는 것, 손패 장수가 정상적으로 줄어드는 것까지 확인 — 옵저버
+   전환이 정상 턴 진행을 전혀 안 건드렸다는 뜻.
+
+이 세션 전체(바인딩 확인·반응성 테스트·실제 플레이) 콘솔 `error`/
+`exception` **0건**.

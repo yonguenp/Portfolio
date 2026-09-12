@@ -183,13 +183,13 @@ public partial class GoStop3PGame : MonoBehaviour
         }
     }
 
-    /// <summary>화면 금액 숫자 + 세션 시작 대비 변동(SetMoneyDelta)만 즉시
-    /// 갱신한다 — RebuildUI() 전체를 다시 돌리는 무거운 경로 없이, 돈이
-    /// 실제로 움직인 그 순간(광팔이·첫뻑/연뻑/첫따닥/첫뻑먹기·최종 정산)
-    /// 바로 반영하기 위한 가벼운 헬퍼. 2026-09-08(사용자 재신고 — "광팔고
-    /// 난 금액은 업데이트 안되네... 돈이변할때는 계속 업데이트해줘야될거
-    /// 같아") — 예전엔 EndGame(최종 정산) 끝에서만 이걸 불렀는데,
-    /// 광팔이/ApplyMoneyBonus는 money[]를 직접 바꾸고 코인 날아가는 연출
+    /// <summary>화면 금액 숫자 + 세션 시작 대비 변동만 즉시 갱신한다 —
+    /// RebuildUI() 전체를 다시 돌리는 무거운 경로 없이, 돈이 실제로 움직인
+    /// 그 순간(광팔이·첫뻑/연뻑/첫따닥/첫뻑먹기·최종 정산) 바로 반영하기
+    /// 위한 가벼운 헬퍼. 2026-09-08(사용자 재신고 — "광팔고 난 금액은
+    /// 업데이트 안되네... 돈이변할때는 계속 업데이트해줘야될거 같아") —
+    /// 예전엔 EndGame(최종 정산) 끝에서만 이걸 불렀는데, 광팔이/
+    /// ApplyMoneyBonus는 money[]를 직접 바꾸고 코인 날아가는 연출
     /// (FlyMoneyFX)만 재생할 뿐 화면 텍스트는 안 건드려서, 다음 우연한
     /// RebuildUI가 돌 때까지 숫자가 그대로 멈춰 있었다. 슬롯 4개
     /// 전부(쉬는 좌석 포함 — money가 바뀌는 데 굳이 참가 여부를 가릴
@@ -200,8 +200,10 @@ public partial class GoStop3PGame : MonoBehaviour
         {
             int seat = slot == 0 ? (slotSeat[0] < 0 ? PLAYER_SEAT : slotSeat[0]) : slotSeat[slot];
             if (seat < 0) continue;
-            if (moneyText[slot] != null) moneyText[slot].text = FormatMoneyText(seat);
-            statusBoxView[slot]?.SetMoneyDelta(MoneyDeltaFor(seat));
+            var s = seatStatus[slot];
+            s.MoneyText = FormatMoneyText(seat);
+            s.MoneyDelta = MoneyDeltaFor(seat);
+            s.NotifyIfDirty();
         }
     }
 
@@ -215,20 +217,23 @@ public partial class GoStop3PGame : MonoBehaviour
         for (int slot = 0; slot < 4; slot++)
         {
             int seat = slot == 0 ? (slotSeat[0] < 0 ? PLAYER_SEAT : slotSeat[0]) : slotSeat[slot];
-            if (statusText[slot] == null) continue;
+            if (statusBoxView[slot] == null) continue;
+            var s = seatStatus[slot];
             if (seat < 0)
             {
-                statusText[slot].text = "";
-                if (moneyText[slot] != null) moneyText[slot].text = "";
-                if (goScoreText[slot] != null) goScoreText[slot].text = "";
-                statusBoxView[slot]?.HideAllBadges();
+                s.Name = "";
+                s.MoneyText = "";
+                s.GoScoreText = "";
+                s.BadgesHidden = true;
+                s.NotifyIfDirty();
                 continue;
             }
-            statusText[slot].text = seat == PLAYER_SEAT ? "나" : SeatName(seat);
-            if (moneyText[slot] != null) moneyText[slot].text = FormatMoneyText(seat);
-            if (goScoreText[slot] != null) goScoreText[slot].text = "";
-            statusBoxView[slot]?.HideAllBadges();
-            statusBoxView[slot]?.SetDim(false);
+            s.Name = seat == PLAYER_SEAT ? "나" : SeatName(seat);
+            s.MoneyText = FormatMoneyText(seat);
+            s.GoScoreText = "";
+            s.BadgesHidden = true;
+            s.Dim = false;
+            s.NotifyIfDirty();
         }
     }
 
@@ -558,29 +563,34 @@ public partial class GoStop3PGame : MonoBehaviour
     readonly Dictionary<HwatuCard, int> fieldSlotAssign = new Dictionary<HwatuCard, int>();
     // 2026-08-18: "정보슬롯을 쫌스럽게 쓰지 말고 닉네임 한줄·고점수 한줄·
     // 금액·상태 아이콘 한줄로 넓고 크게" 요청으로 한 줄짜리 statusText를
-    // 4단으로 나눴다(이름 위주 statusText는 유지하고 이름으로 그대로 씀,
-    // 고+점수·금액을 별도 텍스트로 분리, 아이콘 줄 Y는 badgeRowY에 명시적으로
-    // 저장해서 실제 렌더 높이 기준으로 계산 — 예전엔 이 위치를 텍스트 rect에서
-    // "대충 추정"해서 뒷패 영역과 겹쳤다).
+    // 여러 줄로 나눴다. statusText/moneyText는 이제도 필요하다 — FlyMoneyFX
+    // 등 애니메이션이 이 Text들의 실제 world position을 착지/출발 지점으로
+    // 읽는다(순수 기하 조회, 아래 seatStatus 옵저버 대상이 아니다).
+    // 2026-09-12: 텍스트를 직접 쓰던 goScoreText[]/statusBoxImg[]/badgeArea[]는
+    // 옵저버 패턴 도입으로 전부 죽은 캐시가 돼서 제거했다(GoStop3PGame이
+    // 더 이상 뷰의 내부 컴포넌트를 직접 참조하지 않는다 — seatStatus만
+    // 채우면 GoStopStatusBoxView.Render가 알아서 반영한다).
     TextMeshProUGUI[] statusText = new TextMeshProUGUI[SEATS_MAX];   // 닉네임(+선 표시는 배지로 이동)
-    TextMeshProUGUI[] goScoreText = new TextMeshProUGUI[SEATS_MAX];  // "N고 M점"
     TextMeshProUGUI[] moneyText = new TextMeshProUGUI[SEATS_MAX];    // 코인 아이콘 + 금액
     // 2026-09-04: "우측상단에 현재 점당 얼마짜리 게임인지 표시 추가했어"
     // — 사용자가 씬에 직접 만든 Info(ContentArea/Info/Label (1)) 표시.
     // 나가리로 stakeMultiplier가 바뀔 때마다 RebuildUI에서 갱신한다.
     TextMeshProUGUI pointPriceText;
-    // 2026-08-20: "화살표 대신 상태창 자체를 노란색으로" 요청 — 이 배경
-    // Image를 FillSlot에서 좌석 차례일 때 색을 바꾼다.
-    Image[] statusBoxImg = new Image[SEATS_MAX];
-    // 2026-08-19: 상태 아이콘 전용 컨테이너 — 정보 패널을 좌(닉네임/고점수/
-    // 금액)/우(아이콘) 반분할로 재설계하며 추가했다. 2026-08-24부터는
-    // GoStopStatusBoxView 프리팹이 배지 6종을 고정 슬롯으로 미리 갖고
-    // 있어서(아래 statusBoxView) 이 필드는 그 프리팹의 BadgeArea 자식을
-    // 그대로 가리키기만 한다 — 더 이상 ClearChildren 대상이 아니다.
-    RectTransform[] badgeArea = new RectTransform[SEATS_MAX];
-    // 2026-08-24: BuildInfoBlock이 인스턴스화한 프리팹 뷰 — DrawBadgeStrip이
-    // 이걸 통해 배지 상태(선/광박/멍박/피박/흔들기/뻑)만 갱신한다(재생성 안 함).
+    // 2026-08-24: BuildInfoBlock이 인스턴스화한 프리팹 뷰 — Configure(width)
+    // 같은 레이아웃(기하) 호출에만 쓰인다. 데이터 갱신은 더 이상 이 배열을
+    // 거치지 않는다 — 아래 seatStatus[slot]을 바꾸면 뷰가 알아서 반응한다
+    // (2026-09-12, 옵저버 패턴).
     GoStopStatusBoxView[] statusBoxView = new GoStopStatusBoxView[SEATS_MAX];
+
+    // 2026-09-12(옵저버 패턴 도입) — 좌석 정보 박스(닉네임/고+점수/금액/
+    // 배지)의 표시 데이터. 슬롯당 하나씩, 세션 내내 같은 인스턴스를 재사용
+    // 한다(BuildInfoBlock이 GoStopStatusBoxView.Bind로 한 번만 구독시켜
+    // 둔다). GoStop3PGame은 이제 이 모델의 프로퍼티만 채우고
+    // NotifyIfDirty()만 부르면 된다 — 뷰의 SetXxx 메서드를 더 이상 직접
+    // 호출하지 않는다(CLAUDE.md 2026-09-12 리뷰에서 "사용자가 옵저버
+    // 패턴이라 했지만 실제로는 아니었다"고 지적된 부분을 실제로 채운 것).
+    readonly GoStopSeatStatus[] seatStatus =
+        { new GoStopSeatStatus(), new GoStopSeatStatus(), new GoStopSeatStatus(), new GoStopSeatStatus() };
 
     // 팝업 7종 — 전부 Assets/Resources/Prefabs/GoStop/Popups/의 실제 .prefab
     // 에셋을 Instantiate해서 쓴다(2026-08-18 전환). ShakeConfirm/FieldChoice/
