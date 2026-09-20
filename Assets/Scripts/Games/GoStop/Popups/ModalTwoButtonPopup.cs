@@ -27,7 +27,12 @@ public class ModalTwoButtonPopup : MonoBehaviour
     // 남는다 — SetCardSprites는 그 경우 조용히 아무것도 안 한다.
     public Image[] cardImages;
 
-    public void Show() => dim.gameObject.SetActive(true);
+    public void Show()
+    {
+        dim.gameObject.SetActive(true);
+        // 2026-09-13(아이템4) — 즉시 나타나는 대신 짧게 페이드인.
+        GoStopFX.PlayPopupFadeIn(dim.GetComponent<Image>());
+    }
     public void Hide() => dim.gameObject.SetActive(false);
 
     /// <summary>흔들기 확인창의 카드 3장을 실제 흔든 패의 스프라이트로

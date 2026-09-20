@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 733f06df3b6b840bf967a05c409c350c, type: 3}
+  m_Name: wi_ui_myeongjang
+  m_EditorClassIdentifier: Assembly-CSharp::SamgukDefense.SamgukSynergyData
+  id: wi_ui_myeongjang
+  displayName: "\uC704\uC758 \uBA85\uC7A5"
+  requiredCharacterIds:
+  - cao_hong
+  - zhang_he
+  - xu_huang
+  effectType: 1
+  effectValue: 0.15
+  description: "\uC704\uAD70\uC744 \uC9C0\uD0F1\uD558\uB294 \uC138 \uC7A5\uC218."

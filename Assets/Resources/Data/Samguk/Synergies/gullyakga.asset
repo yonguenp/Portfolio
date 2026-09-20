@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 733f06df3b6b840bf967a05c409c350c, type: 3}
+  m_Name: gullyakga
+  m_EditorClassIdentifier: Assembly-CSharp::SamgukDefense.SamgukSynergyData
+  id: gullyakga
+  displayName: "\uAD70\uB7B5\uAC00"
+  requiredCharacterIds:
+  - yi_ji
+  - zhuge_liang
+  effectType: 5
+  effectValue: 0.15
+  description: "\uC9C0\uB7B5\uAC00\uB4E4\uC758 \uACC4\uCC45\uC774 \uB9DE\uBB3C\uB9B0\uB2E4."

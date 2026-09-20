@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 733f06df3b6b840bf967a05c409c350c, type: 3}
+  m_Name: chokhan_ui_gidung
+  m_EditorClassIdentifier: Assembly-CSharp::SamgukDefense.SamgukSynergyData
+  id: chokhan_ui_gidung
+  displayName: "\uCD09\uD55C\uC758 \uAE30\uB465"
+  requiredCharacterIds:
+  - liu_bei
+  - zhuge_liang
+  effectType: 5
+  effectValue: 0.15
+  description: "\uC8FC\uAD70\uACFC \uAD70\uC0AC, \uCD09\uD55C\uC744 \uB5A0\uBC1B\uCE58\uB294
+    \uAE30\uB465."

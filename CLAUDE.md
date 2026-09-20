@@ -83,8 +83,18 @@ unity command editor_status
 
 ## 공용 UI — GameUI 프리팹 (중요)
 
-**UI를 씬마다 만들지 말 것.** 모든 게임 씬은 `Assets/Prefabs/GameUI.prefab`
+**UI를 씬마다 만들지 말 것.** 모든 게임 씬은 `Assets/Resources/Prefabs/GameUI.prefab`
 인스턴스 하나를 배치해서 쓴다. HUD·오버레이·배경·safe area가 전부 여기 들어 있다.
+(2026-09-13 — 예전엔 `Assets/Prefabs/` 밑에 있었는데, "리소스는 Resources 밑에
+모아야지 분산돼 있다"는 지적으로 `GameUI.prefab`/`GoStopUI.prefab`/
+`GoStop/UI/OverlayCard.prefab` 전부 `AssetDatabase.MoveAsset`으로
+`Assets/Resources/Prefabs/` 밑으로 옮겼다 — GUID 기반 이동이라 씬/프리팹의
+기존 참조는 전혀 안 깨졌다. 이 셋은 `Resources.Load`가 아니라 씬/프리팹의
+직접 참조(SerializeField)로 쓰이므로 Resources 밖에 있어도 원래 기능상
+문제는 없었지만, 이제 프리팹 계열 에셋이 전부 한 곳(`Assets/Resources/Prefabs/`)
+에 모여 있다. 이하 히스토리 섹션에 남은 `Assets/Prefabs/...` 경로 언급은
+그 시점 기준 기록이라 그대로 뒀다 — 지금 실제 위치는 전부 `Assets/Resources/
+Prefabs/...`다.)
 
 ```
 GameUI              (Canvas + CanvasScaler + GraphicRaycaster + GameUIManager)
@@ -14942,3 +14952,613 @@ Bell()`/`Bomb()`(같은 파일에서 `Dung`/`MakeCountBadge`와 나란히
 세션에서 이미 끝났다(`Logger.cs` 도입 + `[GoStopJokerGhost]`/
 "피뺏기 발동" 등 불필요한 진단 로그 제거, `[GoStopGate]`만 미해결
 버그용으로 의도적으로 유지).
+
+## 고스톱 — 좌석 상태박스 UI/UX 대개편 6종 + `ScreenCapture` Overlay 캡처
+발견 (2026-09-12)
+
+사용자가 한 메시지로 6가지를 요청했다 — 아래 4가지는 이번 세션에서 완료,
+2가지("결과화면 정보 확충"·"':'/'·' 전면 제거")는 착수했다가 다음
+세션으로 이어짐(각각 아래 "남은 것" 참고).
+
+### 1) 보유 금액 카운팅 애니메이션
+
+"보유 금액 증가·감소가 딱딱해 보인다" — `GoStopSeatStatus.Money`를
+문자열(`MoneyText`)에서 원값(`int`)으로 바꿔서, 뷰가 "이전 값→새 값"
+차이를 알 수 있게 했다(포맷 `"{0:N0}원"`은 뷰 렌더 시점으로 옮김).
+`GoStopStatusBoxView.RenderMoney(target, visible, animate)`가
+`DOTween.To(getter,setter,target,0.6f).SetEase(Ease.OutCubic)`로 숫자를
+실제로 세면서 바꾼다 — `shownMoney`(지금 화면에 진짜 보이는 값)를
+추적해 두 변경이 겹쳐도 항상 "지금 보이는 값"에서 이어서 출발한다.
+**최초 바인딩(`Bind()`)은 `animateMoney:false`로 애니메이션 없이 즉시
+그린다** — 게임을 새로 시작할 때마다 0원에서 카운트업되는 것처럼
+보이면 안 되므로.
+
+### 2) Cap(획득패) 카드 확대 툴팁
+
+"캡 카드가 작아서 잘 안 보인다" — 기존 필드-스택 겹침용
+`GoStopStackHoverTrigger`/`GoStopStackTooltip`(press-and-hold로 딤+확대
+패널을 띄우는 싱글턴)을 그대로 일반화해서 내/상대 Cap 컨테이너
+(`DrawPlayerCaptured`/`DrawAiCaptured`)에도 붙였다(`EnsureCapHoverTrigger`).
+빈 Cap(카드 0장)은 트리거 자체를 안 만든다.
+
+### 3) 시스템 로그 "X월" 텍스트 → 카드 실물 이미지
+
+"채팅/이벤트 로그의 '{card.month}월' 같은 텍스트를 그 카드 이미지로
+보여달라" — 채팅 로그를 **단일 TMP 텍스트 블록에서 행(row) 단위
+GameObject 목록**으로 재구성했다(`GoStopChatView.logContent`를
+"행을 쌓는 그릇"으로 전환, 기존 템플릿 TMP는 비활성화만 하고 폰트/
+크기/색 복사용으로 남김). `ChatEntry`에 `cardSpriteName`(nullable) 필드를
+추가 — 값이 있으면 `BuildChatRow`가 그 카드 이미지를 텍스트 앞에
+고정폭(24px, 카드 실제 비율 유지)으로 붙인다. `AppendChatLine`/
+`LogLocalLine`/`GoStopNetMessage.ChatLogMsg`(기존 `cardId` 필드를
+재사용 — 이 메시지 타입에선 원래 안 쓰이던 필드라 그대로 얹었다) 전부
+이 파라미터를 관통시켜 네트워크 게스트 화면에서도 동일하게 보인다.
+호출부 5곳(`"{seat}님이 패를 냈습니다"` 등)에서 `{card.month}월` 문구
+자체를 지우고 `cardSpriteName: card.spriteName`으로 대체했다.
+
+> **이 프로젝트가 이미 문서화한 "unity-cli `capture_game_view`는 Overlay
+> UI를 못 찍는다"는 제약과 별개로, `UnityEngine.ScreenCapture.
+> CaptureScreenshot(path)`는 이 환경에서 Screen Space Overlay Canvas
+> UI를 실제로 정확히 캡처한다**(직접 `eval`로 호출 — unity-cli 자체
+> 커맨드가 아니라 게임 코드가 쓰는 것과 동일한 엔진 API를 그대로 부른
+> 것). 채팅 패널·상태박스·확대된 Cap 툴팁까지 전부 정상 렌더된 풀
+> 스크린샷으로 두 차례 검증했다 — 이 API를 쓰면 앞으로 UI 관련 작업의
+> 최종 확인을 리플렉션 구조 검사뿐 아니라 실제 픽셀로도 할 수 있다.
+> **크롭 계산 시 표시 해상도(다운스케일된 미리보기 크기)가 아니라 실제
+> 저장된 이미지 크기를 기준으로 배율을 적용할 것** — 이번에 표시
+> 크기(2000×1085)를 원본(2473×1342)에 그대로 대입했다가 크롭 영역이
+> 완전히 빗나간 적이 있다(1.24배 배율을 놓친 것).
+
+### 4) 시스템 로그/결과화면 손익 색상 통일 — 획득=초록, 손실=빨강
+
+"시스템 로그 중 돈을 획득한 건 초록색, 잃은 건 빨간색으로. 결과화면도
+같은 규칙." `HwatuTheme.cs`에 공용 헬퍼를 추가했다:
+```csharp
+public static string MoneyColored(long amount, string text) =>
+    amount == 0 ? text : $"<color=#{ColorUtility.ToHtmlStringRGB(amount > 0 ? DarkGreen : HwatuRed)}>{text}</color>";
+```
+색은 새로 고르지 않고 `GoStopStatusBoxView.SetMoneyDelta`(2026-09-08)가
+이미 확립해 둔 DarkGreen(#193523)/HwatuRed(#C93A32) 2색을 그대로
+재사용했다 — 이 프로젝트의 "강조색은 하나만(Gold)" 원칙과는 별개로,
+손익 표시만은 이미 이 2색 규칙이 선례로 있었다.
+
+**적용한 곳:**
+- `FlyMoneyFX`(판돈이 움직이는 모든 경로 — 광팔이·뻑/따닥 보너스·최종
+  정산 — 의 유일한 채팅 로그 게이트웨이)의 "OO님이 OO에게 N원 지급"
+  줄을 지불자(빨강 `-N원`)/수취자(초록 `+N원`) 두 구간으로 나눠 표시.
+- `EndGame`의 승패 오버레이 `sub` — 내 판돈 변동(`myDeltaStr`),
+  `BuildOverlayBreakdownLine`(패자별 지급액), 승자가 내가 아닐 때의
+  "총 +N원 획득" 줄.
+- `ScoreDetailPopup`(점수 상세) — 패자별 지급 줄(예전엔 손익과 무관한
+  브라운 #8A6300), 승자 총 획득 줄(예전엔 골드 #EDBA2E), 좌석별
+  "시작자금→변동→현재잔액" 줄의 변동 구간. **"내 줄" 강조는 색이 아니라
+  굵기(`<b>`)로만** 남겼다 — 예전엔 내 줄 전체를 손익과 무관한 골드로
+  덮어써서 이 규칙과 충돌했다.
+- 0원(변동 없음)은 중립 — 색을 안 입힌다.
+
+**의도적으로 안 건드린 곳** — `GwangSalePopup.payerText`(광팔이 전용
+연출 팝업의 별도 텍스트, "시스템 로그"도 "결과화면"도 아님)는 범위
+밖으로 남겼다. 광팔이 자체의 돈 이동은 `FlyMoneyFX`를 거치므로 채팅
+로그에는 이미 색이 반영된다.
+
+**검증(Play 모드 라이브, 리플렉션).** `FlyMoneyFX(0,1,5000,"테스트")`
+직접 호출 → 채팅 로그 마지막 줄이 정확히
+`<color=#C93A32>나님 -5,000원</color> → <color=#193523>꼬장님
++5,000원</color> 테스트 지급`으로 나오는 것 확인. `pendingPayout`/
+`pendingWinnerSeat`/`pendingLoserSeats`/`pendingMoneyBefore`를 합성
+데이터(패자 3명 중 하나는 amount=0, 하나는 광박)로 직접 채우고
+`ShowScoreDetail()`을 호출 — footerText가 손실 줄 2개는 빨강, 승자
+획득 줄은 초록, 0원 줄은 무색, 내 델타 줄은 굵게+초록으로 정확히
+렌더되는 것을 실측했다(이 프로젝트의 확립된 방식대로 `EndGame`을
+직접 안 부르고 `pendingXxx` 필드만 채워 `SaveMoney()`로 인한 PlayerPrefs
+오염을 피했다 — 테스트 후 `money[]`도 원래 값으로 정확히 복구 확인).
+콘솔 `error`/`exception`/`assert` 0건.
+
+### 남은 것 — 다음 세션에서 이어갈 것
+
+- **결과화면 정보 확충**(사용자 요청 원문: "누가 얼마 잃고 누가 얼마
+  땄고 현재 점수가 얼마고 누가 피박·광박·멍박 한 건지 흔든 건지, 점수가
+  난 이유도 적어달라") — 조사 결과 **이미 대부분 존재한다**:
+  `ScoreDetailPopup`이 항목별 점수 분해+카드 실물, 패자별 지급액+광박/
+  피박 태그, 승자 총 획득액, 좌석별 시작→변동→잔액을 전부 보여준다.
+  다만 **흔들기 여부는 점수 상세 화면에 전혀 안 나온다** —
+  `MultiPayout`에 `heundeulCount`(몇 회)는 있지만 "누가" 흔들었는지는
+  안 담겨 있다(좌석 상태박스의 `shakeCount` 배지로만 게임 도중 보임,
+  결과화면에는 없음). 이어서 할 일: `MultiPayout` 또는 별도 필드로
+  "이번 판 흔든 좌석 목록"을 정산 시점에 캡처해서 점수 상세/오버레이에
+  노출할 것.
+- **":"/"·" 전면 제거 + 라벨 분리 재디자인** — 아직 손 안 댐. 남아있는
+  위치: `ScoreDetailPopup`의 여러 `foot.AppendLine`(`" · "`/`":"` 패턴
+  다수, 위 색상 작업으로 일부는 손댔지만 구분자 자체는 안 지웠다),
+  `EndGame`의 `subLines`가 `"\n"`으로 조인되긴 하지만 `moneyLine` 등
+  내부에 `" · "`가 남아있음, `SendChatMessage`/`HandleIncomingGuestChat`의
+  `"OO: text"` 채팅 포맷, `GwangSalePopup.payerText`의 `", "`/`"→"`.
+  사용자 요청은 단순 문자 치환이 아니라 "라벨을 분리시켜서 깔끔하고
+  게임같이" — 즉 각 정보를 별도 UI 요소(줄바꿈이 아니라 아이콘+칩,
+  또는 별도 텍스트 필드)로 나누는 재설계가 필요하다는 뜻이라, 다음
+  세션에서 각 팝업의 실제 레이아웃(프리팹)부터 다시 보고 착수할 것.
+
+## 고스톱 — UIEffect·UIParticle 그래픽 강화 12종 일괄 적용, **라이브 검증
+미완료(iOS 빌드로 에디터 응답불능)** (2026-09-13)
+
+"UIEffect·UIParticle 활용해서 그래픽컬한 부분을 더 발전시킬 방안
+리스팅해봐" 요청에 12개 아이디어를 정리해 제시했고, 사용자가 "전부다
+적용해줘 나 자고올게"로 일괄 승인해 전부 구현했다. **컴파일·Play 모드
+라이브 검증은 끝내 못 했다** — 아래 "검증 못 한 이유" 참고. 이 세션에서
+새로 만든 헬퍼는 전부 `GoStopFX.cs`에 모았다(이미 이 파일이 카드
+드롭섀도·샤이니 엣지·승리 컨페티·판돈 플라이 등 UIEffect/UIParticle
+공용 헬퍼를 모아두는 자리였다 — 같은 원칙 유지).
+
+**공용 구조 2개를 먼저 만들었다:**
+- `GoStopTransitionRunner` — `UIEffect.transitionRate`를 smoothstep으로
+  짧게 보간하는 범용 러너. 카드 디졸브 리빌(아이템1, 재생 후 UIEffect
+  자체를 지워 원상복구)과 팝업 페이드인(아이템4, 컴포넌트를 재사용해
+  열고 닫힐 때마다 새로 안 만듦) 둘이 `destroyEffectWhenDone` 플래그
+  하나로 공유한다.
+- `NewParticleHost(...)` — `PlayWinConfetti`(2026-08-20)에서 이미
+  검증된 UIParticle 보일러플레이트(호스트 GameObject 배치 → UIParticle
+  → 자식 ParticleSystem → `playOnAwake` 함정 방지용 `Stop()`)를 뽑아낸
+  것. 아이템6/7/8/9/12(캡처 스파클/동전 비/파산 재/스트릭 버스트/흔들기
+  스파크) 5개가 이 하나를 공유 — 각자 main/emission/shape 튜닝만 다르다.
+
+**12개 항목과 실제 트리거 지점:**
+
+| # | 내용 | 훅 지점 |
+|---|---|---|
+| 1 | 덱카드 리빌 디졸브(`TransitionFilter.Dissolve`, rate 1→0) | `SlamDown`의 `FlipRevealBack` 직후(비행과 동시 재생, non-blocking) |
+| 2 | 판 종료 시 필드 카드 흑백(`ToneFilter.Grayscale`) | `EndGame` 맨 앞 `ApplyGameOverFieldGrayscale()`(`field` 순회 → `FieldSlotTransform` → `Art` 자식) |
+| 3 | 위험 배지(광박/멍박/피박) 샤이니 펄스(`TransitionFilter.Shiny` + `transitionAutoPlaySpeed`, 코루틴 불필요) | `GoStopStatusBoxView.SetRisk` |
+| 4 | 팝업 페이드인(`TransitionFilter.Fade`) | `ModalTwoButtonPopup`/`CardChoicePopup`/`DealerDrawPopupView`/`GwangSalePopupView`/`ScoreDetailPopup` 5개 `Show()` |
+| 5 | 총통·5광 필름컷 플래시(전체화면 UGUI 오버레이+`ToneFilter.Posterize`) | `FireChongtong`(항상), `FireGwangAchievement`(count≥5만) |
+| 6 | 캡처 착지 골드 스파클(진짜 UIParticle, 기존 SpawnBurst 위에 additive) | `SlamToCap`의 비행 정상 완주 지점(`cg.alpha=1f` 직후) |
+| 7 | 정산액 큰 판 "동전 비"(amount≥3000원만) | `GoStopMoneyFly.Run`의 착지 블록(`SpawnFloatText` 옆) |
+| 8 | AI 파산·은퇴 시 회색 재 | `EndGame`의 `bankruptSeats` 계산 직후(플레이어 자신은 제외, `ApplyDowngrade`가 좌석을 재배치하기 *전*에 트리거해야 `SlotOf`가 정확) |
+| 9 | 연속 뻑(streak≥2) 버스트 강도 누적 | `Toast(seat,label)`→`ShowActionPopup(seat,label)`(시그니처에 `seat` 추가, 유일한 호출부라 안전) — `ppeokStreak[seat]`로 형성 이벤트("뻑"/"첫뻑"/"연뻑"만, "뻑 먹기"/"자뻑"은 별개 개념이라 제외)만 스케일 |
+| 10 | 결과화면 "판을 결정지은 패"(광 3장↑) 샤이니 하이라이트 | `AppendAllCapsSection`(승자 행의 광 카드에만 `ApplyShinyEdge`) |
+| 11 | 폭탄 필름컷 플래시(아이템5 헬퍼 재사용) | `PlaySeq`의 폭탄 슬램 블록 맨 앞 |
+| 12 | 흔들기/폭탄 선언 시 부채 자리 골드 스파크 | 흔들기·폭탄 각각의 `PlayShake(...)` 호출 직후(총 2곳) |
+
+**UI Toolkit 제약을 두 번 만났다** — `GoStopVectorEffect`(족보완성·비상·
+실패·총통·흔들기 카드 슬램인)는 UI Toolkit(`VisualElement`) 기반인데,
+Coffee.UIEffects는 UGUI `Graphic`에만 붙는다. 아이템5(총통/5광)·
+아이템12(흔들기 부채)가 원래 "그 카드/부채 자체에 이펙트를 건다"는
+아이디어였는데, VisualElement에는 UIEffect를 못 붙여서 둘 다 **같은
+자리에 겹쳐 뜨는 별도 UGUI 오버레이(전체화면 플래시 / UIParticle
+스파크)**로 우회했다 — 대상을 직접 못 건드려도 "같은 타이밍에 같은
+자리"로 시각적 통합감은 유지된다.
+
+**항목9(스트릭 버스트) 구현 중 `ShowActionPopup`의 시그니처를 바꿨다**
+(`string label` → `int seat, string label`) — 유일한 호출부(`Toast`)만
+고치면 되는 낮은 위험의 변경이었다(`grep`으로 다른 호출부가 없음을
+먼저 확인). `ppeokStreak[seat]`가 "연속 뻑 *형성*" 전용 카운터라는 것도
+기존 코드(2026-08-16 v6/8 등)의 리셋 위치(`ppeokStreak[seat]=0`,
+뻑이 아닌 카드를 내면)를 다시 읽어 확인한 뒤, "뻑 먹기"/"자뻑"(뻑
+*해소* — 다른 개념)은 스케일 대상에서 명시적으로 뺐다.
+
+### 검증 못 한 이유 — Unity 에디터가 iOS 빌드 도중 응답 불능 상태가 됨
+
+12개 항목을 전부 구현한 직후 `unity command recompile`을 돌렸는데
+Pipeline 서버가 응답하지 않았다. 조사해보니:
+- `unity pipeline list`가 `Server Reachable: false`를 계속 반환(1~2분
+  간격으로 여러 번 재확인, 총 5분 이상 폴링).
+- `~/Library/Logs/Unity/Editor.log`를 보니 **사용자가 직접 "Build →
+  Build iOS" 커스텀 메뉴를 눌러 실제 iOS 빌드를 돌린 기록**이 있었다
+  (`Build Finished, Result: Success.` 로그, `PlayerBuildInfo` 스텝별
+  소요시간까지 정상 기록됨 — 이 세션 바로 전 턴에서 "Build iOS 누르면
+  빌드되지"라는 사용자 질문에 "네, 됩니다"라고 답했었는데, 그 직후
+  사용자가 실제로 눌러본 것으로 보인다). 로그는 빌드가 끝나고
+  `Temp/__Backupscenes/0.backup`(원래 씬)을 다시 로드하는 지점에서
+  완전히 멈췄다 — 이후 **20분 넘게 단 한 줄도 안 늘었다**.
+- `osascript`(macOS System Events)로 Unity 프로세스의 창 목록을
+  읽으려는 순수 진단성 조회조차 120초 만에 `AppleEvent 시간이
+  초과되었습니다(-1712)`로 실패했다 — Pipeline HTTP 서버 하나만 죽은
+  게 아니라 **애플리케이션 자체가 OS 레벨에서 응답 불능** 상태라는
+  뜻이다(단순히 모달 다이얼로그가 떠 있는 정도라면 System Events
+  조회 자체는 보통 응답한다).
+- 프로세스 자체는 살아있다(`ps -p <pid>` 확인, CPU 사용량 낮음 —
+  무한루프로 도는 게 아니라 뭔가를 기다리며 멎어있는 것으로 보인다).
+  원인은 특정 못 했다 — iOS Xcode 프로젝트 생성/사이닝 협상 단계에서
+  걸렸을 가능성, 또는 빌드 직후 씬 복원 과정의 별개 문제일 가능성 둘
+  다 있다.
+
+**에디터 프로세스를 강제 종료하지 않았다** — 사용자가 잠든 사이 그의
+애플리케이션을 강제로 죽이는 건 되돌리기 어려운 조치라(저장 안 된
+작업이 있을 수 있다는 우려, 실제로는 Edit 모드라 위험은 낮아 보였지만
+확신할 수 없었다) 명시적 승인 없이 하지 않는다는 원칙을 그대로
+지켰다. 대신 남은 시간 동안 **모든 변경 지점을 코드만으로 정독
+재검토**했다(타입·괄호 짝·기존 호출부와의 시그니처 일치·`using`
+디렉티브 존재 여부까지) — 컴파일러 없이 확인 가능한 수준까지는
+전부 확인했지만, **실제 컴파일 성공 여부와 Play 모드 동작은 확인되지
+않은 상태다.**
+
+### 다음에 반드시 먼저 할 것
+
+1. Unity 에디터가 여전히 멎어있으면 **사용자가 직접** 강제 종료 후
+   재시작할 것(이 프로젝트를 다시 열면 씬/에셋은 디스크에 그대로다 —
+   코드 변경 12건은 전부 파일에 저장돼 있어 안전하다).
+2. `unity command recompile` → `recompile_status`로 컴파일 에러 여부
+   확인 — 수동 정독으로는 못 잡는 실수(오탈자, 오버로드 불일치 등)가
+   있을 수 있다.
+3. `editor_stop` → `editor_play`로 새 Play 세션을 열고, 이 프로젝트의
+   확립된 방식대로(스크린샷 대신 리플렉션으로 GameObject/컴포넌트
+   상태 직접 확인) 12개 항목을 하나씩 실제로 트리거해서 확인할 것 —
+   특히 UIParticle 계열(6/7/8/9/12)은 `PlayWinConfetti` 때처럼
+   `ParticleSystem.GetParticles()`로 스케일이 화면에 적당히 퍼지는지
+   실측 확인이 필요하다(감으로 잡은 speed/size 값이라 1차 조정이
+   필요할 가능성이 있다).
+
+## 고스톱 — 게임오버 결과 화면(Overlay) 전면 재설계, 코드 생성 팝업으로 전환
+(2026-09-13, **Pipeline 서버 불통 상태에서 작업 — 라이브 검증 미완료**)
+
+바로 위 섹션(UIEffect·UIParticle 12종)을 작업한 뒤 사용자가 이어서 지적한
+문제 — "Overlay에 Card만 팝업으로 안 만들어진 게 이상해, 팝업으로 만들고
+안에 디자인 다시해줘. 빈 공간도 너무 많고 글씨 크기도 들쭉날쭉하고, 내 정보
+인지 다른 유저 정보인지 한눈에 안 들어온다. 피/광/멍박 등은 '(피박)' 텍스트
+말고 스테이터스박스의 Badge_피 오브젝트와 같은 형식으로 뿌려달라."
+
+### 문제 — `GoStopUIManager`의 정적 Overlay
+
+예전엔 게임오버 화면이 `GoStopUI.prefab`에 항상 존재하는 정적 `Overlay/Card`
+자식(`GoStopUIManager.ShowOverlay(titleColor, title, scoreStr, subStr, ...)`)
+였다 — 다른 팝업들(`ScoreDetailPopup`/`ModalTwoButtonPopup` 등, 필요할 때만
+인스턴스화되는 진짜 팝업)과 다른 예외적인 존재였고, `subStr` 하나에 독박·
+배율·패자별 지급액·승자 총획득·내 변동액을 전부 줄바꿈으로 우겨넣고 있었다
+— "누구 정보인지" 시각적으로 안 갈리고, 광박/피박 태그도 `"(광박)"`처럼
+텍스트로만 붙어 있었다.
+
+### 해결 — `GoStopResultOverlay`(신규, `Assets/Scripts/Games/GoStop/Popups/`)
+
+구조화된 데이터(내 정보 카드/다른 플레이어 행 목록/배율 칩 리스트)를 받아
+실제 UI로 그리는 새 팝업 컴포넌트로 전면 교체했다:
+- **내 정보 카드** — Gold 테두리로 강조된 별도 행. 이름·변동액(색)·잔액,
+  그리고 광박/피박/독박에 해당하면 `GoStopStatusBoxView.SetRisk`가 쓰는
+  것과 같은 "Badge_피" 형식(원형 칩+단일 글자, `HwatuShapes.Circle()`+
+  `HwatuTheme.HwatuRed`)을 그 행에 직접 붙인다.
+- **다른 플레이어 목록** — 나를 제외한 활성 좌석 전원(승자 포함)을 한
+  줄씩. 승자는 초록 `+금액`, 패자는 빨강 `-금액`(또는 "변동 없음") +
+  해당 배지. 최대 4줄까지 스크롤 없이, 넘으면 `HwatuUI.MakeScrollBody`로
+  스크롤.
+- **배율 칩** — "고 N회" 등을 이어붙인 문자열 대신 작은 알약 칩 여러 개로
+  (`HorizontalLayoutGroup`으로 자동 정렬 — 개수가 매판 달라지는 유일한
+  콘텐츠라 이 한 곳만 예외적으로 자동 레이아웃을 썼다, 나머지는 전부
+  이 프로젝트 관례대로 수동 커서 계산).
+- **각주(footer)** — 나가리 등 "평문 요약만 있는" 단순 모드에서는 본문
+  자체로, 리치 모드에서는 다운그레이드/세션종료 안내+자동 재시작
+  카운트다운을 붙이는 전용 슬롯으로 재사용(`baseFooterText`+
+  `SetFooterNote()`가 조합).
+
+`GoStop3PGame.cs`의 `BuildOverlayMultiplierLine`/`BuildOverlayBreakdownLine`
+(문자열 조립 헬퍼)을 `BuildMultiplierChips`(`List<string>`)/`BuildResultRows`
+(`List<GoStopResultOverlay.Row>`)로 재작성해서 문자열이 아니라 구조체를
+직접 돌려주게 했다. `EndGame`의 정산 분기 6곳(연결끊김 방폭파·네트워크
+다운그레이드·오프라인 다운그레이드·세션종료·네트워크 정상승부·오프라인
+정상승부)과 `ShowGuestGameOverOverlay`의 2곳(나가리·정상승부, 게스트는
+스냅샷에 패자별 상세가 안 실려 있어 단순 모드만 가능 — 기존부터 있던
+한계, 이번에 안 고침), 총 8곳 전부 `resultOverlay.Show(...)`/로컬 함수
+`ShowRich(...)`로 교체했다. `HostAutoRestartSeq`/`GuestAutoRestartCountdownSeq`
+는 `baseSub` 매개변수를 없애고 `resultOverlay.SetFooterNote(...)`만
+부르도록 단순화(카운트다운이 본문을 재조립할 필요가 없어졌다).
+
+**"연결 끊김" 토스트(2곳)·"N점 달성!" 고/스톱 임계값 토스트(2곳)·"인원수
+선택" 모드 팝업(1곳) — 이 5곳은 의도적으로 안 건드렸다.** 게임오버
+결과 화면이 아니라 완전히 다른 UI 순간이라 이번 요청 범위 밖이고,
+`GoStopUIManager.ShowOverlay`/`SetOverlaySub` 자체(정적 Overlay 프리팹)도
+그대로 남아있다 — 이 5곳이 계속 쓰고 있어서 삭제하지 않았다.
+
+### 프리팹 대신 코드 생성 — Pipeline 서버 불통 상황에 맞춘 선택
+
+이번 세션은 (이전 섹션에서 기록한) iOS 빌드 직후 프로세스 응답불능
+사고 이후로 **`unity pipeline list`가 계속 `Server Reachable: false`를
+반환**했다(에디터 프로세스 자체는 살아있고 라이선스도 정상 갱신되는
+등 완전히 멎은 건 아니었지만, Pipeline HTTP 리스너만 응답이 없었다) —
+이 세션 내내 몇 차례 재시도해도 복구되지 않았다. 다른 팝업들처럼
+`PrefabUtility.SaveAsPrefabAsset`로 실제 .prefab 에셋을 구울 방법이
+없어서, 이 프로젝트에 이미 있는 **"코드로 직접 UI를 생성하는" 패턴**
+(`GoStopNetLobbyUI`/`TitleOptionsUI`와 동일 — `Build()` 정적 팩토리가
+런타임에 GameObject 트리 전체를 조립)으로 대체했다. 레이아웃은
+VerticalLayoutGroup 같은 자동 레이아웃 대신, 이 프로젝트가 수십 곳에서
+써 온 "이전 블록 바로 아래" 수동 커서 누적 방식을 그대로 썼다 — 라이브
+렌더링 확인 없이도 코드만 보고 겹침 여부를 수학적으로 확신할 수 있는
+방식이기 때문이다(이번 세션에 실제로 배지 클러스터 폭 계산에서 두 건의
+overflow 버그를 코드 검토만으로 찾아 고쳤다 — 아래 참고).
+
+**에디터가 정상화되면 다음 단계는 이 구조를 그대로 프리팹으로 구워서
+(`PrefabUtility.SaveAsPrefabAsset`) 사용자가 에디터에서 직접 편집
+가능하게 바꾸는 것이다** — 지금은 기능·레이아웃을 코드로 확정해 뒀으니,
+그 확정된 값을 프리팹으로 옮기기만 하면 된다.
+
+### 코드 리뷰만으로 잡은 버그 5건 (라이브 없이, 수동 재검토)
+
+1. **`ApplyShinyEdge` 재사용 시 `AddComponent<UIEffect>()`가 null을
+   반환할 뻔한 문제** — 바로 앞 12항목 작업에서 만든 문제, 이번 세션
+   시작 시점에 이미 사용자가 신고한 실제 런타임 에러(`PlayCardRevealDissolve`,
+   GoStopFX.cs:202)와 같은 원인(`[DisallowMultipleComponent]`)이라
+   `GetComponent` 우선 재사용 패턴으로 두 곳 다 고쳤다(자세한 내용은
+   해당 시점 대화 기록 참고 — 이 섹션 작성 시점엔 이미 반영 완료 상태).
+2. **`Show()`에 죽은/중복 코드 블록** — 초안 작성 중 `winnerLineText`
+   위치를 계산하다 만 잘못된 첫 시도를 안 지우고 바로 밑에 "다시 계산"
+   블록을 또 썼다(값 자체는 두 번째 블록이 덮어써서 최종 결과는 무해했지만
+   완전히 불필요한 코드였다), `if(rich){...}`가 연달아 두 번 나와 같은
+   조건을 두 번 열고 footer 초기화 코드를 중복 실행하고 있었다 — 발견
+   즉시 하나로 합쳤다.
+3. **`othersScroll`의 Y 커서가 두 번 깎이는 버그** — `SetY(othersScroll,
+   ref y, scrollH)`가 이미 `y -= scrollH`를 하는데, 바로 다음 줄에
+   `y -= scrollH`를 또 써서 다음 섹션(배율 칩) 앞에 불필요한 큰 공백이
+   생길 뻔했다 — 중복 줄 제거.
+4. **배지 클러스터가 행의 오른쪽 경계를 넘어가는 overflow 버그** —
+   `FillBadgeRow`는 배지를 항상 area의 **오른쪽 끝에 맞춰**(`x =
+   area.width/2 - BADGE_SIZE/2`부터 왼쪽으로) 그린다. 그런데 최초 초안은
+   `myBadgeArea`의 **중심 좌표**를 `ROW_W/2 - 24`(area 폭 120의 절반=60을
+   더하면 오른쪽 끝 = 414-24+60 = **450**)로 잡아뒀는데, 행 자체의 오른쪽
+   경계는 `ROW_W/2` = **414**뿐이라 배지가 행 밖으로 36px 튀어나가는
+   상태였다 — `ROW_W/2 - 24`라는 숫자가 "area 폭까지 감안한 올바른
+   중심 위치"가 아니라 그냥 감으로 잡은 값이었던 게 원인. `BadgeClusterWidth(n)
+   = (n-1)*(BADGE_SIZE+GAP)+BADGE_SIZE`로 필요한 폭을 정확히 구하고,
+   area의 중심 좌표를 "오른쪽 끝이 정확히 `ROW_W/2 - RIGHT_MARGIN`에
+   오도록"(`center = 오른쪽끝 - 폭/2`) 역산하는 공식으로 재작성해서
+   고쳤다 — myRow·MakeOtherRow 양쪽 다 이 하나의 공식을 공유하므로
+   다시 어긋날 수 없다.
+5. **행 배경 스프라이트(`RoundedRect`)에 `Image.Type.Sliced`를 빠뜨림**
+   — 9-slice 보더가 구워진 스프라이트를 `Image.Type.Simple`(기본값)로
+   쓰면 828×66 같은 비정사각형 비율에서 모서리가 늘어나 찌그러진다.
+   카드/버튼/칩/내정보행 배경은 전부 처음부터 `.type = Sliced`를 챙겼는데
+   `MakeOtherRow`의 배경 하나만 빠뜨렸다가 재검토 중 발견해 추가했다.
+
+### 검증 상태 — **완전히 미완료, 다음 세션에서 반드시 먼저 할 것**
+
+Pipeline 서버가 이번 세션 내내 한 번도 복구되지 않아 **컴파일조차
+확인 못 했다.** 대신 (1) `using`/네임스페이스·클래스 접근성·오버로드
+개수 등을 grep+수동 대조로 전수 재확인, (2) 모든 좌표 공식을 손으로
+대입해 겹침 여부를 계산, (3) `HwatuTheme`/`HwatuShapes`/`HwatuUI`/
+`GoStopFX`의 실제 시그니처를 전부 grep으로 재확인하며 작성했다 — 그래도
+**실제 컴파일 성공과 화면에 그려지는 결과는 전혀 확인되지 않았다.**
+
+1. `unity command recompile` → `recompile_status`로 컴파일 에러 확인 —
+   가장 먼저. 바로 위 12항목 작업 때 실제로 겪었던 `System.Action` 미해결
+   컴파일 에러 하나를 이번에도 코드 리뷰 중 직접 찾아 고쳤지만(이 파일에
+   `using System;`이 없어 bare `Action`이 안 풀리는 것 — `System.Action`
+   전체 이름으로 교체), 이런 종류의 실수가 더 남아있을 가능성을 배제
+   못 한다.
+2. `editor_stop` → `editor_play`로 새 Play 세션을 열고, 리플렉션으로
+   `EndGame`을 여러 시나리오(정상 승리·나가리·독박·광박/피박 있는 패자·
+   파산 다운그레이드)로 강제 호출해 `resultOverlay`의 각 필드(`card.
+   sizeDelta`, 각 행의 `anchoredPosition`, 배지 `activeSelf` 등)를
+   `GetWorldCorners()`로 실측 — 특히 배지 클러스터가 실제로 행 경계
+   안에 들어오는지(위 버그 4번 수정이 맞았는지)를 최우선으로 확인할 것.
+3. 실제 카드 플레이로 자연스럽게 게임을 끝내서(리플렉션 강제 호출이
+   아니라) 화면이 실제로 어떻게 보이는지 — 이 환경은 스크린샷을 못
+   믿으므로, `ScreenCapture.CaptureScreenshot`(바로 위 섹션에서 새로
+   발견한, Screen Space Overlay UI를 실제로 잘 찍어주는 방법)로 한 번은
+   시각적으로도 직접 확인할 것.
+4. 여전히 남아있는 "money 관련 리플렉션 테스트는 끝나고 PlayerPrefs
+   오염 여부를 반드시 재확인할 것"이라는 이 프로젝트의 기존 교훈 —
+   `EndGame`을 직접 호출하는 검증은 실제로 `SaveMoney()`가 돈다.
+
+## 고스톱 — GoStopResultOverlay 프리팹 전환 + 실제 클리핑 버그 3건 라이브 수정
+(2026-09-13, 2차 — Pipeline 서버 복구 후 완료)
+
+바로 위 섹션(전면 재설계, "라이브 검증 미완료" 상태로 마감)의 후속 —
+사용자가 실제로 플레이해보고 "좌우로 짤리는 부분 있는데 사이즈·위치
+다시 체크해줘" + "프리펩으로도 바꿔줘"를 요청했다.
+
+### Pipeline 서버 불통의 진짜 원인 — iOS 빌드 hang과는 무관한 별개 사고
+
+전 섹션은 "iOS 빌드 직후 에디터가 멎었다"를 원인으로 추정했는데, 이번에
+`git diff Packages/manifest.json`을 직접 대조해서 **진짜 원인**을 찾았다 —
+`"com.unity.pipeline": "0.5.0-exp.1"`이 최근 어느 시점에(아마
+`com.unity.postprocessing` 추가나 `com.unity.ide.visualstudio` 버전업
+같은 Package Manager 조작 도중) manifest에서 통째로 빠져 있었다. 에디터
+프로세스 자체(Play 모드, DOTween 틱, Asset Pipeline Refresh)는 이미
+정상 동작 중이었다 — Pipeline "패키지"가 설치 자체가 안 된 상태였을 뿐.
+manifest에 그 줄을 되살리자 `unity pipeline list`가 `Pipeline: true`로
+바뀌었지만 `Server Reachable`은 여전히 false — 이 프로젝트가 이미
+문서화한 대로 "Pipeline 패키지 설치 직후엔 에디터 재시작이 필요하다"는
+게 여기서도 그대로 적용됐다. 사용자가 직접 에디터를 재시작한 뒤에야
+`Server Reachable: true`로 복구됐다.
+
+**교훈** — Pipeline 연결 불능을 조사할 때는 "에디터가 멎었나" 이전에
+`git diff Packages/manifest.json`부터 확인할 것 — 이번처럼 에디터
+자체는 멀쩡히 돌아가는데 패키지 하나가 조용히 빠져서 서버만 안 뜨는
+경우가 있다.
+
+### 클리핑 버그 3건 — 전부 손계산으로 먼저 찾고, 라이브 `GetWorldCorners()`로 재확인
+
+Pipeline이 아직 안 붙어 있던 시점에 코드만 보고 좌표 공식을 손으로
+대입해 찾아낸 문제였다(이전 섹션에서 "검증 미완료"로 남겨뒀던 바로
+그 지점) — 나중에 서버가 복구된 뒤 실제 `GetWorldCorners()` 실측으로
+전부 재확인했다.
+
+1. **`myNameText`(내 정보 카드의 닉네임 라벨)가 카드/행 왼쪽 경계를
+   40px 넘어가고 있었다.** 폭을 고정 220px로 잡아뒀는데, 위치 계산과
+   무관하게 그냥 "감으로" 정한 값이라 캐릭터 이름이 조금만 길어도
+   (또는 애초에 고정폭 자체가) 왼쪽 경계를 넘었다.
+2. **`MakeOtherRow`("다른 플레이어" 목록)의 이름 라벨이 행의 왼쪽
+   경계를 10px 넘고 있었는데, 이 행은 `HwatuUI.MakeScrollBody`가 만든
+   진짜 `Mask`로 크롭되는 영역이라 실제로 하드 클리핑됐다** — 이게
+   사용자가 본 "짤리는" 증상의 정체였다.
+3. 두 경우 모두 근본 원인이 같았다 — 이름 라벨의 폭을 "실제로 안전하게
+   쓸 수 있는 공간"에서 역산하지 않고 임의의 고정값을 박아 넣은 것.
+   **고침**: `nameLeft = -ROW_W/2 + LEFT_MARGIN`, `nameRight = amountLeft
+   - NAME_GAP`로 이름 라벨의 폭·위치를 매번 "지금 이 행에서 실제로 남는
+   공간"으로 역산하도록 재작성 — 이름이 몇 글자든 구조적으로 왼쪽
+   경계나 금액/배지 영역을 침범할 수 없다. `myRow`/`MakeOtherRow` 둘 다
+   같은 공식을 공유한다.
+
+**라이브 재확인**: 4글자 테스트 닉네임+광박/피박/독박 배지 3개를
+전부 채운 행으로 `Show()`를 직접 호출 → 이름 라벨 왼쪽 경계가 마스크
+왼쪽 경계보다 20px(LEFT_MARGIN) 안쪽, 배지 클러스터 오른쪽 경계도
+20px(RIGHT_MARGIN) 안쪽으로 정확히 들어오는 것을 `GetWorldCorners()`로
+실측 확인.
+
+### 프리팹 전환 — 그 과정에서 진짜 버그 2건을 더 발견
+
+**필드를 `[SerializeField]`로 전환.** 원래 이 컴포넌트는 순수 런타임
+코드 생성(`Build()`가 `BuildTree()`로 트리를 조립)이라 모든 필드가
+순수 `private`였다 — 그대로 프리팹을 구우면 재로드 시 전부 `null`이
+된다(Unity는 public 또는 `[SerializeField]` 필드만 직렬화한다). 23개
+필드 전부에 `[SerializeField]`를 붙이고, 게임 코드의 호출을
+`GoStopResultOverlay.Build(canvasRoot)`(정적 팩토리, 삭제)에서
+`HwatuUI.InstantiatePopup<GoStopResultOverlay>("GoStopResultOverlay",
+canvasRoot)`(다른 팝업들과 동일한 프리팹 인스턴스화 패턴)로 교체.
+
+**베이킹 — 에디터 전용 일회성 스크립트로, 이 프로젝트의 기존 관례
+그대로.** Edit 모드에서 `new GameObject("...", typeof(RectTransform))`
+(주의: `typeof(RectTransform)` 없이 만들면 `BuildTree()`의
+`(RectTransform)transform` 캐스팅이 `InvalidCastException`을 던진다 —
+실제로 한 번 이렇게 걸려서 잡았다) → 리플렉션으로 private `BuildTree()`
+호출 → `PrefabUtility.SaveAsPrefabAsset(go, "Assets/Resources/Prefabs/
+GoStop/Popups/GoStopResultOverlay.prefab")` → 씬의 임시 인스턴스 제거.
+저장된 프리팹을 다시 로드해 23개 필드 전부가 여전히 non-null인지
+리플렉션으로 재확인.
+
+**발견 — `Hide()` 이후 `Show()`를 다시 불러도 화면이 영영 안 뜨는
+치명적 버그.** `Hide()`가 `dim.gameObject.SetActive(false)`로 `dim`을
+개별적으로 끄는데, `Show()`는 루트(`gameObject.SetActive(true)`)만
+다시 켤 뿐 `dim`을 다시 켜는 코드가 없었다 — Unity에서 부모를 다시
+켜도 자식이 개별적으로 꺼둔 `activeSelf`는 자동으로 안 돌아온다. 즉
+**한 번이라도 결과 화면을 닫으면 그 다음부터는 영원히 안 뜬다**는
+뜻이었다 — "다시 시작" 버튼을 눌러 새 판을 시작한 뒤 그 판이 끝나면
+결과 화면 자체가 안 뜨는 상황이 실전에서 벌어졌을 것이다. `Show()`
+맨 앞에 `dim.gameObject.SetActive(true);`를 명시적으로 추가해서
+고쳤다 — 라이브로 `Show()`→`Hide()`→`Show()` 왕복을 재현해 `dim`이
+정확히 다시 켜지는 것을 실측 확인(수정 전에는 실제로 재현됐다 —
+콘솔에 `"Coroutine couldn't be started because the the game object
+'Dim' is inactive!"` 에러가 정확히 이 시점에 찍혔다).
+
+**발견 — `NewGameSeq()`/게스트 스냅샷 처리 둘 다 새 `resultOverlay`를
+안 닫고 있었다.** 예전엔 `ui?.HideOverlay()`(GoStopUIManager의 정적
+Overlay) 한 줄로 충분했는데, 게임오버 화면이 `resultOverlay`로
+옮겨가면서 이 호출이 더 이상 새 팝업을 안 닫는다는 걸 놓쳤다 — "다시
+시작"을 눌러도 결과 화면이 안 사라지는 회귀가 될 뻔했다. `NewGameSeq()`
+시작부와 게스트 쪽 `gameOverActive→false` 전환 지점 두 곳에
+`resultOverlay?.Hide();`를 나란히 추가했다.
+
+### 검증 요약(전부 라이브, Pipeline 복구 이후)
+
+- 컴파일 클린(`recompile_status` 2회, 매번 `failed:false, errors:[]`).
+- 프리팹 23개 필드 전부 직렬화 확인(재로드 후 non-null).
+- 실제 `InstantiatePopup` 경로로 인스턴스화된 `resultOverlay`에서도
+  클리핑 수정이 동일하게 적용되는 것을 `GetWorldCorners()`로 재확인.
+- `Show()`→`Hide()`→`Show()` 왕복에서 `dim`/루트 둘 다 정확히
+  재활성화되는 것 확인(수정 전 재현 → 수정 후 정상, 콘솔 에러도
+  재컴파일 이후로는 재발 안 함).
+- 실제 4인 게임을 딜링부터 시작해(`BeginWithSeatCount(4)`) 손패 카드를
+  `OnPlayerPlay`로 실제로 재생 — 콘솔 `error`/`exception` 0건(무관한
+  경고만: 자동화 모드 아님, em-dash 폰트 폴백, 내 테스트 스크립트
+  자체의 `tail` 파라미터 오타, iOSBuilder의 obsolete API 경고).
+
+### 남은 것
+
+- 실제 카드 플레이로 판을 자연스럽게 끝내서(리플렉션 강제 호출이
+  아니라) `EndGame`의 8개 분기 전부를 거치며 결과 화면이 뜨는 것까지는
+  이번에도 확인 못 했다 — `Show()`를 직접 호출하는 방식으로 레이아웃/
+  버그 수정만 검증했다. 다음에 실제로 판을 끝까지 플레이해 나가리·
+  독박·다운그레이드 등 각 분기를 자연 발생시켜 재확인할 것.
+- `dim` 활성화 버그와 같은 클래스의 실수(부모 재활성화가 자식 개별
+  상태를 안 되돌린다는 Unity 관례)가 이 프로젝트 다른 코드에도 있을
+  수 있다 — 이번엔 이 컴포넌트 하나만 확인했다.
+
+### 후속 — 프리팹 스프라이트가 전부 비어 보이는 버그 (2026-09-13, 3차)
+
+프리팹을 저장한 직후 사용자가 에디터에서 열어보고 "image에 스프라이트
+매칭이 다 빠져있네"라고 신고 — 정확했다. **원인**: `HwatuShapes.*()`
+(`RoundedRectBordered` 등)가 만드는 스프라이트는 `HideAndDontSave`
+플래그가 붙은 순수 런타임 객체라 애초에 에셋 파일로 직렬화될 수 없다
+— `BuildTree()`가 `cardImg.sprite = HwatuShapes.RoundedRectBordered(...)`
+처럼 베이킹 시점에 만든 스프라이트를 그대로 필드에 대입해 뒀으니,
+프리팹을 저장하는 순간 그 참조가 통째로 날아간다. 이 프로젝트에 이미
+선례가 있었다 — `GoStopStatusBoxView.ApplyTurnState()`도 같은 이유로
+스프라이트를 프리팹에 안 굽고 상태가 바뀔 때마다 코드로 새로 입힌다.
+
+**고침** — `card`/`myRowBg`/`primaryBtn`/`secondaryBtn`/`tertiaryBtn`
+5곳의 스프라이트 대입을 `BuildTree()`에서 전부 빼고(색만 `Color.white`로
+남김), 새 `ReapplyProceduralSprites()`가 이 5곳을 한 번에 다시 채우게
+분리했다. `MakeButton()`은 `fill` 매개변수 자체를 없앴다(스프라이트를
+안에서 안 만드므로 더는 필요 없음). `void Awake() =>
+ReapplyProceduralSprites();`로 인스턴스화될 때마다 자동으로 다시
+입혀지게 했다 — `MakeOtherRow`/`MakeChip`/`MakeBadge`는 애초에 매
+`Show()` 호출마다 새 GameObject+Image를 만드는 동적 콘텐츠라 이 버그와
+무관해서 안 건드렸다.
+
+**검증 중 겪은 함정 — Edit 모드에서 `Instantiate(prefab)` 직후 확인하면
+여전히 스프라이트가 `NULL`로 보인다.** `[ExecuteInEditMode]`/
+`[ExecuteAlways]`가 없는 평범한 `MonoBehaviour`는 **Edit 모드에서
+`Awake()`가 안 불린다** — Play 모드나 빌드에서만 호출된다. 처음
+Edit 모드로 검증했을 때 `card.GetComponent<Image>().sprite`가 계속
+`NULL`이라 "고침이 안 먹혔나" 싶었는데, `editor_play`로 진짜 Play
+모드에 들어가 다시 확인하니 `sprite != null`이고 실제
+`texture=True, rect=(0,0,160,160)`(`RoundedRectBordered(160,...)`
+호출값과 정확히 일치), `type=Sliced`까지 전부 정확했다 — 즉 코드
+자체는 처음부터 맞았고, 검증 방법(Edit 모드 Instantiate)이 틀렸을
+뿐이었다.
+
+**최종 확인 — `ScreenCapture.CaptureScreenshot`로 실제 렌더링까지
+눈으로 봤다.** 4인 게임을 딜링부터 강제 시작한 뒤, 합성 데이터로
+`Show()`를 직접 호출(리치 모드 — 내 정보 카드 + 다른 플레이어 3행 +
+배지 5종 + 배율 칩 2개)하고 `UnityEngine.ScreenCapture.
+CaptureScreenshot(path)`로 실제 화면을 저장해 Read로 확인했다 — 카드
+배경(크림+골드 테두리), 내 정보 행(골드 강조 테두리), 버튼 2종(빨강
+채움/흰바탕+초록 테두리) 전부 정상 렌더링됨을 직접 눈으로 확인. 이전
+섹션에서 고친 이름 라벨 클리핑도 이 스크린샷에서 재확인(좌우 상대방
+이름이 박스 밖으로 안 삐져나옴). 콘솔은 이번 Show/Hide 왕복 구간에서
+`error`/`exception` 0건(콘솔에 남아있던 에러 4건은 전부 이전 단계의
+타임스탬프 — Edit 모드 검증 중 겪은 `UnassignedReferenceException`과
+`dim` 버그 수정 전 재현 로그, 둘 다 이미 해결된 것).
+
+> **교훈 — 절차적으로 생성한 `Sprite`/`Texture2D`는 무조건
+> `HideAndDontSave`이므로 프리팹/씬 어디에도 직접 대입한 채 저장하면
+> 안 된다.** 이 프로젝트가 카드 뒷면 무늬·동전 아이콘·상태박스 배경
+> 등 여러 UI를 코드로 직접 그려왔는데, 그런 결과물을 프리팹화하려면
+> 항상 "베이킹 시점에 한 번 만들어 굳히기"가 아니라 "Awake/생성
+> 시점마다 다시 그려 입히기" 패턴이 필요하다는 게 이번에 다시
+> 확인됐다.
+
+### 후속 — 프리팹 베이킹 스크립트가 남긴 고아 GameObject가 매 Play 모드
+진입마다 `UnassignedReferenceException`을 냄 (2026-09-13, 4차)
+
+위 스프라이트 버그를 Play 모드로 재검증하던 도중, **씬을 아예 안 건드리고
+`editor_play`만 호출해도** 매번 `GoStopResultOverlay.Awake() →
+ReapplyProceduralSprites() → card.GetComponent<Image>()`에서
+`UnassignedReferenceException`이 재현됐다 — 리플렉션 테스트가 만든
+일회성 오염이 아니라 **재현 가능한 진짜 문제**였다.
+
+`FindObjectsByType`로 씬의 모든 `GoStopResultOverlay` 인스턴스를 뒤져서
+원인을 잡았다 — 이름이 `"GoStopResultOverlay"`(`(Clone)` 접미사 없음,
+즉 `Instantiate`가 아니라 `new GameObject("GoStopResultOverlay",
+typeof(RectTransform))`로 직접 만들어진 것)인 GameObject가 **2개**
+씬에 고아로 남아 있었다 — 정확히 프리팹 베이킹 스크립트(이 세션에서
+두 차례 실행)가 임시로 만들었다가 `DestroyImmediate(go)`로 지웠어야
+할 그 오브젝트였다. 어느 씬에 있는지 추적해보니 **현재 Editor에 열려
+있던 씬(TitleScene)의 메모리 상태에만 있었고, 디스크의 `.unity` 파일
+에는 전혀 없었다**(`grep`으로 스크립트 GUID를 씬 파일에서 검색해 확인)
+— `git status`도 TitleScene을 clean으로 봤다. 즉 두 베이킹 스크립트
+실행 중 `DestroyImmediate`가 (원인 불명으로) 제대로 안 먹혔고, 그
+잔해가 세이브 안 된 채로 Editor 메모리에만 계속 쌓여 있었던 것 —
+Play 모드 진입은 씬을 디스크에서 다시 읽는 게 아니라 **그 시점의
+Editor 메모리 상태를 그대로 스냅샷**하므로, Play 모드를 몇 번을
+드나들어도 이 고아 오브젝트가 계속 따라왔다.
+
+**고침 — 오브젝트를 하나씩 찾아 지우는 대신, `EditorSceneManager.
+OpenScene(path, OpenSceneMode.Single)`로 씬 자체를 디스크에서 다시
+읽어 메모리를 통째로 디스크 상태와 동기화했다.** TitleScene·
+GoStop3PScene 둘 다 이 방식으로 리로드 — 이후 `FindObjectsByType`로
+고아 카운트가 0으로 확인됐고, 완전히 새 Play 세션에서도 재발하지
+않았다(콘솔 클린).
+
+**검증**: `git diff --stat`로 GoStop3PScene 재로드가 실제 파일 내용을
+바꾸지 않았는지 확인(8줄 삭제된 diff가 있었지만, 이건 이번 세션
+이전부터 이미 있던 기존 변경사항이었다 — `m_LocalScale.x/y`가 기본값
+1이라 Unity가 저장 시 자동으로 생략한 것뿐, 이번 리로드로 새로 생긴
+변경이 아님). 이후 완전히 새 Play 세션에서 씬 로드→`BeginWithSeatCount(4)`
+→ 5개 스프라이트 필드 전부 정상 확인까지 재확인.
+
+> **교훈 — 에디터 전용 베이킹 스크립트로 임시 GameObject를 만들 때는
+> `DestroyImmediate` 호출 하나에 의존하지 말고, 작업이 끝난 뒤
+> `FindObjectsByType`로 실제로 남은 게 없는지 재확인하는 습관을 들일
+> 것.** 이번엔 2회의 베이킹 각각이 임시 오브젝트를 남겼는데, 둘 다
+> `DestroyImmediate` 라인이 코드에 있었는데도 조용히 실패했다(정확한
+> 원인은 못 밝혔다 — Undo 시스템이나 프리팹 연결 상태와 관련된
+> Editor 내부 동작으로 추정). **씬에 남은 잔해가 의심되면
+> `EditorSceneManager.OpenScene`으로 통째로 다시 읽는 게 개별 오브젝트를
+> 찾아 지우는 것보다 훨씬 확실하다** — 이번처럼 놓친 잔해가 더 있어도
+> 한 번에 정리된다.

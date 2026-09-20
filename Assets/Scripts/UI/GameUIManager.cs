@@ -5,7 +5,7 @@ using UnityEngine.SceneManagement;
 using TMPro;
 
 /// <summary>
-/// 모든 게임 씬이 공유하는 UI. Assets/Prefabs/GameUI.prefab 하나만 존재하며
+/// 모든 게임 씬이 공유하는 UI. Assets/Resources/Prefabs/GameUI.prefab 하나만 존재하며
 /// 씬마다 HUD/오버레이를 다시 만들지 않는다.
 ///
 /// 게임 스크립트는 자기 콘텐츠를 <see cref="ContentArea"/> 아래에 붙이고,

@@ -1,0 +1,48 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6c5c6abd8114845fc807798e3384755b, type: 3}
+  m_Name: guan_yu_weapon_g2
+  m_EditorClassIdentifier: Assembly-CSharp::SamgukDefense.SamgukItemData
+  id: guan_yu_weapon_g2
+  displayName: "\uCCAD\uB3D9 \uC5B8\uC6D4\uB3C4"
+  itemType: 0
+  ownerCharacterId: guan_yu
+  upgradesTo: {fileID: 11400000, guid: 29c13d68acb1c4089b71a3f48eae1c69, type: 2}
+  grade: 2
+  bonusHP: 0
+  bonusAttack: 0
+  bonusDefense: 0
+  bonusAttackSpeed: 0
+  bonusMoveSpeed: 0
+  bonusAttackRange: 0
+  attackType: 2
+  targetType: 0
+  weaponDamage: 35.2
+  weaponDamageAttackScaling: 0.3
+  weaponCooldown: 1.455
+  weaponRange: 1.9499999
+  projectileSpeed: 14
+  splashRadius: 1.2800001
+  knockbackDistance: 0
+  stunChance: 0.099999994
+  stunDuration: 0.6
+  bleedChance: 0
+  bleedDamagePerTick: 0
+  bleedDuration: 0
+  bleedTickInterval: 0.5
+  hpRegenPerSecond: 0
+  lifestealPercent: 0
+  dashCooldown: 0
+  dashDistance: 0
+  dropRate: 0.01
+  tintColor: {r: 1, g: 1, b: 1, a: 1}
+  icon: {fileID: 6926142540821877221, guid: f15cb0e142c6245fabc7b4a17ed42d50, type: 3}

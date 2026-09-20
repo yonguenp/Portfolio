@@ -136,7 +136,7 @@ public class BrickBreakerAds : MonoBehaviour
     void BuildAds()
     {
         initialized = true;
-        Debug.Log("[광고] LevelPlay 초기화 완료");
+        Logger.Log("[광고] LevelPlay 초기화 완료");
 
         if (!string.IsNullOrEmpty(RewardedId))
         {

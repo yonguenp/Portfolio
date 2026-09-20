@@ -43,6 +43,10 @@ public class TitleManager : MonoBehaviour
     public void On1010()       => SceneManager.LoadScene("Game1010Scene");
     public void OnBrickBreaker() => SceneManager.LoadScene("GameBrickBreakerScene");
     public void OnGoStop()       => goStopChoice?.Open();
+    // 삼국지 로그라이크 디펜스(ssam.md 기반, Phase 1 프로토타입) — 완전 독립 프로젝트라
+    // 공용 GameUI/GameUIManager를 안 쓰고 자체 씬(SamgukDefenseScene)이 카메라·Canvas·
+    // EventSystem까지 전부 런타임에 스스로 만든다.
+    public void OnSamgukDefense() => SceneManager.LoadScene("SamgukDefenseScene");
     public void OnOptions()    { if (optionsPanel) optionsPanel.SetActive(true); }
 
     public void OnExit()

@@ -34,6 +34,8 @@ public class ScoreDetailPopup : MonoBehaviour
     {
         dim.gameObject.SetActive(true);
         dim.SetAsLastSibling(); // Overlay보다 항상 위에 뜨도록 방어적으로 보장
+        // 2026-09-13(아이템4) — 즉시 나타나는 대신 짧게 페이드인.
+        GoStopFX.PlayPopupFadeIn(dim.GetComponent<UnityEngine.UI.Image>());
     }
 
     public void Hide() => dim.gameObject.SetActive(false);

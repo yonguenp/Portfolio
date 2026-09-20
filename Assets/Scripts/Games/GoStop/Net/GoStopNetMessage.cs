@@ -179,5 +179,9 @@ public class GoStopNetMessage
     public static GoStopNetMessage SeatReassignMsg(int seat, int playerCount) => new GoStopNetMessage { type = Type.SeatReassign, seat = seat, playerCount = playerCount };
     public static GoStopNetMessage DealerDrawPrompt(bool[] taken) => new GoStopNetMessage { type = Type.DealerDrawPrompt, text = string.Concat(taken.Select(t => t ? '1' : '0')) };
     public static GoStopNetMessage DealerDrawPick(int slotIndex) => new GoStopNetMessage { type = Type.DealerDrawPick, seat = slotIndex };
-    public static GoStopNetMessage ChatLogMsg(string text, bool isChat = false) => new GoStopNetMessage { type = Type.ChatLog, text = text, boolValue = isChat };
+    // 2026-09-13: cardSpriteName은 새 필드를 안 늘리고 PlayCard/FieldChoice가
+    // 쓰는 cardId(카드 spriteName 인코딩, GoStopDeck.Decode 참고)를 그대로
+    // 재사용한다 — ChatLog 타입에서는 원래 안 쓰던 필드라 충돌이 없다.
+    public static GoStopNetMessage ChatLogMsg(string text, bool isChat = false, string cardSpriteName = null) =>
+        new GoStopNetMessage { type = Type.ChatLog, text = text, boolValue = isChat, cardId = cardSpriteName };
 }

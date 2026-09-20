@@ -50,8 +50,10 @@ public partial class GoStop3PGame
     struct ChatEntry
     {
         public string text;
+        public string cardSpriteName; // null이면 아이콘 없음(순수 텍스트 줄)
         public bool isChat;
-        public ChatEntry(string text, bool isChat) { this.text = text; this.isChat = isChat; }
+        public ChatEntry(string text, bool isChat, string cardSpriteName = null)
+        { this.text = text; this.isChat = isChat; this.cardSpriteName = cardSpriteName; }
     }
 
     const int CHAT_MAX_LINES = 80;
@@ -95,6 +97,27 @@ public partial class GoStop3PGame
         chatLogText = chatView.logText;
         chatScroll = chatView.logScroll;
         chatInputField = chatView.inputField;
+
+        // 2026-09-13(카드 이미지 인라인 표시) — chatLogText.transform이 곧
+        // chatView.logContent다(ScrollRect의 Content 오브젝트 자신이 TMP
+        // 텍스트를 들고 있는 구조, ContentSizeFitter로 자동 높이). 한 줄짜리
+        // 문자열 블록으로는 특정 단어 자리에만 이미지를 끼워 넣을 수 없어서,
+        // 이 오브젝트를 "행(row)을 쌓는 그릇"으로 바꾼다 — 기존 TMP는
+        // 비활성화만 하고(설정값은 그대로 남겨 각 행의 글꼴/크기/색을 그대로
+        // 베낀다), 실제 텍스트는 매줄 새로 만드는 자식 행이 담당한다.
+        chatLogText.enabled = false;
+        var templateLE = chatLogText.gameObject.GetComponent<LayoutElement>()
+            ?? chatLogText.gameObject.AddComponent<LayoutElement>();
+        templateLE.ignoreLayout = true; // 레이아웃 계산에서 완전히 빠진다(자리 차지 안 함)
+        var rowsRoot = chatView.logContent;
+        if (rowsRoot.GetComponent<VerticalLayoutGroup>() == null)
+        {
+            var vlg = rowsRoot.gameObject.AddComponent<VerticalLayoutGroup>();
+            vlg.childAlignment = TextAnchor.LowerLeft;
+            vlg.spacing = 2f;
+            vlg.childControlWidth = true; vlg.childControlHeight = true;
+            vlg.childForceExpandWidth = true; vlg.childForceExpandHeight = false;
+        }
 
         bool interactive = isNetworkHost || isNetworkGuest;
         chatView.inputRow.SetActive(interactive);
@@ -165,20 +188,24 @@ public partial class GoStop3PGame
     /// 기존 경로가 없는 것들이 쓴다. 호스트가 아니면(오프라인이거나, 이미
     /// 다른 경로로 게스트에게 전달된 이벤트를 재생하는 게스트 자신이면)
     /// 그냥 로컬에만 남긴다. <paramref name="isChat"/>은 탭 분류용 —
-    /// 사람이 직접 친 채팅만 true.</summary>
-    void AppendChatLine(string line, bool isChat = false)
+    /// 사람이 직접 친 채팅만 true. <paramref name="cardSpriteName"/>을
+    /// 주면(2026-09-13, "시스템 메시지의 'X월' 텍스트 대신 카드 이미지를
+    /// 보여달라" 요청) 줄 앞에 그 카드의 작은 이미지가 붙는다 — 호출부는
+    /// 문장에서 "{card.month}월" 부분을 아예 빼고 그 자리를 이 아이콘이
+    /// 대신하게 짠다.</summary>
+    void AppendChatLine(string line, bool isChat = false, string cardSpriteName = null)
     {
-        LogLocalLine(line, isChat);
-        if (isNetworkHost) GoStopNetLobby.Instance?.BroadcastToGuests(GoStopNetMessage.ChatLogMsg(line, isChat));
+        LogLocalLine(line, isChat, cardSpriteName);
+        if (isNetworkHost) GoStopNetLobby.Instance?.BroadcastToGuests(GoStopNetMessage.ChatLogMsg(line, isChat, cardSpriteName));
     }
 
     /// <summary>내 화면에만 적는다(브로드캐스트 없음) — <see cref="Toast"/>처럼
     /// 이미 다른 경로(Event 메시지 재생)로 양쪽 화면에서 각자 실행되는
     /// 이벤트, 그리고 게스트가 호스트로부터 릴레이받은 채팅/이벤트 줄이
     /// 쓴다. 여기서 또 브로드캐스트하면 중복 표시가 난다.</summary>
-    void LogLocalLine(string line, bool isChat = false)
+    void LogLocalLine(string line, bool isChat = false, string cardSpriteName = null)
     {
-        chatEntries.Add(new ChatEntry(line, isChat));
+        chatEntries.Add(new ChatEntry(line, isChat, cardSpriteName));
         if (chatEntries.Count > CHAT_MAX_LINES) chatEntries.RemoveAt(0);
         RedrawChatLog();
     }
@@ -192,8 +219,68 @@ public partial class GoStop3PGame
             ChatFilter.Log => chatEntries.Where(e => !e.isChat),
             _ => chatEntries,
         };
-        chatLogText.text = string.Join("\n", visible.Select(e => e.text));
+        var rowsRoot = chatView.logContent;
+        // 비활성화해 둔 템플릿 TMP(chatLogText) 자신은 그대로 두고, 그
+        // 앞에 이미 지어둔 행(row)만 지운다 — HwatuUI.ClearChildren은
+        // "자식"만 지우므로 rowsRoot 자신(=chatLogText가 붙은 그 오브젝트)
+        // 은 안 건드린다.
+        HwatuUI.ClearChildren(rowsRoot);
+        foreach (var e in visible) BuildChatRow(rowsRoot, e);
         Canvas.ForceUpdateCanvases(); // 레이아웃을 먼저 갱신해야 아래 스크롤 위치가 새 높이 기준으로 맞는다
         if (chatScroll != null) chatScroll.verticalNormalizedPosition = 0f; // 0 = 맨 아래(최신 줄)
+    }
+
+    /// <summary>채팅/로그 한 줄 — 카드 아이콘(있으면)+텍스트를 가로로 배치한다.
+    /// 아이콘은 고정 폭, 텍스트는 나머지 폭을 전부 채우며 자연스럽게
+    /// 줄바꿈된다(HorizontalLayoutGroup의 childControlWidth=true가 LayoutElement의
+    /// flexibleWidth를 실제 RectTransform 폭에 반영해야 TMP 줄바꿈 계산이
+    /// 정확해진다).</summary>
+    void BuildChatRow(RectTransform parent, ChatEntry e)
+    {
+        var rowGo = new GameObject("Row", typeof(RectTransform));
+        rowGo.transform.SetParent(parent, false);
+        var rowRt = (RectTransform)rowGo.transform;
+        var hlg = rowGo.AddComponent<HorizontalLayoutGroup>();
+        hlg.childAlignment = TextAnchor.UpperLeft;
+        hlg.spacing = 4f;
+        hlg.childControlWidth = true; hlg.childControlHeight = true;
+        hlg.childForceExpandWidth = false; hlg.childForceExpandHeight = false;
+        var rowFitter = rowGo.AddComponent<ContentSizeFitter>();
+        rowFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+        if (!string.IsNullOrEmpty(e.cardSpriteName))
+        {
+            var iconGo = new GameObject("Icon", typeof(RectTransform), typeof(Image));
+            iconGo.transform.SetParent(rowRt, false);
+            var img = iconGo.GetComponent<Image>();
+            img.sprite = Resources.Load<Sprite>("Hwatu/" + e.cardSpriteName);
+            img.preserveAspect = true;
+            img.raycastTarget = false;
+            var iconLE = iconGo.AddComponent<LayoutElement>();
+            const float iconH = 24f;
+            iconLE.preferredHeight = iconH;
+            // 카드 실제 가로세로 비율에 맞춰 폭을 정한다 — sprite가 없으면
+            // (리소스 로드 실패) 세로만 예약해도 자리 자체는 표시된다.
+            float aspect = img.sprite != null ? img.sprite.rect.width / img.sprite.rect.height : 0.62f;
+            iconLE.preferredWidth = iconH * aspect;
+            iconLE.minWidth = iconLE.preferredWidth;
+            iconLE.minHeight = iconH;
+        }
+
+        var textGo = new GameObject("Text", typeof(RectTransform), typeof(TextMeshProUGUI));
+        textGo.transform.SetParent(rowRt, false);
+        var tmp = textGo.GetComponent<TextMeshProUGUI>();
+        tmp.text = e.text;
+        // 비활성화해 둔 템플릿(chatLogText)에서 폰트/크기/색을 그대로
+        // 베낀다 — 카드 아이콘 유무와 무관하게 모든 줄이 기존과 똑같은
+        // 스타일로 보여야 한다.
+        tmp.font = chatLogText.font;
+        tmp.fontSize = chatLogText.fontSize;
+        tmp.color = chatLogText.color;
+        tmp.textWrappingMode = TextWrappingModes.Normal;
+        tmp.overflowMode = TextOverflowModes.Overflow;
+        tmp.raycastTarget = false;
+        var textLE = textGo.AddComponent<LayoutElement>();
+        textLE.flexibleWidth = 1f;
     }
 }

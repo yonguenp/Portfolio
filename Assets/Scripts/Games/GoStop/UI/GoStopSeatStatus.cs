@@ -46,8 +46,17 @@ public sealed class GoStopSeatStatus
     bool highlight;
     public bool Highlight { get => highlight; set => Set(ref highlight, value); }
 
-    string moneyText = "";
-    public string MoneyText { get => moneyText; set => Set(ref moneyText, value); }
+    // 2026-09-13: 문자열(MoneyText)이 아니라 원값(int)으로 바꿨다 —
+    // 뷰가 "이전에 보여주던 값 → 새 값"을 알아야 카운팅 애니메이션을
+    // 돌릴 수 있는데, 포맷된 문자열만 받으면 그 차이를 알 방법이 없다.
+    // 포맷("{0:N0}원")은 뷰가 렌더 시점에 한다.
+    int money;
+    public int Money { get => money; set => Set(ref money, value); }
+
+    /// <summary>빈 슬롯(좌석 자체가 없음)에서는 금액 표시를 아예 감춘다 —
+    /// "0원"을 보여주는 것과 다르다.</summary>
+    bool moneyVisible = true;
+    public bool MoneyVisible { get => moneyVisible; set => Set(ref moneyVisible, value); }
 
     /// <summary>세션 시작(선 정하기 이후) 대비 누적 머니 변동 — 부호·색은
     /// 뷰가 렌더 시점에 정한다(GoStopStatusBoxView.Render 참고).</summary>

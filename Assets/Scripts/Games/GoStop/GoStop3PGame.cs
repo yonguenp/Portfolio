@@ -136,18 +136,19 @@ public partial class GoStop3PGame : MonoBehaviour
     // 광멍피 카운트를 보여주던 자리, Cap에서 다 보이니 굳이 필요없다)에
     // 넣어달라"고 재요청 — 실제 표시는 GoStopStatusBoxView.SetMoneyDelta로
     // 옮겼다(DrawBadgeStrip에서 호출). 여기 남은 건 순수 데이터(좌석별
-    // 세션 시작 잔액)뿐 — FormatMoneyText는 다시 평범한 금액 텍스트만
-    // 돌려준다. 세션 시작 잔액은 그 좌석의 정보가 처음 그려지는 순간
-    // 지연 캡처한다(좌석별로 독립) — 오프라인/호스트는 이미 money[]가
-    // 최종값이라 그대로 맞고, 네트워크 게스트는 첫 호출 시점엔 이미 첫
-    // StateSync를 받아 진짜 값으로 덮어써진 뒤이므로 세 경로 전부에서
-    // 안전하다. ApplyDowngrade(파산 좌석 압축)에서 money[]/seatCharName[]과
-    // 같은 방식으로 같이 압축한다 — 안 하면 압축 후 새 인덱스가 압축 전
-    // 다른 사람의 기준 잔액을 가리켜 변동량이 엉뚱하게 나온다.
+    // 세션 시작 잔액)뿐 — 2026-09-13: 금액 자체의 포맷("{0:N0}원")도
+    // GoStopStatusBoxView로 옮겼다(카운팅 애니메이션을 돌리려면 뷰가
+    // 원값(int)을 알아야 해서, 문자열로 미리 포맷해 넘기던 FormatMoneyText는
+    // 없앴다 — seatStatus[slot].Money에 int를 그대로 대입한다). 세션 시작
+    // 잔액은 그 좌석의 정보가 처음 그려지는 순간 지연 캡처한다(좌석별로
+    // 독립) — 오프라인/호스트는 이미 money[]가 최종값이라 그대로 맞고,
+    // 네트워크 게스트는 첫 호출 시점엔 이미 첫 StateSync를 받아 진짜 값으로
+    // 덮어써진 뒤이므로 세 경로 전부에서 안전하다. ApplyDowngrade(파산
+    // 좌석 압축)에서 money[]/seatCharName[]과 같은 방식으로 같이 압축한다 —
+    // 안 하면 압축 후 새 인덱스가 압축 전 다른 사람의 기준 잔액을 가리켜
+    // 변동량이 엉뚱하게 나온다.
     readonly bool[] sessionStartMoneyCaptured = new bool[SEATS_MAX];
     readonly int[] sessionStartMoney = new int[SEATS_MAX];
-
-    string FormatMoneyText(int seat) => $"{money[seat]:N0}원";
 
     /// <summary>그 좌석의 세션 시작(선 정하기 이후) 대비 누적 머니 변동.
     /// 기준선은 정상적으로는 <see cref="CaptureSessionStartMoneyAllSeats"/>가
@@ -201,7 +202,7 @@ public partial class GoStop3PGame : MonoBehaviour
             int seat = slot == 0 ? (slotSeat[0] < 0 ? PLAYER_SEAT : slotSeat[0]) : slotSeat[slot];
             if (seat < 0) continue;
             var s = seatStatus[slot];
-            s.MoneyText = FormatMoneyText(seat);
+            s.Money = money[seat];
             s.MoneyDelta = MoneyDeltaFor(seat);
             s.NotifyIfDirty();
         }
@@ -222,14 +223,15 @@ public partial class GoStop3PGame : MonoBehaviour
             if (seat < 0)
             {
                 s.Name = "";
-                s.MoneyText = "";
+                s.MoneyVisible = false;
                 s.GoScoreText = "";
                 s.BadgesHidden = true;
                 s.NotifyIfDirty();
                 continue;
             }
             s.Name = seat == PLAYER_SEAT ? "나" : SeatName(seat);
-            s.MoneyText = FormatMoneyText(seat);
+            s.MoneyVisible = true;
+            s.Money = money[seat];
             s.GoScoreText = "";
             s.BadgesHidden = true;
             s.Dim = false;
@@ -616,6 +618,14 @@ public partial class GoStop3PGame : MonoBehaviour
     // 승자와 패자 각각의 광박/피박 여부가 갈릴 수 있다(사용자 확인 규칙 —
     // 패자 개인 기준 판정) — 그래서 패자별 목록을 따로 담는다.
     ScoreDetailPopup scoreDetailPopup;
+    // 2026-09-13 — 게임오버 결과 화면. 예전엔 GoStopUIManager의 정적
+    // Overlay/Card(평문 하나에 다 우겨넣는 방식)를 썼는데, "내 정보/다른
+    // 유저 정보가 안 갈리고 (피박) 같은 텍스트 태그뿐이라 별로다"는 지적으로
+    // 다른 팝업들과 같은 "필요할 때 뜨는 진짜 팝업"으로 교체했다. 나가리
+    // 등은 plainSub만 넘기는 단순 모드로, 정산 정보(payout)가 있는 일반
+    // 승부는 내 정보 카드+다른 플레이어 행 목록+배율 칩을 갖춘 리치 모드로
+    // 연다 — 자세한 설계는 GoStopResultOverlay 클래스 문서 참고.
+    GoStopResultOverlay resultOverlay;
     GoStopRules.MultiPayout pendingPayout;
     int pendingWinnerSeat;
     List<int> pendingLoserSeats;
@@ -860,7 +870,7 @@ public partial class GoStop3PGame : MonoBehaviour
         if (msg.type == GoStopNetMessage.Type.ChatLog)
         {
             if (isNetworkHost) HandleIncomingGuestChat(fromSeat, msg.text);
-            else LogLocalLine(msg.text, msg.boolValue);
+            else LogLocalLine(msg.text, msg.boolValue, msg.cardId);
             return;
         }
         if (!isNetworkGuest) return;
@@ -1031,7 +1041,11 @@ public partial class GoStop3PGame : MonoBehaviour
         }
         else
         {
-            if (gameOverOverlayShown) ui?.HideOverlay();
+            // 2026-09-13(2차) — 게스트 쪽 게임오버 화면도 resultOverlay로
+            // 옮겨갔으므로 같이 닫는다(호스트 쪽 NewGameSeq()의 같은
+            // 수정과 대칭 — 안 그러면 호스트가 새 판을 시작해도 게스트
+            // 화면엔 결과 팝업이 계속 남는다).
+            if (gameOverOverlayShown) { ui?.HideOverlay(); resultOverlay?.Hide(); }
             gameOverOverlayShown = false;
         }
     }
@@ -1112,17 +1126,23 @@ public partial class GoStop3PGame : MonoBehaviour
 
         if (snap.gameOverIsNagari)
         {
-            string nagariSub = $"아무도 {CaptureLine}점을 못 넘겼습니다 · 다음 판 판돈 {snap.gameOverStakeMultiplier}배";
-            ui?.ShowOverlay(new Color(.6f, .6f, .6f), "나가리", "-", nagariSub, "타이틀", GoToTitle);
-            StartCoroutine(GuestAutoRestartCountdownSeq(nagariSub));
+            string nagariSub = $"아무도 {CaptureLine}점을 못 넘겼습니다\n다음 판 판돈 {snap.gameOverStakeMultiplier}배";
+            resultOverlay?.Show(new Color(.6f, .6f, .6f), "나가리", "-", null,
+                null, null, null, false, false, false, null, null, nagariSub,
+                "타이틀", GoToTitle);
+            StartCoroutine(GuestAutoRestartCountdownSeq());
             return;
         }
 
         int winnerSeat = snap.gameOverWinnerSeat;
         string title = winnerSeat == PLAYER_SEAT ? "승리!" : $"{SeatName(winnerSeat)} 승리";
         Color col = winnerSeat == PLAYER_SEAT ? HwatuTheme.Gold : new Color(.55f, .55f, .60f);
+        // 게스트는 호스트처럼 패자별 광박/피박/배율 상세를 받지 않는다(현재
+        // StateSync에 그 정보가 안 실린다 — 알려진 한계) — 그래서 단순
+        // 모드(plainSub)로만 보여준다. "독박"만은 이미 예전부터 스냅샷에
+        // 있던 정보라 그대로 표시한다.
         string sub = snap.gameOverDokbakSeat >= 0
-            ? $"{SeatName(snap.gameOverDokbakSeat)} 독박 · 내 머니 {money[PLAYER_SEAT]:N0}원"
+            ? $"{SeatName(snap.gameOverDokbakSeat)} 독박\n내 머니 {money[PLAYER_SEAT]:N0}원"
             : $"내 머니 {money[PLAYER_SEAT]:N0}원";
         // gameOverRefilledSeats 필드명은 그대로 재사용하지만(스냅샷 구조체 변경
         // 회피), 2026-08-23부터는 "리필된 좌석"이 아니라 "파산해서 세션이
@@ -1130,14 +1150,17 @@ public partial class GoStop3PGame : MonoBehaviour
         // 세션이 완전히 끝나는 것이라(호스트도 자동 재시작을 안 한다)
         // 카운트다운을 안 띄운다.
         bool sessionEnding = snap.gameOverRefilledSeats != null && snap.gameOverRefilledSeats.Length > 0;
+        string extraNote = null;
         if (sessionEnding)
         {
             string names = string.Join(", ", snap.gameOverRefilledSeats.Select(s => SeatName(s)));
-            sub += $" · {names} 잔액을 모두 잃어 이 판을 끝으로 세션을 종료합니다";
+            extraNote = $"{names} 잔액을 모두 잃어 이 판을 끝으로 세션을 종료합니다";
         }
         ui?.SetScore(money[PLAYER_SEAT]);
-        ui?.ShowOverlay(col, title, snap.gameOverFinalScore.ToString(), sub, "타이틀", GoToTitle);
-        if (!sessionEnding) StartCoroutine(GuestAutoRestartCountdownSeq(sub));
+        resultOverlay?.Show(col, title, snap.gameOverFinalScore.ToString(), null,
+            null, null, null, false, false, false, null, null, sub,
+            "타이틀", GoToTitle, extraNote: extraNote);
+        if (!sessionEnding) StartCoroutine(GuestAutoRestartCountdownSeq());
     }
 
     /// <summary>필드 초이스/9월열끗/참가선언처럼 "지금 이 좌석 한 명만
@@ -1682,6 +1705,12 @@ public partial class GoStop3PGame : MonoBehaviour
         // 그 사이 뒤에서 뜬 팝업이 오버레이에 가려 아무 반응이 없는
         // 것처럼 보였다).
         ui?.HideOverlay();
+        // 2026-09-13(2차) — 게임오버 결과 화면이 GoStopUIManager의 정적
+        // Overlay에서 GoStopResultOverlay(진짜 팝업)로 옮겨가면서, 위
+        // ui?.HideOverlay()가 더 이상 이 화면을 안 닫는다 — 여기서
+        // 명시적으로 같이 닫아야 "다시 시작"을 눌러도 결과 화면이 안
+        // 사라지는 회귀가 안 생긴다.
+        resultOverlay?.Hide();
         Time.timeScale = 1f; // 새 판은 항상 정상 속도로 시작(결과 넘기기 배속 잔여 방지)
         if (skipResultBtn != null) skipResultBtn.gameObject.SetActive(false); // 딜링 중엔 지난 판 표시 잔상 없이(RebuildUI가 새로 판단해서 켠다)
 
@@ -2116,7 +2145,7 @@ public partial class GoStop3PGame : MonoBehaviour
     {
         ShowTimedToast((seat == PLAYER_SEAT ? "" : SeatName(seat) + " ") + label);
         GoStopAudio.Instance?.PlayForLabel(label);
-        ShowActionPopup(label);
+        ShowActionPopup(seat, label);
         // 채팅창 로그 — 여기서 다시 브로드캐스트하지 않는다(LogLocalLine,
         // AppendChatLine 아님). 이 이벤트는 바로 아래에서 EventMsg로 이미
         // 게스트에게 전달되고, 게스트는 그걸 받아 이 Toast() 함수를 자기
@@ -2159,7 +2188,7 @@ public partial class GoStop3PGame : MonoBehaviour
     static readonly Color MoneyEventColor = new Color(0.20f, 0.85f, 0.45f);
     static bool IsMoneyEventLabel(string label) => label == "첫뻑" || label == "연뻑" || label == "첫따닥" || label == "첫뻑먹기";
 
-    void ShowActionPopup(string label)
+    void ShowActionPopup(int seat, string label)
     {
         // "따닥"은 전용 프리팹을 새로 굽는 대신(2026-08-20) EffectJjok의
         // 구조(팝인·유지·페이드)를 그대로 재사용하고 Play()의 overrideColor로
@@ -2198,10 +2227,20 @@ public partial class GoStop3PGame : MonoBehaviour
         Vector2 local = canvasRoot.InverseTransformPoint(sourceWorldPos);
 
         bool moneyEvent = IsMoneyEventLabel(label);
+        // 2026-09-13(아이템9) — 연속 뻑(ppeokStreak)에 비례해 버스트를 키운다.
+        // "뻑 먹기"/"자뻑"(기존 뻑을 해소하는 사건)은 별개 개념이라 대상에서
+        // 뺀다 — ppeokStreak는 연속 *형성* 이벤트("뻑"/"첫뻑"/"연뻑")만 센다.
+        bool isFormationPpeok = label == "뻑" || label == "첫뻑" || label == "연뻑";
+        int streak = isFormationPpeok ? Mathf.Max(1, ppeokStreak[seat]) : 1;
         // 2026-08-19: "파티클 이펙트로 애니메이션을 좀 더 역동적으로" 요청 —
         // 텍스트 팝업과 같은 자리에 원형 파티클 버스트를 같이 터뜨린다.
         // 금전 이벤트는 살짝 더 화려하게(16개, 기본 12개보다 많이).
-        GoStopIcons.SpawnBurst(canvasRoot, local, moneyEvent ? MoneyEventColor : BurstColorForLabel(label), moneyEvent ? 16 : 12);
+        int burstCount = moneyEvent ? 16 : 12;
+        if (isFormationPpeok && streak >= 2) burstCount += (streak - 1) * 6;
+        GoStopIcons.SpawnBurst(canvasRoot, local, moneyEvent ? MoneyEventColor : BurstColorForLabel(label), burstCount);
+        // 연속 뻑(streak≥2)엔 기존 SpawnBurst 위에 진짜 UIParticle 버스트를
+        // 추가로 얹어서 "스트릭이 유지되고 있다"는 압박감을 누적시킨다.
+        if (isFormationPpeok && streak >= 2) GoStopFX.PlayStreakBurst(canvasRoot, local, streak);
 
         var fx = HwatuUI.InstantiateEffect<GoStopEffectPopup>(prefabName, canvasRoot);
         if (fx == null) return;
@@ -2943,6 +2982,10 @@ public partial class GoStop3PGame : MonoBehaviour
         var color = EmergencyColor("3광"); // 광 계열 톤
 
         GoStopIcons.SpawnBurst(canvasRoot, local, color, 30);
+        // 2026-09-13(아이템5) — 5광은 광 계열 중 최고 등급(15점)이라 특별히
+        // 필름컷 플래시를 더한다. 3광/4광/비삼광은 자주 나오는 편이라 플래시
+        // 없이 기존 연출(카드 슬램인+파티클)만 유지 — 5광에만 한 겹 더한다.
+        if (count >= 5) GoStopFX.PlayDramaticFlash(canvasRoot, color);
 
         var co = GoStopVectorEffect.Ensure().Play($"{SeatName(seat)}님이 {label} 완성!", color, gwangCards);
 
@@ -2978,6 +3021,9 @@ public partial class GoStop3PGame : MonoBehaviour
         var color = new Color(1f, 0.85f, 0.3f);
 
         GoStopIcons.SpawnBurst(canvasRoot, local, color, 30);
+        // 2026-09-13(아이템5) — 딜 직후 즉시 승리라는 가장 극적인 순간이라
+        // 짧은 필름컷 플래시로 무게감을 더한다.
+        GoStopFX.PlayDramaticFlash(canvasRoot, color);
 
         int month = cards.Count > 0 ? cards[0].month : 0;
         string title = $"[{month}월 총통]\n{SeatName(seat)}";
@@ -3283,7 +3329,7 @@ public partial class GoStop3PGame : MonoBehaviour
         // 그런 특별한 사건이 한동안 안 터지면(흔한 경우) 채팅창이 계속
         // 비어 있어 보인다 — 매턴 기본 로그를 하나 깔아서 항상 뭔가
         // 올라오게 한다.
-        AppendChatLine($"{SeatNameFor(seat, -1)}님이 {card.month}월 패를 냈습니다");
+        AppendChatLine($"{SeatNameFor(seat, -1)}님이 패를 냈습니다", cardSpriteName: card.spriteName);
 
         if (h.Count(c => c.month == card.month) == 3 && declareShake && shookMonths[seat].Add(card.month))
         {
@@ -3298,8 +3344,14 @@ public partial class GoStop3PGame : MonoBehaviour
             // 상태박스 자리에만 그 크기 그대로 표시하는 PlayShake로 교체.
             int shakeSlot = SlotOf(seat);
             if (shakeSlot >= 0)
+            {
                 GoStopVectorEffect.Ensure().PlayShake(NormalizedBoxOf(statusBoxRefs[shakeSlot]),
                     h.Where(c => c.month == card.month).ToList());
+                // 2026-09-13(아이템12) — 부채(UI Toolkit이라 UIEffect를 못 붙임)와
+                // 같은 자리에 겹쳐 뜨는 UIParticle 스파크로 "짜잔"을 보탠다.
+                var shakeCanvas = GoStopCanvasRoot();
+                GoStopFX.PlayShakeSparkle(shakeCanvas, shakeCanvas.InverseTransformPoint(statusBoxRefs[shakeSlot].position));
+            }
         }
 
         bool wasFirstPlay = !playedFirstHandCard[seat];
@@ -3385,7 +3437,12 @@ public partial class GoStop3PGame : MonoBehaviour
             // 교체(위 흔들기 분기 주석 참고).
             int bombSlot = SlotOf(seat);
             if (bombSlot >= 0)
+            {
                 GoStopVectorEffect.Ensure().PlayShake(NormalizedBoxOf(statusBoxRefs[bombSlot]), r1.captured.Take(3).ToList());
+                // 2026-09-13(아이템12) — 흔들기와 같은 이유로 같은 스파클.
+                var bombCanvas = GoStopCanvasRoot();
+                GoStopFX.PlayShakeSparkle(bombCanvas, bombCanvas.InverseTransformPoint(statusBoxRefs[bombSlot].position));
+            }
         }
 
         
@@ -3476,6 +3533,10 @@ public partial class GoStop3PGame : MonoBehaviour
         RectTransform matchedSlot = matchedFieldCard != null ? FieldSlotTransform(matchedFieldCard) : null;
         if (bomb)
         {
+            // 2026-09-13(아이템11) — 슬램(호쾌 프리셋)+임팩트 플래시+파티클
+            // 버스트만으로도 충분히 세지만, 여기에 아주 짧은 전체화면
+            // 필름컷 플래시를 한 겹 더 얹어 "쾅" 하는 타격감을 배가한다.
+            GoStopFX.PlayDramaticFlash(GoStopCanvasRoot(), new Color(1f, 0.35f, 0.15f));
             // r1.captured = [card, partner1, partner2, fieldMatch] — 앞 3장이
             // 손패에서 나온 카드다. 파파팍 — 짧은 간격으로 하나씩 내려친다.
             // 매 반복마다 target.childCount가 방금 내려친 카드만큼 늘어나
@@ -3552,7 +3613,8 @@ public partial class GoStop3PGame : MonoBehaviour
         // 같은 방식으로 채팅 로그에 남긴다.
         AppendChatLine(drawn.isJoker
             ? $"{SeatNameFor(seat, -1)}님의 뒷패로 보너스패가 나왔습니다"
-            : $"{SeatNameFor(seat, -1)}님의 뒷패로 {drawn.month}월 패가 나왔습니다");
+            : $"{SeatNameFor(seat, -1)}님의 뒷패로 패가 나왔습니다",
+            cardSpriteName: drawn.isJoker ? null : drawn.spriteName);
 
         if (drawn.isJoker)
         {
@@ -3984,7 +4046,8 @@ public partial class GoStop3PGame : MonoBehaviour
         // 턴에도 똑같이 남긴다).
         AppendChatLine(drawn.isJoker
             ? $"{SeatNameFor(seat, -1)}님의 뒷패로 보너스패가 나왔습니다"
-            : $"{SeatNameFor(seat, -1)}님의 뒷패로 {drawn.month}월 패가 나왔습니다");
+            : $"{SeatNameFor(seat, -1)}님의 뒷패로 패가 나왔습니다",
+            cardSpriteName: drawn.isJoker ? null : drawn.spriteName);
 
         if (drawn.isJoker)
         {
@@ -4166,7 +4229,8 @@ public partial class GoStop3PGame : MonoBehaviour
 
             AppendChatLine(next.isJoker
                 ? $"{SeatNameFor(seat, -1)}님의 뒷패로 보너스패가 나왔습니다"
-                : $"{SeatNameFor(seat, -1)}님의 뒷패로 {next.month}월 패가 나왔습니다");
+                : $"{SeatNameFor(seat, -1)}님의 뒷패로 패가 나왔습니다",
+                cardSpriteName: next.isJoker ? null : next.spriteName);
 
             // 3. 다음 카드도 조커라면 같은 규칙을 한 번 더 적용
             if (next.isJoker)
@@ -4232,7 +4296,8 @@ public partial class GoStop3PGame : MonoBehaviour
         // 같은 문구 패턴을 그대로 쓴다.
         AppendChatLine(next.isJoker
             ? $"{SeatNameFor(seat, -1)}님의 뒷패로 보너스패가 나왔습니다"
-            : $"{SeatNameFor(seat, -1)}님의 뒷패로 {next.month}월 패가 나왔습니다");
+            : $"{SeatNameFor(seat, -1)}님의 뒷패로 패가 나왔습니다",
+            cardSpriteName: next.isJoker ? null : next.spriteName);
 
 
         if (next.isJoker)
@@ -4303,29 +4368,34 @@ public partial class GoStop3PGame : MonoBehaviour
             yield break;
         }
 
-        // 뻑 아님 — next를 이미 보여준 뒤에야 조커를 유저 소유로 확정한다.
-        foreach(var j in jokers)
-        {
-            yield return StartCoroutine(CaptureBonusJokerImmediately(seat, j, cap, null));
-        }
-        // 2026-09-07 버그 수정 — couldBePpeok 페어가 조커 때문에 보류돼
-        // 있었다면(pendingPartner != null) 여기서 확정 커밋한다. anchor(=card)
-        // 자체도 아직 field에 있다는 전제 — 위 어느 분기도 anchor를 건드리지
-        // 않았으므로 항상 성립한다.
-        if (pendingPartner != null && field.Contains(anchor) && field.Contains(pendingPartner))
+        // 뻑 아님 — 2026-09-14(사용자 신고: "조커/anchor가 먼저 따로
+        // Cap으로 가버리고 next 결과가 또 별도로 처리된다, 손패·뒷패·조커
+        // 전부 필드에 나온 뒤 한 번에 Cap으로 이동해야 쪼는 맛이 산다") —
+        // 예전엔 여기서 조커부터 CaptureBonusJokerImmediately로 즉시
+        // Cap에 보낸 뒤에야 next의 매칭을 계산해서, RebuildUI가 두 번
+        // 갈라져 있었다. field를 실제로 바꾸는 순서(게임 로직)는 원래와
+        // 완전히 동일하게 유지하되, 그 결과를 화면에 반영하는 시점
+        // (RebuildUI)만 맨 끝 하나로 합친다 — GoStopRules.Resolve/
+        // ResolveChoice 등은 순수하게 field만 건드릴 뿐 화면엔 손을
+        // 안 대는 함수들이라 이 분리가 가능하다.
+
+        // 1) pendingPartner(couldBePpeok 쌍)가 있으면 먼저 field에서
+        // 빼둔다 — 이래야 바로 다음의 next 매칭 계산이 "이미 확정된 이
+        // 쌍"을 다시 건드리지 않는다(순서를 바꾸면 next가 우연히 같은
+        // 달이어서 엉뚱하게 다시 매칭되는 회귀가 생긴다). Cap 편입·화면
+        // 반영은 여기서 안 한다 — field에서 빼는 것까지만.
+        bool commitPendingPartner = pendingPartner != null && field.Contains(anchor) && field.Contains(pendingPartner);
+        if (commitPendingPartner)
         {
             field.Remove(anchor);
             field.Remove(pendingPartner);
-            cap.Add(anchor);
-            cap.Add(pendingPartner);
-            GoStopAudio.Instance?.Capture(); // 섹션 ④의 평범한 캡처와 같은 사운드(별도 이펙트 없음 — 뻑도 쪽도 아닌 평범한 2장 매칭)
-            RebuildUI();
-            yield return new WaitForSeconds(PLAY_STEP_DELAY);
         }
 
-        // next는 독립적인 새 카드로 정상 매칭 로직을 그대로 탄다(기존
+        // 2) next는 독립적인 새 카드로 정상 매칭 로직을 그대로 탄다(기존
         // "extra 카드" 처리와 동일한 경로 — Resolve→선택→매칭 판정). 등장
         // 연출은 이미 위에서 끝났다 — 여기부터는 순수하게 결과 판정만.
+        // 화면(RebuildUI)은 아직 안 건드린다 — ContinueChoice(필드 선택
+        // 팝업)만 예외로 사용자 입력을 기다린다.
         var r = GoStopRules.Resolve(next, field);
 
         if (r.choiceCandidates != null)
@@ -4345,10 +4415,29 @@ public partial class GoStop3PGame : MonoBehaviour
             }
         }
 
+        // 3) 이제 전부 확정 — anchor 쌍·조커·next 매칭 결과를 한 번에 Cap
+        // 으로 편입한다. flyFrom은 field.Remove 직전(아직 화면에 실제
+        // GameObject가 남아있는 시점)에 실제 렌더 위치로 기록해야 부드럽게
+        // 날아간다 — CaptureBonusJokerImmediately가 조커 하나에 대해 하던
+        // 것과 같은 패턴을 조커 전체에 적용한다.
+        if (commitPendingPartner)
+        {
+            cap.Add(anchor);
+            cap.Add(pendingPartner);
+        }
+        foreach (var j in jokers)
+        {
+            var slot = FieldSlotTransform(j);
+            var jokerGo = slot != null ? slot.Find(j.spriteName) : null;
+            flyFrom[j] = jokerGo != null ? jokerGo.position : fieldArea.position;
+            field.Remove(j);
+            cap.Add(j);
+        }
+        Toast(seat, "보너스 획득");
+
         if (r.captured.Count > 0)
         {
             cap.AddRange(r.captured);
-            GoStopAudio.Instance?.Capture();
             RegisterFlyViaField(r);
 
             // 쪽 — anchor가 이 next에 맞춰 잡혔다(anchor가 아직 field에
@@ -4376,6 +4465,7 @@ public partial class GoStop3PGame : MonoBehaviour
             }
         }
 
+        GoStopAudio.Instance?.Capture();
         RebuildUI();
         yield return new WaitForSeconds(PLAY_STEP_DELAY);
     }
@@ -5047,39 +5137,56 @@ public partial class GoStop3PGame : MonoBehaviour
     }
 
     /// <param name="winnerSeat">-1이면 나가리.</param>
-    // 2026-09-07 — 승패 오버레이 요약용. FinalScoreMulti가 이미 계산해 둔
-    // payout(고/흔들기/폭탄/총통 등 공통 배수 + 패자별 광박/피박)을 그대로
-    // 읽어 "배율이 왜 이렇게 됐는지" 한 줄로 압축한다. 특별한 요소가 아무것도
-    // 없으면(고 0회·흔들기 0회·추가배수 없음) null을 돌려줘 그 줄 자체를 뺀다.
-    string BuildOverlayMultiplierLine(GoStopRules.MultiPayout payout)
+    // 2026-09-13 전면 재설계 — 예전엔 이 둘이 문자열을 조립해서 하나의
+    // sub 텍스트 블록으로 합쳐졌는데(GoStopUIManager의 평문 Overlay),
+    // 이제 GoStopResultOverlay가 구조화된 데이터(칩 목록/행 목록)를 직접
+    // 받아 실제 배지·칩 UI로 그린다 — 그래서 문자열이 아니라 List를
+    // 돌려준다. "배율이 왜 이렇게 됐는지"를 칩 여러 개로 나열한다 —
+    // 특별한 요소가 아무것도 없으면(고 0회·흔들기 0회·추가배수 없음)
+    // 빈 리스트를 돌려줘 그 줄 자체를 뺀다.
+    List<string> BuildMultiplierChips(GoStopRules.MultiPayout payout)
     {
         int commonMult = payout.goMultiplier;
         for (int i = 0; i < payout.heundeulCount; i++) commonMult *= 2;
         commonMult *= payout.extraMultiplier;
-        var parts = new List<string>();
-        if (payout.goCount > 0) parts.Add($"고 {payout.goCount}회(+{payout.goBonus}점)");
-        if (payout.heundeulCount > 0) parts.Add($"흔들기/폭탄 {payout.heundeulCount}회");
-        if (payout.extraMultiplier > 1) parts.Add("총통/쓰리뻑");
-        if (parts.Count == 0 && commonMult <= 1) return null;
-        return $"{string.Join(" · ", parts)}{(parts.Count > 0 ? " → " : "")}배율 ×{commonMult}";
+        var chips = new List<string>();
+        if (payout.goCount > 0) chips.Add($"고 {payout.goCount}회(+{payout.goBonus}점)");
+        if (payout.heundeulCount > 0) chips.Add($"흔들기/폭탄 {payout.heundeulCount}회");
+        if (payout.extraMultiplier > 1) chips.Add("총통/쓰리뻑");
+        if (chips.Count > 0 || commonMult > 1) chips.Add($"배율 ×{commonMult}");
+        return chips;
     }
 
-    // "누가 왜 얼마 냈는지" — 실제로 돈을 낸(amount>0) 패자만 나열한다.
-    // 이번 판 한 장도 못 먹어 정산에서 빠진 패자(amount==0)는 표시할 근거
-    // 자체가 없으므로 조용히 건너뛴다.
-    string BuildOverlayBreakdownLine(GoStopRules.MultiPayout payout, List<int> loserSeats)
+    /// <summary>"다른 플레이어" 목록 행 — 나(PLAYER_SEAT)를 제외한 활성
+    /// 좌석 전원(승자 포함)을 한 줄씩 돌려준다. 승자가 나 자신이면 승자는
+    /// (내 정보 카드에 이미 나오므로) 목록에서 빠진다. 패자 중 나 자신도
+    /// 같은 이유로 빠진다 — 내 몫은 항상 MyRow가 담당한다.</summary>
+    List<GoStopResultOverlay.Row> BuildResultRows(GoStopRules.MultiPayout payout, List<int> loserSeats,
+        int winnerSeat, int actualTotalReceived, int dokbakIdx)
     {
-        var parts = new List<string>();
+        var rows = new List<GoStopResultOverlay.Row>();
+        if (winnerSeat != PLAYER_SEAT)
+        {
+            rows.Add(new GoStopResultOverlay.Row
+            {
+                name = SeatName(winnerSeat),
+                amountText = HwatuTheme.MoneyColored(actualTotalReceived, $"+{actualTotalReceived:N0}원"),
+            });
+        }
         for (int i = 0; i < loserSeats.Count; i++)
         {
+            if (loserSeats[i] == PLAYER_SEAT) continue;
             int amount = payout.amounts[i];
-            if (amount <= 0) continue;
-            string tag = "";
-            if (i < payout.gwangBakPerLoser.Count && payout.gwangBakPerLoser[i]) tag += "광박";
-            if (i < payout.piBakPerLoser.Count && payout.piBakPerLoser[i]) tag += (tag.Length > 0 ? "·피박" : "피박");
-            parts.Add($"{SeatName(loserSeats[i])} -{amount:N0}원{(tag.Length > 0 ? $"({tag})" : "")}");
+            rows.Add(new GoStopResultOverlay.Row
+            {
+                name = SeatName(loserSeats[i]),
+                amountText = amount > 0 ? HwatuTheme.MoneyColored(-amount, $"-{amount:N0}원") : "변동 없음",
+                gwangBak = i < payout.gwangBakPerLoser.Count && payout.gwangBakPerLoser[i],
+                piBak = i < payout.piBakPerLoser.Count && payout.piBakPerLoser[i],
+                dokbak = i == dokbakIdx,
+            });
         }
-        return parts.Count > 0 ? string.Join(" · ", parts) : null;
+        return rows;
     }
 
     /// <summary>2026-09-08 — "연출과 팝업이 뒤죽박죽" 점검으로 추가.
@@ -5091,10 +5198,10 @@ public partial class GoStop3PGame : MonoBehaviour
     /// 결과 오버레이가 먼저 뜨고(같은 프레임에 동기로 진행) 완성 이펙트가
     /// 그 위에 0.3초쯤 뒤늦게 겹쳐서 "팝업이 뜨고 나서 연출이 나온다"는
     /// 신고와 정확히 같은 증상이 났다. `showAction`은 그 분기의
-    /// `ui?.ShowOverlay(...)`(및 시점을 맞춰야 하는 `HostAutoRestartSeq`
-    /// 시작 등 화면과 바로 연결된 후속 동작)를 그대로 담은 클로저다 —
-    /// 네트워크 브로드캐스트처럼 화면과 무관한 동작은 이 안에 안 넣고
-    /// 예전처럼 즉시 실행한다.</summary>
+    /// <see cref="GoStopResultOverlay.Show"/> 호출(및 시점을 맞춰야 하는
+    /// `HostAutoRestartSeq` 시작 등 화면과 바로 연결된 후속 동작)을 그대로
+    /// 담은 클로저다 — 네트워크 브로드캐스트처럼 화면과 무관한 동작은 이
+    /// 안에 안 넣고 예전처럼 즉시 실행한다.</summary>
     void ShowResultOverlayDeferred(System.Action showAction)
     {
         if (pendingSetEffectCount == 0) { showAction(); return; }
@@ -5112,10 +5219,30 @@ public partial class GoStop3PGame : MonoBehaviour
     // 정산 제외" 규칙이 총통에도 그대로 걸려서(총통은 아직 한 턴도 안
     // 돈 시점이라 승자·패자 전원의 captured가 항상 비어 있다) 지급액이
     // 항상 0으로 나왔다 — isChongtong=true인 호출부만 그 예외를 끈다.
+    /// <summary>2026-09-13(아이템2) — 판이 끝난 순간 필드에 남아있는 카드를
+    /// 전부 흑백으로 죽인다("이제 의미 없는 패"라는 시각 신호). 다음 판
+    /// 딜링(<c>ClearBoardForDealing</c>)이 이 GameObject들을 통째로 파괴하고
+    /// 새로 그리므로 별도 원복 로직이 필요 없다 — 흑백 상태가 다음 판으로
+    /// 새는 일 자체가 구조적으로 불가능하다.</summary>
+    void ApplyGameOverFieldGrayscale()
+    {
+        foreach (var c in field)
+        {
+            var slot = FieldSlotTransform(c);
+            if (slot == null) continue;
+            var cardGo = slot.Find(c.spriteName);
+            if (cardGo == null) continue;
+            var art = cardGo.transform.Find("Art");
+            if (art == null) continue;
+            GoStopFX.ApplyDeadTone(art.GetComponent<Graphic>(), true);
+        }
+    }
+
     void EndGame(int winnerSeat, int? fixedBaseScore = null, int extraMultiplier = 1, bool isChongtong = false)
     {
         state = State.GameOver;
         Time.timeScale = 1f; // "결과 넘기기"로 배속 중이었다면 결과가 나온 이 시점에 정상 속도로 복귀
+        ApplyGameOverFieldGrayscale();
 
 
 
@@ -5144,7 +5271,7 @@ public partial class GoStop3PGame : MonoBehaviour
             // 2026-08-26: 나가리 이펙트 — 여기 한 곳에서만 불러도 나가리로
             // 끝나는 모든 경로(점수 미달·필드 4장 등)가 자동으로 커버된다.
             FireNagari();
-            string nagariSub = $"아무도 {CaptureLine}점을 못 넘겼습니다 · 다음 판 판돈 {stakeMultiplier}배";
+            string nagariSub = $"아무도 {CaptureLine}점을 못 넘겼습니다\n다음 판 판돈 {stakeMultiplier}배";
             if (isNetworkHost)
             {
                 // 2026-09-05(사용자 확인) — 네트워크 대전은 "다시 시작"
@@ -5154,14 +5281,18 @@ public partial class GoStop3PGame : MonoBehaviour
                 // 같은 문구로 카운트다운만(연출용) 보여준다.
                 ShowResultOverlayDeferred(() =>
                 {
-                    ui?.ShowOverlay(new Color(.6f, .6f, .6f), "나가리", "-", nagariSub, "타이틀", GoToTitle);
-                    StartCoroutine(HostAutoRestartSeq(nagariSub));
+                    resultOverlay?.Show(new Color(.6f, .6f, .6f), "나가리", "-", null,
+                        null, null, null, false, false, false, null, null, nagariSub,
+                        "타이틀", GoToTitle);
+                    StartCoroutine(HostAutoRestartSeq());
                 });
             }
             else
             {
                 ShowResultOverlayDeferred(() =>
-                    ui?.ShowOverlay(new Color(.6f, .6f, .6f), "나가리", "-", nagariSub, "다시 시작", NewGame, "타이틀", GoToTitle));
+                    resultOverlay?.Show(new Color(.6f, .6f, .6f), "나가리", "-", null,
+                        null, null, null, false, false, false, null, null, nagariSub,
+                        "다시 시작", NewGame, "타이틀", GoToTitle));
             }
             if (isNetworkHost)
             {
@@ -5238,6 +5369,19 @@ public partial class GoStop3PGame : MonoBehaviour
         bool downgrade = CanDowngrade(bankruptSeats);
         string bankruptNames = bankruptSeats.Count > 0 ? string.Join(", ", bankruptSeats.Select(SeatName)) : null;
 
+        // 2026-09-13(아이템8) — 파산한 AI 캐릭터(플레이어 자신은 리셋 후 계속
+        // 하므로 대상이 아니다)의 상태박스 위에 회색 재가 흩날리는 연출.
+        // ApplyDowngrade가 이후 좌석을 재배치하기 *전*(SlotOf가 아직 원래
+        // 번호를 가리킬 때)에 미리 트리거해야 정확한 자리에 뜬다.
+        foreach (var s in bankruptSeats)
+        {
+            if (s == PLAYER_SEAT) continue;
+            int slot = SlotOf(s);
+            if (slot < 0 || statusBoxRefs[slot] == null) continue;
+            var ashCanvas = GoStopCanvasRoot();
+            GoStopFX.PlayRetirementAsh(ashCanvas, ashCanvas.InverseTransformPoint(statusBoxRefs[slot].position));
+        }
+
         // 2026-08-24(design.md §49.4 네트워크 확장) — 판 도중 재접속 유예를
         // 넘겨 영구 이탈이 확정된 좌석(permaGoneNetworkSeat)이 있으면, 이
         // 판이 끝나는 시점에 그 좌석을 뺀 채로 압축한다. 파산 다운그레이드와
@@ -5286,22 +5430,29 @@ public partial class GoStop3PGame : MonoBehaviour
         // PLAYER_STARTING_MONEY로 리셋했으므로 이 delta는 "리셋 후"
         // 기준이 된다 — 아래에서 별도 파산 문구로 구분한다.)
         int myDelta = money[PLAYER_SEAT] - pendingMoneyBefore[PLAYER_SEAT];
-        string myDeltaStr = myDelta == 0 ? "변동 없음" : (myDelta > 0 ? $"+{myDelta:N0}원" : $"{myDelta:N0}원");
-        string moneyLine = $"이번 판 {myDeltaStr} · 내 머니 {money[PLAYER_SEAT]:N0}원";
-        // 2026-09-07(사용자 요청) — "누가 왜 얼마 냈는지, 누가 얼마를 받았는지"가
-        // 안 보인다는 지적으로 sub를 여러 줄로 확장했다. ScoreDetailPopup(점수
-        // 상세 버튼)이 이미 항목별 전체 근거를 카드 실물까지 보여주므로, 여기서는
-        // 그걸 중복하지 않고 한눈에 훑을 압축 요약만 담는다 — 이 sub 문자열
-        // 하나를 6개 ShowOverlay 호출부(나가리 없는 승리 분기 전부)가 공유한다.
-        var subLines = new List<string>();
-        if (dokbakIdx >= 0) subLines.Add($"{SeatName(loserSeats[dokbakIdx])} 독박");
-        string multiplierLine = BuildOverlayMultiplierLine(payout);
-        if (!string.IsNullOrEmpty(multiplierLine)) subLines.Add(multiplierLine);
-        string breakdownLine = BuildOverlayBreakdownLine(payout, loserSeats);
-        if (!string.IsNullOrEmpty(breakdownLine)) subLines.Add(breakdownLine);
-        if (winnerSeat != PLAYER_SEAT) subLines.Add($"{SeatName(winnerSeat)} 총 +{actualTotalReceived:N0}원 획득");
-        subLines.Add(moneyLine);
-        string sub = string.Join("\n", subLines);
+        // 2026-09-12(사용자 요청) — 결과화면도 획득=초록/손실=빨강 규칙 적용.
+        string myDeltaStr = myDelta == 0 ? "변동 없음" : HwatuTheme.MoneyColored(myDelta, myDelta > 0 ? $"+{myDelta:N0}원" : $"{myDelta:N0}원");
+        string myBalanceStr = $"잔액 {money[PLAYER_SEAT]:N0}원";
+
+        // 2026-09-13 전면 재설계 — 예전엔 이 아래 전부가 평문 sub 하나를
+        // 조립해서 GoStopUIManager의 정적 Overlay에 넘겼는데("내 정보"와
+        // "다른 유저 정보"가 안 갈리고 "(피박)" 텍스트 태그뿐이라 지적받음),
+        // 이제 GoStopResultOverlay가 구조화된 데이터를 직접 받아 실제
+        // 배지·행·칩 UI로 그린다 — 이 rows/chips 하나를 6개 분기가 공유한다.
+        int myLoserIdx = winnerSeat != PLAYER_SEAT ? loserSeats.IndexOf(PLAYER_SEAT) : -1;
+        bool myGwangBak = myLoserIdx >= 0 && myLoserIdx < payout.gwangBakPerLoser.Count && payout.gwangBakPerLoser[myLoserIdx];
+        bool myPiBak = myLoserIdx >= 0 && myLoserIdx < payout.piBakPerLoser.Count && payout.piBakPerLoser[myLoserIdx];
+        bool myDokbak = myLoserIdx >= 0 && myLoserIdx == dokbakIdx;
+        var otherRows = BuildResultRows(payout, loserSeats, winnerSeat, actualTotalReceived, dokbakIdx);
+        var multiplierChips = BuildMultiplierChips(payout);
+
+        void ShowRich(string primaryLabel, System.Action primaryAction, string secondaryLabel = null, System.Action secondaryAction = null,
+            string tertiaryLabel = null, System.Action tertiaryAction = null, string extraNote = null) =>
+            resultOverlay?.Show(col, title, finalScore.ToString(), null,
+                "나", myDeltaStr, myBalanceStr, myGwangBak, myPiBak, myDokbak,
+                otherRows, multiplierChips, null,
+                primaryLabel, primaryAction, secondaryLabel, secondaryAction, tertiaryLabel, tertiaryAction,
+                extraNote: extraNote);
 
         ui?.SetScore(money[PLAYER_SEAT]); // 상단 HUD의 SCORE는 판점이 아니라 내 보유 머니를 보여준다(사용자 요청)
         if (permaGoneSeats.Count > 0 && !networkDowngrade)
@@ -5309,9 +5460,8 @@ public partial class GoStop3PGame : MonoBehaviour
             // 압축해도 2명 미만이 남는다 — 더 이어갈 수 없다(design.md
             // §49.4 "방 폭파"). §50.2 확장 전의 OnGuestLeftDuringGame
             // 즉시-종료 동작을 그대로 재사용한다.
-            sub += $" · {permaGoneNames} 연결이 끊겨 더 이상 진행할 수 없습니다";
-            ShowResultOverlayDeferred(() =>
-                ui?.ShowOverlay(col, title, finalScore.ToString(), sub, "타이틀", GoToTitle)); // "다시 시작" 없음
+            string note = $"{permaGoneNames} 연결이 끊겨 더 이상 진행할 수 없습니다";
+            ShowResultOverlayDeferred(() => ShowRich("타이틀", GoToTitle, extraNote: note)); // "다시 시작" 없음
             GoStopNetLobby.Instance?.BroadcastToGuests(
                 new GoStopNetMessage { type = GoStopNetMessage.Type.Bye, text = $"{permaGoneNames} 연결이 끊겨 게임을 종료합니다." });
         }
@@ -5337,14 +5487,14 @@ public partial class GoStop3PGame : MonoBehaviour
                 GoStopNetLobby.Instance?.SendToSeat(kv.Value, GoStopNetMessage.SeatReassignMsg(kv.Value, SEATS));
             }
 
-            sub += $" · {permaGoneNames} 연결이 끊겨 퇴장 — 남은 {SEATS}명으로 계속합니다";
+            string note = $"{permaGoneNames} 연결이 끊겨 퇴장 — 남은 {SEATS}명으로 계속합니다";
             // networkDowngrade는 permaGoneSeats가 isNetworkHost일 때만
             // 채워지므로(위 계산부 참고) 이 분기는 항상 네트워크 호스트다
             // — "다시 시작" 버튼 없이 3초 자동 재시작으로 통일한다.
             ShowResultOverlayDeferred(() =>
             {
-                ui?.ShowOverlay(col, title, finalScore.ToString(), sub, "타이틀", GoToTitle, "점수 상세", ShowScoreDetail);
-                StartCoroutine(HostAutoRestartSeq(sub));
+                ShowRich("타이틀", GoToTitle, "점수 상세", ShowScoreDetail, extraNote: note);
+                StartCoroutine(HostAutoRestartSeq());
             });
         }
         else if (downgrade)
@@ -5352,15 +5502,13 @@ public partial class GoStop3PGame : MonoBehaviour
             // 표시 문자열은 다 만들었으니 이제 실제로 좌석을 재배치한다 —
             // 이 아래로는 SEATS/좌석 번호가 이미 새 구성이다.
             ApplyDowngrade(bankruptSeats);
-            sub += $" · {bankruptNames} 잔액을 모두 잃어 퇴장 — 남은 {SEATS}명으로 계속합니다";
-            ShowResultOverlayDeferred(() => ui?.ShowOverlay(col, title, finalScore.ToString(), sub,
-                "다시 시작", NewGame, "타이틀", GoToTitle, "점수 상세", ShowScoreDetail));
+            string note = $"{bankruptNames} 잔액을 모두 잃어 퇴장 — 남은 {SEATS}명으로 계속합니다";
+            ShowResultOverlayDeferred(() => ShowRich("다시 시작", NewGame, "타이틀", GoToTitle, "점수 상세", ShowScoreDetail, extraNote: note));
         }
         else if (bankruptSeats.Count > 0)
         {
-            sub += $" · {bankruptNames} 잔액을 모두 잃어 이 판을 끝으로 세션을 종료합니다";
-            ShowResultOverlayDeferred(() =>
-                ui?.ShowOverlay(col, title, finalScore.ToString(), sub, "타이틀", GoToTitle)); // "다시 시작" 없음
+            string note = $"{bankruptNames} 잔액을 모두 잃어 이 판을 끝으로 세션을 종료합니다";
+            ShowResultOverlayDeferred(() => ShowRich("타이틀", GoToTitle, extraNote: note)); // "다시 시작" 없음
         }
         else if (isNetworkHost)
         {
@@ -5368,14 +5516,13 @@ public partial class GoStop3PGame : MonoBehaviour
             // 대전이면 "다시 시작" 버튼 없이 3초 뒤 자동으로 다음 판.
             ShowResultOverlayDeferred(() =>
             {
-                ui?.ShowOverlay(col, title, finalScore.ToString(), sub, "타이틀", GoToTitle, "점수 상세", ShowScoreDetail);
-                StartCoroutine(HostAutoRestartSeq(sub));
+                ShowRich("타이틀", GoToTitle, "점수 상세", ShowScoreDetail);
+                StartCoroutine(HostAutoRestartSeq());
             });
         }
         else
         {
-            ShowResultOverlayDeferred(() => ui?.ShowOverlay(col, title, finalScore.ToString(), sub,
-                "다시 시작", NewGame, "타이틀", GoToTitle, "점수 상세", ShowScoreDetail));
+            ShowResultOverlayDeferred(() => ShowRich("다시 시작", NewGame, "타이틀", GoToTitle, "점수 상세", ShowScoreDetail));
         }
 
         if (isNetworkHost)
@@ -5402,21 +5549,21 @@ public partial class GoStop3PGame : MonoBehaviour
     /// 안의 <see cref="GuestAutoRestartCountdownSeq"/>가 같은 문구로 카운트
     /// 다운만(순수 연출용, NewGame 호출 없음) 보여준다 — 프레임 단위로
     /// 정확히 안 맞아도 무해하다(실제 재시작은 다음 StateSync로 온다).</summary>
-    IEnumerator HostAutoRestartSeq(string baseSub)
+    IEnumerator HostAutoRestartSeq()
     {
         for (int remain = 3; remain >= 1; remain--)
         {
-            ui?.SetOverlaySub($"{baseSub}\n{remain}초 후 자동으로 다음 판을 시작합니다");
+            resultOverlay?.SetFooterNote($"{remain}초 후 자동으로 다음 판을 시작합니다");
             yield return new WaitForSeconds(1f);
         }
         NewGame();
     }
 
-    IEnumerator GuestAutoRestartCountdownSeq(string baseSub)
+    IEnumerator GuestAutoRestartCountdownSeq()
     {
         for (int remain = 3; remain >= 1; remain--)
         {
-            ui?.SetOverlaySub($"{baseSub}\n{remain}초 후 자동으로 다음 판이 시작됩니다");
+            resultOverlay?.SetFooterNote($"{remain}초 후 자동으로 다음 판이 시작됩니다");
             yield return new WaitForSeconds(1f);
         }
     }

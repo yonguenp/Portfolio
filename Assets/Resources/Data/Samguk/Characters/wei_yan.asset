@@ -1,0 +1,25 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 114d2db584ce843f6a364df214eda9b5, type: 3}
+  m_Name: wei_yan
+  m_EditorClassIdentifier: Assembly-CSharp::SamgukDefense.SamgukCharacterData
+  id: wei_yan
+  displayName: "\uC704\uC5F0"
+  star: 3
+  baseHP: 305
+  baseAttack: 29
+  baseDefense: 10
+  baseAttackSpeed: 1
+  baseMoveSpeed: 2.6
+  baseAttackRange: 1.2
+  tintColor: {r: 0.25, g: 0.55, b: 0.35, a: 1}
+  icon: {fileID: 21300000, guid: b2bf1a87b494740bab465ebd3c0948b9, type: 3}

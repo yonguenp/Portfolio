@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using DG.Tweening;
 
 /// <summary>
 /// 좌석 정보 박스(닉네임/고+점수/금액/상태아이콘) 프리팹 뷰 —
@@ -65,31 +66,36 @@ public class GoStopStatusBoxView : MonoBehaviour
 
     /// <summary>이 뷰가 표시할 모델을 구독한다 — 컨트롤러가 슬롯당 한 번만
     /// 부르면 된다(멱등: 같은 모델을 다시 Bind해도 무해). 바인딩 즉시
-    /// 모델의 현재 값으로 한 번 그린다(다음 실제 변경까지 기다리지 않음).</summary>
+    /// 모델의 현재 값으로 한 번 그린다(다음 실제 변경까지 기다리지 않음) —
+    /// 이 최초 렌더는 애니메이션 없이 즉시 반영한다(게임을 새로 시작할
+    /// 때마다 0원에서 카운트업되는 것처럼 보이면 안 되므로).</summary>
     public void Bind(GoStopSeatStatus status)
     {
         if (bound == status) return;
-        if (bound != null) bound.Changed -= Render;
+        if (bound != null) bound.Changed -= OnChangedAnimated;
         bound = status;
         if (bound != null)
         {
-            bound.Changed += Render;
-            Render(bound);
+            bound.Changed += OnChangedAnimated;
+            Render(bound, animateMoney: false);
         }
     }
 
+    void OnChangedAnimated(GoStopSeatStatus s) => Render(s, animateMoney: true);
+
     void OnDestroy()
     {
-        if (bound != null) bound.Changed -= Render;
+        if (bound != null) bound.Changed -= OnChangedAnimated;
+        moneyTween?.Kill();
     }
 
     /// <summary>모델이 알려준 최신 값으로 화면을 다시 그린다 — 이 뷰의
     /// 유일한 "쓰기" 경로. 아래 SetXxx들은 전부 이 안에서만 불린다.</summary>
-    void Render(GoStopSeatStatus s)
+    void Render(GoStopSeatStatus s, bool animateMoney)
     {
         if (nameText) nameText.text = s.Name;
         ApplyTurnState(s.Highlight);
-        if (moneyText) moneyText.text = s.MoneyText;
+        RenderMoney(s.Money, s.MoneyVisible, animateMoney);
         if (goScoreText) goScoreText.text = s.GoScoreText;
         SetDim(s.Dim);
         if (s.BadgesHidden)
@@ -105,6 +111,37 @@ public class GoStopStatusBoxView : MonoBehaviour
         SetCountBadge(false, Mathf.Min(s.PpeokCount, 2), PpeokDotColor);
         SetMoneyDelta(s.MoneyDelta);
     }
+
+    // 2026-09-13(카운팅 애니메이션) — "보유 금액이 늘고 줄 때 딱딱해
+    // 보인다"는 요청. shownMoney는 "지금 화면 숫자가 실제로 얼마인지"를
+    // 추적한다(애니메이션 도중이면 그 순간 진행값) — 다음 변경이 왔을 때
+    // 항상 "지금 눈에 보이는 값"에서 이어서 출발해야 두 변경이 짧은
+    // 간격으로 겹쳐도 자연스럽다.
+    int shownMoney;
+    bool moneyShown; // 한 번이라도 렌더된 적 있는지 — false면 첫 렌더(애니메이션 스킵 대상)
+    Tween moneyTween;
+
+    void RenderMoney(int target, bool visible, bool animate)
+    {
+        if (!moneyText) return;
+        moneyText.gameObject.SetActive(visible);
+        if (!visible) { moneyTween?.Kill(); moneyShown = false; return; }
+        if (!animate || !moneyShown || shownMoney == target)
+        {
+            moneyTween?.Kill();
+            shownMoney = target;
+            moneyShown = true;
+            moneyText.text = FormatMoney(shownMoney);
+            return;
+        }
+        moneyTween?.Kill();
+        int from = shownMoney;
+        moneyTween = DOTween.To(() => from, v => { from = v; shownMoney = v; moneyText.text = FormatMoney(v); }, target, 0.6f)
+            .SetEase(Ease.OutCubic)
+            .OnComplete(() => shownMoney = target);
+    }
+
+    static string FormatMoney(int amount) => $"{amount:N0}원";
     [SerializeField] Image background;
     [SerializeField] RectTransform nameRect;
     [SerializeField] TextMeshProUGUI nameText;
@@ -258,6 +295,10 @@ public class GoStopStatusBoxView : MonoBehaviour
     {
         riskIconBg[index].color = active ? activeBg : DimBg;
         riskIconFg[index].color = active ? activeFg : DimFg;
+        // 2026-09-13(아이템3) — 위험 배지가 켜지면 은은한 샤이니 스윕을
+        // 반복시켜 눈길을 끈다. 꺼지면 자동으로 멈춘다(SetRiskShinyPulse가
+        // active=false일 때 필터를 None으로 되돌림).
+        GoStopFX.SetRiskShinyPulse(riskIconBg[index], active);
     }
 
     /// <summary>흔들기/뻑 카운트 배지 — 점 <paramref name="count"/>개를

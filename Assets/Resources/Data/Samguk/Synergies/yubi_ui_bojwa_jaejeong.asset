@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 733f06df3b6b840bf967a05c409c350c, type: 3}
+  m_Name: yubi_ui_bojwa_jaejeong
+  m_EditorClassIdentifier: Assembly-CSharp::SamgukDefense.SamgukSynergyData
+  id: yubi_ui_bojwa_jaejeong
+  displayName: "\uC720\uBE44\uC758 \uBCF4\uC88C(\uC7AC\uC815)"
+  requiredCharacterIds:
+  - mi_zhu
+  - liu_bei
+  effectType: 6
+  effectValue: 0.15
+  description: "\uBBF8\uCD95\uC774 \uAC00\uC0B0\uC744 \uD480\uC5B4 \uAD70\uC790\uAE08\uC744
+    \uB304\uB2E4."
