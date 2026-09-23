@@ -1,0 +1,112 @@
+.root {
+    flex-grow: 1;
+}
+
+.panel {
+    position: absolute;
+    background-color: rgba(18, 20, 26, 0.78);
+    border-radius: 10px;
+    padding: 12px;
+}
+
+.top-left {
+    top: 16px;
+    left: 16px;
+}
+
+.stat {
+    color: rgb(235, 235, 240);
+    font-size: 18px;
+    -unity-font-style: bold;
+    margin-bottom: 4px;
+}
+
+.stat-money {
+    color: rgb(240, 200, 90);
+    margin-bottom: 0;
+}
+
+.hint-panel {
+    top: 16px;
+    left: 50%;
+    translate: -50% 0;
+    display: none;
+}
+
+.info-panel {
+    top: 16px;
+    right: 16px;
+    width: 240px;
+    display: none;
+}
+
+.stat-sub {
+    color: rgba(235, 235, 240, 0.85);
+    font-size: 14px;
+    margin-bottom: 4px;
+}
+
+.info-close-button {
+    margin-top: 6px;
+    height: 32px;
+    border-radius: 6px;
+    background-color: rgb(60, 64, 74);
+    color: rgb(235, 235, 240);
+    border-width: 1px;
+    border-color: rgb(90, 95, 108);
+}
+
+.bottom-bar {
+    bottom: 16px;
+    left: 50%;
+    translate: -50% 0;
+    flex-direction: row;
+    background-color: rgba(18, 20, 26, 0.6);
+}
+
+.build-button {
+    width: 140px;
+    height: 52px;
+    font-size: 15px;
+    -unity-font-style: bold;
+    border-radius: 8px;
+    background-color: rgb(60, 64, 74);
+    color: rgb(235, 235, 240);
+    border-width: 2px;
+    border-color: rgb(90, 95, 108);
+}
+
+.build-button-active {
+    background-color: rgb(70, 150, 90);
+    border-color: rgb(120, 210, 140);
+}
+
+.avenue-button {
+    width: 110px;
+    margin-left: 8px;
+}
+
+.avenue-button-active {
+    background-color: rgb(90, 90, 190);
+    border-color: rgb(140, 140, 230);
+}
+
+.demolish-button {
+    width: 90px;
+    margin-left: 8px;
+}
+
+.demolish-button-active {
+    background-color: rgb(180, 70, 70);
+    border-color: rgb(230, 120, 120);
+}
+
+.pause-button {
+    width: 100px;
+    margin-left: 8px;
+}
+
+.pause-button-active {
+    background-color: rgb(190, 140, 50);
+    border-color: rgb(230, 180, 90);
+}
