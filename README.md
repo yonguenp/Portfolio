@@ -218,6 +218,18 @@ Cocos Creator MCP와 Claude Code를 활용해 하루 만에 타워 디펜스 게
 
 ---
 
+### 4. Claude Code R&D 아이디어 프로토 게임 모음
+
+> Unity Cli · Claude Code
+
+유니티와 클로드 코드를 이용해 아이디어가 떠오를때마다 미니게임을 추가하고있는 프로젝트입니다.<br>
+디자인적 퀄리티보다는 로직구성 및 AI 보조 개발 등을 테스트 중입니다.
+
+> [코드 및 결과물 보기] (https://github.com/yonguenp/Portfolio/tree/main/unitywithclaude)
+> [웹 플레이] (https://yonguenp.github.io/Portfolio/unitywithclaude/)
+
+---
+
 ## 영상 링크
 
 ### 메타토이드래곤즈사가 - 샌드박스 네트워크
