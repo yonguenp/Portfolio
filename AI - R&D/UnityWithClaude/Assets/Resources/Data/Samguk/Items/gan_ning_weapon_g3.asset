@@ -1,0 +1,48 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6c5c6abd8114845fc807798e3384755b, type: 3}
+  m_Name: gan_ning_weapon_g3
+  m_EditorClassIdentifier: Assembly-CSharp::SamgukDefense.SamgukItemData
+  id: gan_ning_weapon_g3
+  displayName: "\uCCA0\uD658"
+  itemType: 0
+  ownerCharacterId: gan_ning
+  upgradesTo: {fileID: 11400000, guid: 908a530ba8b8a4672a13d4136a4f595c, type: 2}
+  grade: 3
+  bonusHP: 0
+  bonusAttack: 0
+  bonusDefense: 0
+  bonusAttackSpeed: 0
+  bonusMoveSpeed: 0
+  bonusAttackRange: 0
+  attackType: 0
+  targetType: 2
+  weaponDamage: 36
+  weaponDamageAttackScaling: 0.3
+  weaponCooldown: 0.94
+  weaponRange: 1.3000001
+  projectileSpeed: 14
+  splashRadius: 1.2
+  knockbackDistance: 0
+  stunChance: 0
+  stunDuration: 0
+  bleedChance: 0.255
+  bleedDamagePerTick: 5.3
+  bleedDuration: 2.25
+  bleedTickInterval: 0.5
+  hpRegenPerSecond: 0
+  lifestealPercent: 0
+  dashCooldown: 0
+  dashDistance: 0
+  dropRate: 0.0033333332
+  tintColor: {r: 1, g: 1, b: 1, a: 1}
+  icon: {fileID: -4071954532356011574, guid: 5b69dc30a555049b5b7302f5376cd1fc, type: 3}

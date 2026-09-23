@@ -1,0 +1,25 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 114d2db584ce843f6a364df214eda9b5, type: 3}
+  m_Name: sima_yi
+  m_EditorClassIdentifier: Assembly-CSharp::SamgukDefense.SamgukCharacterData
+  id: sima_yi
+  displayName: "\uC0AC\uB9C8\uC758"
+  star: 6
+  baseHP: 440
+  baseAttack: 42
+  baseDefense: 22
+  baseAttackSpeed: 0.85
+  baseMoveSpeed: 2.1
+  baseAttackRange: 2.1
+  tintColor: {r: 0.18039216, g: 0.2901961, b: 0.41960785, a: 1}
+  icon: {fileID: 21300000, guid: f93691474a9de4ea583cc3af4a1458a2, type: 3}

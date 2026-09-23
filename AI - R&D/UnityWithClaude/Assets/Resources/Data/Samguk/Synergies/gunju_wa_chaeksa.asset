@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 733f06df3b6b840bf967a05c409c350c, type: 3}
+  m_Name: gunju_wa_chaeksa
+  m_EditorClassIdentifier: Assembly-CSharp::SamgukDefense.SamgukSynergyData
+  id: gunju_wa_chaeksa
+  displayName: "\uAD70\uC8FC\uC640 \uCC45\uC0AC"
+  requiredCharacterIds:
+  - cao_cao
+  - sima_yi
+  effectType: 5
+  effectValue: 0.15
+  description: "\uC18D\uC744 \uC54C \uC218 \uC5C6\uB294 \uB450 \uC9C0\uB7B5\uAC00\uC758
+    \uB3D9\uD589."

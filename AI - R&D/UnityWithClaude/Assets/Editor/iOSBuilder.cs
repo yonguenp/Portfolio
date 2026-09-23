@@ -25,6 +25,7 @@ public static class iOSBuilder
         "Assets/Scenes/Game1010Scene.unity",
         "Assets/Scenes/GameBrickBreakerScene.unity",
         "Assets/Scenes/GoStop3PScene.unity",
+        "Assets/Scenes/SamgukDefenseScene.unity",
     };
 
     [MenuItem("Build/Build iOS")]
@@ -69,7 +70,7 @@ public static class iOSBuilder
         var summary = report.summary;
 
         if (summary.result == BuildResult.Succeeded)
-            Debug.Log($"iOS build succeeded: {summary.totalSize / 1024 / 1024} MB");
+            Logger.Log($"iOS build succeeded: {summary.totalSize / 1024 / 1024} MB");
         else
             Debug.LogError($"iOS build FAILED: {summary.totalErrors} errors");
     }

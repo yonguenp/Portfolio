@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 733f06df3b6b840bf967a05c409c350c, type: 3}
+  m_Name: goyukjigye
+  m_EditorClassIdentifier: Assembly-CSharp::SamgukDefense.SamgukSynergyData
+  id: goyukjigye
+  displayName: "\uACE0\uC721\uC9C0\uACC4"
+  requiredCharacterIds:
+  - huang_gai
+  - zhou_yu
+  effectType: 1
+  effectValue: 0.2
+  description: "\uC81C \uBAB8\uC744 \uB358\uC838 \uC801\uC744 \uC18D\uC774\uB294
+    \uACC4\uCC45."

@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 733f06df3b6b840bf967a05c409c350c, type: 3}
+  m_Name: chok_ui_mungwan_jaejeong
+  m_EditorClassIdentifier: Assembly-CSharp::SamgukDefense.SamgukSynergyData
+  id: chok_ui_mungwan_jaejeong
+  displayName: "\uCD09\uC758 \uBB38\uAD00(\uC7AC\uC815)"
+  requiredCharacterIds:
+  - sun_qian
+  - mi_zhu
+  - yi_ji
+  effectType: 6
+  effectValue: 0.1
+  description: "\uACF3\uAC04\uC744 \uCC44\uC6B0\uB294 \uC138 \uBB38\uC2E0."

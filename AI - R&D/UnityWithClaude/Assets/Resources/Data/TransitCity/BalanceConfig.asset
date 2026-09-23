@@ -1,0 +1,57 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7734d87d15e764304afa8e44bebf971d, type: 3}
+  m_Name: BalanceConfig
+  m_EditorClassIdentifier: TransitCity::TransitCity.BalanceConfig
+  gridWidth: 24
+  gridHeight: 18
+  cellSize: 2
+  tickIntervalSeconds: 2
+  startingMoney: 5000
+  taxPerCapitaPerTick: 0.6
+  roadUpkeepPerTilePerTick: 0.2
+  maxUsefulDistance: 26
+  residentialPotentialThreshold: 0.15
+  houseCapacity: 20
+  populationGrowthRatePerTick: 0.22
+  wealthDriftPerTick: 0.04
+  laborShortageShrinkRate: 0.3
+  satisfactionDriftPerTick: 0.08
+  satisfactionLeaveThreshold: 0.1
+  satisfactionLeaveRatePerTick: 0.3
+  vacancyDemolishTicks: 15
+  patrolRadiusBonus: 4
+  abandonGracePeriodTicks: 3
+  abandonDecayRatePerTick: 0.25
+  redevelopGoodSatisfaction: 0.6
+  redevelopBadSatisfaction: 0.3
+  redevelopStreakTicks: 8
+  densityTier2Capacity: 35
+  densityTier3Capacity: 55
+  commercialServiceRadius: 6
+  commercialTier2Population: 60
+  commercialTier3Population: 150
+  industrialLandValueRelocateThreshold: 0.6
+  industrialLandValueRadius: 4
+  commercialUnlockPopulation: 25
+  commercialUnlockSatisfaction: 0.35
+  infraPriorityThreshold: 0.15
+  utilityRadius: 8
+  utilityRadiusPerTierBonus: 6
+  essentialUtilityRadius: 14
+  essentialUtilityRadiusPerTierBonus: 13
+  utilityTier2Population: 40
+  utilityTier3Population: 100
+  infraDissatisfactionWeight: 0.5
+  utilityCapPerPopulation: 40
+  maxDecorativeCars: 12
+  carSpeed: 3.5

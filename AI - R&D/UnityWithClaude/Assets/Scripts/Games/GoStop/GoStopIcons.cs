@@ -14,7 +14,7 @@ using TMPro;
 /// </summary>
 public static class GoStopIcons
 {
-    static Sprite bellCache, bombCache, dungCache;
+    static Sprite bellCache, bombCache;
 
     // 2026-08-18: "Kenney board-game-icons 팩을 추가했으니 매칭되는 아이콘을
     // 교체해달라" 요청 — 절차적으로 그린 것보다 실제 아트가 있으면 그쪽을
@@ -144,45 +144,10 @@ public static class GoStopIcons
         return bombCache;
     }
 
-    /// <summary>뻑 — 똥 모양(위로 갈수록 좁아지는 3단 스웰).</summary>
-    public static Sprite Dung(int size = 64)
-    {
-        if (dungCache != null) return dungCache;
-        var body = new Color32(120, 84, 50, 255);
-        var hi = new Color32(158, 116, 72, 255);
-
-        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
-        var px = new Color32[size * size];
-        // 아래→위로 갈수록 작아지는 원 3개를 겹쳐서 소용돌이 실루엣을 낸다
-        var lobes = new (Vector2 c, float r)[]
-        {
-            (new Vector2(size * 0.5f, size * 0.78f), size * 0.30f),
-            (new Vector2(size * 0.5f, size * 0.54f), size * 0.24f),
-            (new Vector2(size * 0.5f, size * 0.32f), size * 0.16f),
-        };
-        for (int y = 0; y < size; y++)
-        for (int x = 0; x < size; x++)
-        {
-            float fx = x + 0.5f, fy = y + 0.5f;
-            var p = new Vector2(fx, fy);
-            float best = -1f;
-            foreach (var (c, r) in lobes)
-            {
-                float d = Vector2.Distance(p, c);
-                float a = r - d;
-                if (a > best) best = a;
-            }
-            if (best <= 0f) continue;
-            float upness = Mathf.Clamp01((size * 0.78f - fy) / (size * 0.6f));
-            var col = Color32.Lerp(body, hi, upness * 0.5f);
-            px[y * size + x] = new Color32(col.r, col.g, col.b, (byte)(Mathf.Clamp01(best + 1f) * 255f));
-        }
-        tex.SetPixels32(px); tex.Apply();
-        tex.hideFlags = HideFlags.HideAndDontSave;
-        dungCache = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f));
-        dungCache.hideFlags = HideFlags.HideAndDontSave;
-        return dungCache;
-    }
+    // 2026-09-12 정리: 뻑(똥) 아이콘을 절차적으로 그리던 Dung()은 죽은
+    // 코드였다 — 2026-09-06 세션에 GoStopComboIcons가 OpenMoji SVG(💩)로
+    // 교체하면서(원래는 Twemoji였다가 "이 프로젝트 톤과 안 맞는다"는
+    // 지적으로 재교체) 이 함수를 호출하는 곳이 없어졌다.
 
     /// <summary>글자 배지(피/光/멍/先/!) — 원형 배경 + 가운데 정렬 TMP 라벨.
     /// 폰트에 있는 일반 글리프라 텍스처에 구울 필요 없이 그냥 TMP로 그린다
@@ -207,55 +172,11 @@ public static class GoStopIcons
         return rt;
     }
 
-    /// <summary>흔들기/뻑 횟수 배지 — 사각 라벨("[흔듬]"/"[뻑]") + 그 뒤에
-    /// 작은 원 2개. 원은 기본 회색이고, <paramref name="count"/>만큼 왼쪽부터
-    /// <paramref name="dotColor"/>로 채워진다(최대 <paramref name="maxCount"/>,
-    /// 뻑은 3회째 즉시 승리라 2개까지만 있으면 충분하다는 사용자 확인 규칙).
-    /// 2026-08-19: "뻑 배지 마지막에 뭔지 모를 숫자만 떠 있다"는 신고로
-    /// 기존 원형 아이콘+구석 숫자 방식을 이걸로 교체했다.</summary>
-    public static RectTransform MakeCountBadge(Transform parent, Vector2 pos, string label, Color dotColor, int count, int maxCount = 2)
-    {
-        const float labelW = 52f, dotSize = 13f, dotGap = 4f, pad = 4f;
-        float totalW = labelW + pad + maxCount * dotSize + (maxCount - 1) * dotGap;
-        var rt = HwatuUI.MakeRect("CountBadge_" + label, parent, new Vector2(totalW, 34f), pos);
-
-        var bg = rt.gameObject.AddComponent<Image>();
-        bg.sprite = HwatuShapes.RoundedRect(64, 10);
-        bg.type = Image.Type.Sliced;
-        bg.color = new Color(0.106f, 0.133f, 0.267f, 0.95f); // #1B2244 — 표면색
-        bg.raycastTarget = false;
-
-        var labelGo = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
-        labelGo.transform.SetParent(rt, false);
-        var labelRT = labelGo.GetComponent<RectTransform>();
-        labelRT.anchorMin = new Vector2(0f, 0.5f); labelRT.anchorMax = new Vector2(0f, 0.5f);
-        labelRT.pivot = new Vector2(0f, 0.5f);
-        labelRT.sizeDelta = new Vector2(labelW, 34f);
-        labelRT.anchoredPosition = new Vector2(2f, 0f);
-        var labelTxt = labelGo.GetComponent<TextMeshProUGUI>();
-        labelTxt.text = $"[{label}]";
-        labelTxt.fontSize = 15f;
-        labelTxt.color = new Color(1f, 1f, 1f, 0.9f);
-        labelTxt.font = HwatuTheme.FontBold;
-        labelTxt.alignment = TextAlignmentOptions.Center;
-
-        for (int i = 0; i < maxCount; i++)
-        {
-            var dot = new GameObject("Dot" + i, typeof(RectTransform), typeof(Image));
-            dot.transform.SetParent(rt, false);
-            var dotRT = dot.GetComponent<RectTransform>();
-            dotRT.anchorMin = new Vector2(0f, 0.5f); dotRT.anchorMax = new Vector2(0f, 0.5f);
-            dotRT.pivot = new Vector2(0f, 0.5f);
-            dotRT.sizeDelta = new Vector2(dotSize, dotSize);
-            dotRT.anchoredPosition = new Vector2(labelW + pad + i * (dotSize + dotGap), 0f);
-            var dotImg = dot.GetComponent<Image>();
-            dotImg.sprite = HwatuShapes.Circle(24);
-            dotImg.color = i < count ? dotColor : new Color(1f, 1f, 1f, 0.25f);
-            dotImg.raycastTarget = false;
-        }
-
-        return rt;
-    }
+    // 2026-09-12 정리: 흔들기/뻑 횟수 배지를 매번 코드로 새로 그리던
+    // MakeCountBadge()는 죽은 코드였다 — 2026-08-24 세션에 이 배지가
+    // GoStopStatusBoxView 프리팹의 고정 슬롯(shakeDots[]/ppeokDots[])으로
+    // 옮겨가면서, 이제는 GoStopStatusBoxView.SetCountBadge가 기존 Image를
+    // 색만 바꿔 재사용한다(재생성 안 함) — 이 함수를 부를 곳이 없어졌다.
 
     /// <summary>도형 스프라이트(흔들기/폭탄/뻑) 배지 — 원형 배경 위에 아이콘
     /// 스프라이트를 얹는다. <see cref="MakeTextIcon"/>과 같은 크기 규약을

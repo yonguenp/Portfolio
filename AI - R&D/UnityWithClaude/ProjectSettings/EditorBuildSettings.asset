@@ -29,6 +29,12 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/GoStop3PScene.unity
     guid: a5a5cea2955e9414cb284af470d0e29f
+  - enabled: 1
+    path: Assets/Scenes/SamgukDefenseScene.unity
+    guid: d2a1d28a8f97e4b0ca0a15ac88d31e44
+  - enabled: 1
+    path: Assets/Scenes/TransitCityScene.unity
+    guid: 785189d9063854e7d86f22c5924850ad
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 2bcd2660ca9b64942af0de543d8d7100, type: 3}
   m_UseUCBPForAssetBundles: 0

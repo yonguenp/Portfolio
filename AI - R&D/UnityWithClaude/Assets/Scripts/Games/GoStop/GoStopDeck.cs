@@ -48,7 +48,7 @@ public static class GoStopDeck
         // 10월 단풍: 열끗, 청단, 피×2
         Tane(10); Ddi(10, DdiColor.Cheong); Pi(10, "Kasu_1"); Pi(10, "Kasu_2");
         // 11월 오동: 광, 피×2 + 쌍피×1 — 열끗·띠 없음
-        Gwang(11); Pi(11, "Kasu_1"); Pi(11, "Kasu_2"); Pi(11, "Kasu_3", val: 2);
+        Gwang(11); Pi(11, "Kasu_1"); Pi(11, "Kasu_2", val: 2); Pi(11, "Kasu_3");
         // 12월 비: 광, 열끗(제비 — 고도리 아님), 띠(색 없음, "비띠"), 쌍피×1
         Gwang(12); Tane(12); Ddi(12, DdiColor.None); Pi(12, "Kasu", val: 2);
 
@@ -80,8 +80,17 @@ public static class GoStopDeck
         if (templateBySprite != null) return;
         templateBySprite = new Dictionary<string, HwatuCard>();
         foreach (var c in BuildFull()) templateBySprite[c.spriteName] = c;
-        templateBySprite["Joker_1"] = new HwatuCard(0, HwatuKind.Pi, "Joker_1", piValue: 1, isJoker: true);
-        templateBySprite["Joker_2"] = new HwatuCard(0, HwatuKind.Pi, "Joker_2", piValue: 2, isJoker: true);
+        // 2026-09-12 버그 수정 — 조커 3종 도입(홀피/쌍피/쓰리피) 당시 두 가지
+        // 실수가 섞였다: (1) "Joker_2" 키가 두 번 할당돼 double(쌍피) 템플릿이
+        // triple(쓰리피)에 덮여 사라졌다. (2) 딕셔너리 키("Joker_1"/"Joker_2")가
+        // GoStopRules.BuildFullDeckWithJokers가 실제로 만드는 카드의
+        // spriteName("Joker_single"/"Joker_double"/"Joker_triple")과 달라서,
+        // Decode(networkEncoded)가 실제 조커의 spriteName으로 조회하면 항상
+        // 못 찾아 null을 돌려줬다(네트워크 대전에서 조커가 통째로 유실됨).
+        // 키를 실제 spriteName과 정확히 맞췄다.
+        templateBySprite["Joker_single"] = new HwatuCard(0, HwatuKind.Pi, "Joker_single", piValue: 1, isJoker: true);
+        templateBySprite["Joker_double"] = new HwatuCard(0, HwatuKind.Pi, "Joker_double", piValue: 2, isJoker: true);
+        templateBySprite["Joker_triple"] = new HwatuCard(0, HwatuKind.Pi, "Joker_triple", piValue: 3, isJoker: true);
     }
 
     /// <summary>카드를 네트워크로 실어 보낼 문자열로 인코딩한다. 9월 열끗

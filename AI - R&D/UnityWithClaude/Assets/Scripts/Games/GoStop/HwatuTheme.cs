@@ -31,6 +31,16 @@ public static class HwatuTheme
         return c;
     }
 
+    // 2026-09-12(사용자 요청) — "시스템 로그/결과화면 어디서든 돈을 획득한
+    // 건 초록, 잃은 건 빨강으로 통일". 이 프로젝트는 원래 "강조색은 하나만
+    // (Gold)" 원칙이지만, 손익 표시만은 이미 GoStopStatusBoxView.SetMoneyDelta
+    // 에서 DarkGreen/HwatuRed 2색 규칙이 확립돼 있었다(2026-09-08) — 돈이
+    // 오간 텍스트를 다루는 모든 곳(채팅 로그·결과 오버레이·점수 상세)이
+    // 그 규칙을 그대로 공유하도록 여기 헬퍼 하나로 모았다. amount==0(변동
+    // 없음)은 중립이라 색을 안 입힌다 — text를 그대로 돌려준다.
+    public static string MoneyColored(long amount, string text) =>
+        amount == 0 ? text : $"<color=#{ColorUtility.ToHtmlStringRGB(amount > 0 ? DarkGreen : HwatuRed)}>{text}</color>";
+
     const string FontPath = "TextMesh Pro/Fonts/GmarketSans SDF Medium";
     const string FontBoldPath = "TextMesh Pro/Fonts/GmarketSans SDF Bold";
 

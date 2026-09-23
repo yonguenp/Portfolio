@@ -31,6 +31,13 @@
       원칙. 2026-09-06 — "겹침" 자체는 문제가 아니라 텍스트 시인성이
       문제였다는 사용자 정정으로, 레이아웃을 나누는 대신 아웃라인을
       강화(width 4, 진한 색)해서 어떤 카드 배경 위에서도 읽히게 했다.
+    - ChongtongRow/ChongtongTitleLabel: 총통(딜 직후 같은 달 4장으로 즉시
+      승리) 전용. CardRow(완성)처럼 화면 전체를 채우는 큰 카드지만, 제목이
+      카드 아래 별도 구간이 아니라 **카드와 완전히 같은 영역에 겹쳐서**
+      (AltRow/AltTitleLabel과 같은 원칙 — z-order상 나중에 그려져 카드
+      앞에 뜬다) "[N월 총통]\n{이름}" 두 줄이 화면 정중앙에 큼직하게
+      뜬다(2026-09-08 사용자 요청). -unity-text-align: middle-center가
+      두 줄 텍스트 블록 전체를 라벨 높이 안에서 세로로도 가운데 정렬한다.
     -->
     <ui:VisualElement name="Dim" picking-mode="Ignore"
         style="position: absolute; left: 0; top: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0);" />
@@ -38,6 +45,10 @@
         style="position: absolute; left: 0; right: 0; top: 0; bottom: 170; align-items: center; justify-content: center; flex-direction: row;" />
     <ui:Label name="TitleLabel" picking-mode="Ignore"
         style="position: absolute; left: 0; right: 0; bottom: 70; height: 90; -unity-text-align: middle-center; font-size: 52; -unity-font-style: bold; opacity: 0; -unity-text-outline-width: 3; -unity-text-outline-color: rgba(20, 14, 4, 0.85); color: rgb(255, 255, 255);" />
+    <ui:VisualElement name="ChongtongRow" picking-mode="Ignore"
+        style="position: absolute; left: 0; right: 0; top: 0; bottom: 0; align-items: center; justify-content: center; flex-direction: row;" />
+    <ui:Label name="ChongtongTitleLabel" picking-mode="Ignore"
+        style="position: absolute; left: 0; right: 0; top: 0; bottom: 0; -unity-text-align: middle-center; font-size: 56; -unity-font-style: bold; opacity: 0; white-space: normal; -unity-text-outline-width: 4; -unity-text-outline-color: rgba(15, 10, 3, 0.92); color: rgb(255, 234, 160);" />
     <ui:VisualElement name="AltRow" picking-mode="Ignore"
         style="position: absolute; left: 0; right: 0; top: 0; height: 220; align-items: center; justify-content: center; flex-direction: row;" />
     <ui:Label name="AltTitleLabel" picking-mode="Ignore"

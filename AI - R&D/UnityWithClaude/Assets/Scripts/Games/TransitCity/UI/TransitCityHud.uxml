@@ -1,0 +1,47 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements">
+    <Style src="TransitCityHud.uss" />
+    <ui:VisualElement name="root" class="root" picking-mode="Ignore">
+        <ui:VisualElement name="top-left-panel" class="panel top-left" picking-mode="Ignore">
+            <ui:Label name="day-label" text="Day 0" class="stat" />
+            <ui:Label name="population-label" text="인구 0" class="stat" />
+            <ui:Label name="money-label" text="자금 0원" class="stat stat-money" />
+        </ui:VisualElement>
+        <ui:VisualElement name="hint-panel" class="panel hint-panel" picking-mode="Ignore">
+            <ui:Label name="build-hint-label" text="" class="stat-sub" />
+        </ui:VisualElement>
+        <ui:VisualElement name="info-panel" class="panel info-panel">
+            <ui:Label name="info-kind" text="건물 정보" class="stat" />
+            <ui:Label name="info-coord" text="" class="stat-sub" />
+            <ui:Label name="info-population" text="" class="stat-sub" />
+            <ui:Label name="info-wealth" text="" class="stat-sub" />
+            <ui:Label name="info-satisfaction" text="" class="stat-sub" />
+            <ui:Label name="info-tier" text="" class="stat-sub" />
+            <ui:Label name="info-labor" text="" class="stat-sub" />
+            <ui:Label name="info-water" text="" class="stat-sub" />
+            <ui:Label name="info-sewage" text="" class="stat-sub" />
+            <ui:Label name="info-power" text="" class="stat-sub" />
+            <ui:Label name="info-police" text="" class="stat-sub" />
+            <ui:Label name="info-fire" text="" class="stat-sub" />
+            <ui:Label name="info-education" text="" class="stat-sub" />
+            <ui:Label name="info-medical" text="" class="stat-sub" />
+            <ui:Label name="info-consumption" text="" class="stat-sub" />
+            <ui:Label name="info-jobs" text="" class="stat-sub" />
+            <ui:Label name="info-leisure" text="" class="stat-sub" />
+            <ui:Label name="info-hygiene" text="" class="stat-sub" />
+            <ui:Label name="info-transit" text="" class="stat-sub" />
+            <ui:Button name="info-close-button" text="닫기" class="info-close-button" />
+        </ui:VisualElement>
+        <ui:VisualElement name="intersection-panel" class="panel info-panel">
+            <ui:Label name="intersection-title" text="교차로" class="stat" />
+            <ui:Label name="intersection-current" text="" class="stat-sub" />
+            <ui:Button name="intersection-roundabout-button" text="로터리 건설" class="build-button" />
+            <ui:Button name="intersection-traffic-light-button" text="신호등 건설" class="build-button" />
+            <ui:Button name="intersection-close-button" text="닫기" class="info-close-button" />
+        </ui:VisualElement>
+        <ui:VisualElement name="bottom-bar" class="panel bottom-bar">
+            <ui:Button name="road-button" text="도로 건설" class="build-button" />
+            <ui:Button name="demolish-button" text="철거" class="build-button demolish-button" />
+            <ui:Button name="pause-button" text="일시정지" class="build-button pause-button" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

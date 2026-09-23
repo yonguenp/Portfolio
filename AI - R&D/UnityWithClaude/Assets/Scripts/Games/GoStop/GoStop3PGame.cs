@@ -71,6 +71,9 @@ public partial class GoStop3PGame : MonoBehaviour
     // 확인 규칙. SEATS==2일 때만 맞고 기준(7)을 쓴다 — GoStopRules.CAPTURE_LINE
     // (값은 7로 동일하지만 별개 상수)과는 별개다.
     int CaptureLine => SEATS == 2 ? 7 : 3;
+    // 2026-09-08(사용자 확인) — "마지막턴" 판정용 딜링 손패 장수(맞고 10,
+    // 3~4인 고스톱 7 — GoStopRules.DealNew/DealNew3P/DealNew4PFull과 일치).
+    int HandSizeLimit => SEATS == 2 ? 10 : 7;
     // 2026-08-19: 네트워크 대전용 — 게스트 기기는 실제로 1~3번 좌석을
     // 배정받으므로 더 이상 상수로 고정할 수 없다. 기본값 0은 기존
     // 싱글플레이·호스트(항상 좌석 0) 동작을 그대로 유지한다. SetSeatCount와
@@ -127,35 +130,112 @@ public partial class GoStop3PGame : MonoBehaviour
     /// 즉시 갱신한다 — `EndGame`이 좌석을 재배치(`ApplyDowngrade`)할 수도
     /// 있으므로, 그 이후(모든 분기가 합류하는 함수 맨 끝)에 한 번만
     /// 부른다.</summary>
+    // 2026-09-08(사용자 요청) — "게임에 입장하여 선 정하고 이후의 머니
+    // 변동량을 보고 싶다." 처음엔 금액 텍스트 옆에 괄호로 덧붙였다가,
+    // 사용자가 "괄호 대신 각 유저 statusbox의 ScoreRow 두번째 Sub(원래
+    // 광멍피 카운트를 보여주던 자리, Cap에서 다 보이니 굳이 필요없다)에
+    // 넣어달라"고 재요청 — 실제 표시는 GoStopStatusBoxView.SetMoneyDelta로
+    // 옮겼다(DrawBadgeStrip에서 호출). 여기 남은 건 순수 데이터(좌석별
+    // 세션 시작 잔액)뿐 — 2026-09-13: 금액 자체의 포맷("{0:N0}원")도
+    // GoStopStatusBoxView로 옮겼다(카운팅 애니메이션을 돌리려면 뷰가
+    // 원값(int)을 알아야 해서, 문자열로 미리 포맷해 넘기던 FormatMoneyText는
+    // 없앴다 — seatStatus[slot].Money에 int를 그대로 대입한다). 세션 시작
+    // 잔액은 그 좌석의 정보가 처음 그려지는 순간 지연 캡처한다(좌석별로
+    // 독립) — 오프라인/호스트는 이미 money[]가 최종값이라 그대로 맞고,
+    // 네트워크 게스트는 첫 호출 시점엔 이미 첫 StateSync를 받아 진짜 값으로
+    // 덮어써진 뒤이므로 세 경로 전부에서 안전하다. ApplyDowngrade(파산
+    // 좌석 압축)에서 money[]/seatCharName[]과 같은 방식으로 같이 압축한다 —
+    // 안 하면 압축 후 새 인덱스가 압축 전 다른 사람의 기준 잔액을 가리켜
+    // 변동량이 엉뚱하게 나온다.
+    readonly bool[] sessionStartMoneyCaptured = new bool[SEATS_MAX];
+    readonly int[] sessionStartMoney = new int[SEATS_MAX];
+
+    /// <summary>그 좌석의 세션 시작(선 정하기 이후) 대비 누적 머니 변동.
+    /// 기준선은 정상적으로는 <see cref="CaptureSessionStartMoneyAllSeats"/>가
+    /// 전 좌석을 한 번에 캡처해 둔다 — 이 함수의 지연 캡처는 그 훅이 어떤
+    /// 이유로든 아직 안 불린 경우(예: 네트워크 게스트 경로)를 위한
+    /// 안전망일 뿐이다.</summary>
+    int MoneyDeltaFor(int seat)
+    {
+        if (!sessionStartMoneyCaptured[seat]) { sessionStartMoney[seat] = money[seat]; sessionStartMoneyCaptured[seat] = true; }
+        return money[seat] - sessionStartMoney[seat];
+    }
+
+    // 2026-09-08 버그 수정 — "방의 유저 총 변동금액 합산이 0이 안 된다"는
+    // 신고로 발견. MoneyDeltaFor의 옛 "좌석별 독립 지연 캡처"는 그 좌석의
+    // 상태박스가 처음 그려지는 순간(=DrawBadgeStrip이 처음 불리는 순간)을
+    // 기준선으로 삼았는데, 쉬는 좌석(광팔이/참가포기)은 그 판 동안
+    // DrawBadgeStrip 자체가 안 불린다(FillSlot이 sittingOutSeat==seat일
+    // 때 DrawBadgeStrip 호출 전에 return한다) — 그 좌석이 나중에 실제로
+    // 참가하는 판이 돼서야 처음 캡처되는데, 그 사이 광팔이로 이미
+    // money[seat]가 움직인 뒤라 "세션 시작"이 아니라 "이미 한두 번 돈이
+    // 오간 뒤"가 기준선이 돼 버린다 — 이 좌석의 delta가 실제보다 작게
+    // 잡혀서 전체 합이 0이 안 됐다. 고침: 전 좌석을 딜링 시작 전(광팔이
+    // 정산보다 먼저) 같은 순간에 한꺼번에 캡처한다 — 쉬는 좌석이든
+    // 아니든 전부 같은 시점 기준이 되므로 이후 어떤 이체가 일어나도
+    // 합계가 항상 0으로 맞는다.
+    void CaptureSessionStartMoneyAllSeats()
+    {
+        for (int s = 0; s < SEATS_MAX; s++)
+        {
+            if (sessionStartMoneyCaptured[s]) continue; // 이미 캡처됨(다운그레이드로 이어받은 값 등) — 안 건드림
+            sessionStartMoney[s] = money[s];
+            sessionStartMoneyCaptured[s] = true;
+        }
+    }
+
+    /// <summary>화면 금액 숫자 + 세션 시작 대비 변동만 즉시 갱신한다 —
+    /// RebuildUI() 전체를 다시 돌리는 무거운 경로 없이, 돈이 실제로 움직인
+    /// 그 순간(광팔이·첫뻑/연뻑/첫따닥/첫뻑먹기·최종 정산) 바로 반영하기
+    /// 위한 가벼운 헬퍼. 2026-09-08(사용자 재신고 — "광팔고 난 금액은
+    /// 업데이트 안되네... 돈이변할때는 계속 업데이트해줘야될거 같아") —
+    /// 예전엔 EndGame(최종 정산) 끝에서만 이걸 불렀는데, 광팔이/
+    /// ApplyMoneyBonus는 money[]를 직접 바꾸고 코인 날아가는 연출
+    /// (FlyMoneyFX)만 재생할 뿐 화면 텍스트는 안 건드려서, 다음 우연한
+    /// RebuildUI가 돌 때까지 숫자가 그대로 멈춰 있었다. 슬롯 4개
+    /// 전부(쉬는 좌석 포함 — money가 바뀌는 데 굳이 참가 여부를 가릴
+    /// 이유가 없다) 여기서 한 번에 반영한다.</summary>
     void RefreshMoneyLabelsOnly()
     {
         for (int slot = 0; slot < 4; slot++)
         {
             int seat = slot == 0 ? (slotSeat[0] < 0 ? PLAYER_SEAT : slotSeat[0]) : slotSeat[slot];
-            if (seat < 0 || moneyText[slot] == null) continue;
-            moneyText[slot].text = $"{money[seat]:N0}원";
+            if (seat < 0) continue;
+            var s = seatStatus[slot];
+            s.Money = money[seat];
+            s.MoneyDelta = MoneyDeltaFor(seat);
+            s.NotifyIfDirty();
         }
     }
 
     void RefreshStatusBoxIdentitiesBeforeDeal()
     {
+        // 이 함수는 매 판 딜링 시작 전, 광팔이 정산보다도 먼저, 전 좌석에
+        // 대해 예외 없이 불린다 — "세션 시작 잔액"을 전 좌석이 같은 순간에
+        // 캡처하기에 가장 이르고 가장 확실한 지점이다(위 CaptureSessionStartMoneyAllSeats
+        // 주석 참고).
+        CaptureSessionStartMoneyAllSeats();
         for (int slot = 0; slot < 4; slot++)
         {
             int seat = slot == 0 ? (slotSeat[0] < 0 ? PLAYER_SEAT : slotSeat[0]) : slotSeat[slot];
-            if (statusText[slot] == null) continue;
+            if (statusBoxView[slot] == null) continue;
+            var s = seatStatus[slot];
             if (seat < 0)
             {
-                statusText[slot].text = "";
-                if (moneyText[slot] != null) moneyText[slot].text = "";
-                if (goScoreText[slot] != null) goScoreText[slot].text = "";
-                statusBoxView[slot]?.HideAllBadges();
+                s.Name = "";
+                s.MoneyVisible = false;
+                s.GoScoreText = "";
+                s.BadgesHidden = true;
+                s.NotifyIfDirty();
                 continue;
             }
-            statusText[slot].text = seat == PLAYER_SEAT ? "나" : SeatName(seat);
-            if (moneyText[slot] != null) moneyText[slot].text = $"{money[seat]:N0}원";
-            if (goScoreText[slot] != null) goScoreText[slot].text = "";
-            statusBoxView[slot]?.HideAllBadges();
-            statusBoxView[slot]?.SetDim(false);
+            s.Name = seat == PLAYER_SEAT ? "나" : SeatName(seat);
+            s.MoneyVisible = true;
+            s.Money = money[seat];
+            s.GoScoreText = "";
+            s.BadgesHidden = true;
+            s.Dim = false;
+            s.NotifyIfDirty();
         }
     }
 
@@ -266,6 +346,8 @@ public partial class GoStop3PGame : MonoBehaviour
         var survivorTier = new List<GoStopTier>();
         var survivorSkills = new List<GoStopSkillProfile>();
         var survivorLossStreak = new List<int>();
+        var survivorSessionStartMoney = new List<int>();
+        var survivorSessionStartCaptured = new List<bool>();
         for (int s = 0; s < SEATS; s++)
         {
             if (bankruptSeats.Contains(s)) continue;
@@ -275,6 +357,8 @@ public partial class GoStop3PGame : MonoBehaviour
             survivorTier.Add(seatTier[s]);
             survivorSkills.Add(seatSkills[s]);
             survivorLossStreak.Add(lossStreak[s]);
+            survivorSessionStartMoney.Add(sessionStartMoney[s]);
+            survivorSessionStartCaptured.Add(sessionStartMoneyCaptured[s]);
         }
         int newSeats = survivorMoney.Count;
         for (int i = 0; i < newSeats; i++)
@@ -287,6 +371,9 @@ public partial class GoStop3PGame : MonoBehaviour
             seatCharName[i] = survivorCharName[i]; seatTier[i] = survivorTier[i];
             // 2026-09-07 — 스킬 프로필·연패 기록도 같은 이유로 같이 압축한다.
             seatSkills[i] = survivorSkills[i]; lossStreak[i] = survivorLossStreak[i];
+            // 2026-09-08 — 세션 머니 변동 기준선도 같은 이유로 같이 압축한다.
+            sessionStartMoney[i] = survivorSessionStartMoney[i];
+            sessionStartMoneyCaptured[i] = survivorSessionStartCaptured[i];
         }
         SetSeatCount(newSeats);
         dealerSeat = 0; // 다운그레이드 직후엔 선을 단순하게 나로 리셋한다(누가 이겼는지와 무관하게)
@@ -322,7 +409,7 @@ public partial class GoStop3PGame : MonoBehaviour
     readonly Dictionary<int, int> ppeokCauser = new(); // 월 → 뻑을 만든 좌석
     // 뻑 무더기에 같이 묻힌 보너스피 — 그 뻑을 나중에 해소하는 사람이
     // ppeokCauser의 피 뺏기와 함께 이 카드도 가져간다(사용자 확인 규칙).
-    readonly Dictionary<int, HwatuCard> ppeokBonusPi = new();
+    readonly Dictionary<int, List<HwatuCard>> ppeokBonusPi = new();
     // 비상 시스템 — (좌석, 세트 인덱스[0=고도리 1=홍단 2=초단 3=청단]) 조합이
     // 이번 판에 이미 한 번 발동했는지. 세트 카드는 (피와 달리) 획득 이후
     // 다시 뺏기지 않으므로 have==2에서 3으로만 진행하지 되돌아가지
@@ -357,6 +444,15 @@ public partial class GoStop3PGame : MonoBehaviour
     // 플래그라 선 말고는 이 보너스를 받을 기회 자체가 없었다 — 좌석별로
     // 독립 추적한다.
     readonly bool[] playedFirstHandCard = new bool[SEATS_MAX];
+    // 2026-09-08(사용자 확인) — "마지막턴" 판정은 손패가 빈 순간(h.Count==0)
+    // 이 아니라 이 좌석의 정확히 몇 번째 개인 턴인가(HandSizeLimit번째)로
+    // 해야 한다. 폭탄(손패 3장을 한 턴에 소모)이나 조커(같은 턴 안에서
+    // 카드를 이어서 냄, 턴이 안 끝남)로 손패가 일찍 비어도 "마지막턴"
+    // 자체는 안 당겨져야 한다 — 그 경우 손이 빈 뒤 이어지는 덱-only
+    // 턴들 중 정확히 HandSizeLimit번째에서 뒤늦게 적용된다. PlaySeq/
+    // DeckOnlySeq가 각각 "진짜 턴 하나"를 시작할 때만 +1(조커 자체를
+    // 처리하는 PlayJokerFromHandSeq는 턴을 안 끝내므로 증가 안 시킴).
+    readonly int[] personalTurnCount = new int[SEATS_MAX];
     int currentSeat;
 
     // 광팔이 — 매판 시작마다 4명이 화투 한 장씩 뽑아 가장 높은 패를 뽑은
@@ -469,29 +565,34 @@ public partial class GoStop3PGame : MonoBehaviour
     readonly Dictionary<HwatuCard, int> fieldSlotAssign = new Dictionary<HwatuCard, int>();
     // 2026-08-18: "정보슬롯을 쫌스럽게 쓰지 말고 닉네임 한줄·고점수 한줄·
     // 금액·상태 아이콘 한줄로 넓고 크게" 요청으로 한 줄짜리 statusText를
-    // 4단으로 나눴다(이름 위주 statusText는 유지하고 이름으로 그대로 씀,
-    // 고+점수·금액을 별도 텍스트로 분리, 아이콘 줄 Y는 badgeRowY에 명시적으로
-    // 저장해서 실제 렌더 높이 기준으로 계산 — 예전엔 이 위치를 텍스트 rect에서
-    // "대충 추정"해서 뒷패 영역과 겹쳤다).
+    // 여러 줄로 나눴다. statusText/moneyText는 이제도 필요하다 — FlyMoneyFX
+    // 등 애니메이션이 이 Text들의 실제 world position을 착지/출발 지점으로
+    // 읽는다(순수 기하 조회, 아래 seatStatus 옵저버 대상이 아니다).
+    // 2026-09-12: 텍스트를 직접 쓰던 goScoreText[]/statusBoxImg[]/badgeArea[]는
+    // 옵저버 패턴 도입으로 전부 죽은 캐시가 돼서 제거했다(GoStop3PGame이
+    // 더 이상 뷰의 내부 컴포넌트를 직접 참조하지 않는다 — seatStatus만
+    // 채우면 GoStopStatusBoxView.Render가 알아서 반영한다).
     TextMeshProUGUI[] statusText = new TextMeshProUGUI[SEATS_MAX];   // 닉네임(+선 표시는 배지로 이동)
-    TextMeshProUGUI[] goScoreText = new TextMeshProUGUI[SEATS_MAX];  // "N고 M점"
     TextMeshProUGUI[] moneyText = new TextMeshProUGUI[SEATS_MAX];    // 코인 아이콘 + 금액
     // 2026-09-04: "우측상단에 현재 점당 얼마짜리 게임인지 표시 추가했어"
     // — 사용자가 씬에 직접 만든 Info(ContentArea/Info/Label (1)) 표시.
     // 나가리로 stakeMultiplier가 바뀔 때마다 RebuildUI에서 갱신한다.
     TextMeshProUGUI pointPriceText;
-    // 2026-08-20: "화살표 대신 상태창 자체를 노란색으로" 요청 — 이 배경
-    // Image를 FillSlot에서 좌석 차례일 때 색을 바꾼다.
-    Image[] statusBoxImg = new Image[SEATS_MAX];
-    // 2026-08-19: 상태 아이콘 전용 컨테이너 — 정보 패널을 좌(닉네임/고점수/
-    // 금액)/우(아이콘) 반분할로 재설계하며 추가했다. 2026-08-24부터는
-    // GoStopStatusBoxView 프리팹이 배지 6종을 고정 슬롯으로 미리 갖고
-    // 있어서(아래 statusBoxView) 이 필드는 그 프리팹의 BadgeArea 자식을
-    // 그대로 가리키기만 한다 — 더 이상 ClearChildren 대상이 아니다.
-    RectTransform[] badgeArea = new RectTransform[SEATS_MAX];
-    // 2026-08-24: BuildInfoBlock이 인스턴스화한 프리팹 뷰 — DrawBadgeStrip이
-    // 이걸 통해 배지 상태(선/광박/멍박/피박/흔들기/뻑)만 갱신한다(재생성 안 함).
+    // 2026-08-24: BuildInfoBlock이 인스턴스화한 프리팹 뷰 — Configure(width)
+    // 같은 레이아웃(기하) 호출에만 쓰인다. 데이터 갱신은 더 이상 이 배열을
+    // 거치지 않는다 — 아래 seatStatus[slot]을 바꾸면 뷰가 알아서 반응한다
+    // (2026-09-12, 옵저버 패턴).
     GoStopStatusBoxView[] statusBoxView = new GoStopStatusBoxView[SEATS_MAX];
+
+    // 2026-09-12(옵저버 패턴 도입) — 좌석 정보 박스(닉네임/고+점수/금액/
+    // 배지)의 표시 데이터. 슬롯당 하나씩, 세션 내내 같은 인스턴스를 재사용
+    // 한다(BuildInfoBlock이 GoStopStatusBoxView.Bind로 한 번만 구독시켜
+    // 둔다). GoStop3PGame은 이제 이 모델의 프로퍼티만 채우고
+    // NotifyIfDirty()만 부르면 된다 — 뷰의 SetXxx 메서드를 더 이상 직접
+    // 호출하지 않는다(CLAUDE.md 2026-09-12 리뷰에서 "사용자가 옵저버
+    // 패턴이라 했지만 실제로는 아니었다"고 지적된 부분을 실제로 채운 것).
+    readonly GoStopSeatStatus[] seatStatus =
+        { new GoStopSeatStatus(), new GoStopSeatStatus(), new GoStopSeatStatus(), new GoStopSeatStatus() };
 
     // 팝업 7종 — 전부 Assets/Resources/Prefabs/GoStop/Popups/의 실제 .prefab
     // 에셋을 Instantiate해서 쓴다(2026-08-18 전환). ShakeConfirm/FieldChoice/
@@ -517,6 +618,14 @@ public partial class GoStop3PGame : MonoBehaviour
     // 승자와 패자 각각의 광박/피박 여부가 갈릴 수 있다(사용자 확인 규칙 —
     // 패자 개인 기준 판정) — 그래서 패자별 목록을 따로 담는다.
     ScoreDetailPopup scoreDetailPopup;
+    // 2026-09-13 — 게임오버 결과 화면. 예전엔 GoStopUIManager의 정적
+    // Overlay/Card(평문 하나에 다 우겨넣는 방식)를 썼는데, "내 정보/다른
+    // 유저 정보가 안 갈리고 (피박) 같은 텍스트 태그뿐이라 별로다"는 지적으로
+    // 다른 팝업들과 같은 "필요할 때 뜨는 진짜 팝업"으로 교체했다. 나가리
+    // 등은 plainSub만 넘기는 단순 모드로, 정산 정보(payout)가 있는 일반
+    // 승부는 내 정보 카드+다른 플레이어 행 목록+배율 칩을 갖춘 리치 모드로
+    // 연다 — 자세한 설계는 GoStopResultOverlay 클래스 문서 참고.
+    GoStopResultOverlay resultOverlay;
     GoStopRules.MultiPayout pendingPayout;
     int pendingWinnerSeat;
     List<int> pendingLoserSeats;
@@ -577,6 +686,34 @@ public partial class GoStop3PGame : MonoBehaviour
     // 획득패에서 옴, CAP_W/H / 손패에서 곧장 낸 조커 — HAND_W/H나
     // BACK_W/H)만 각 등록 지점에서 명시적으로 채운다.
     readonly Dictionary<HwatuCard, Vector2> flyFromSize = new();
+
+    // 2026-09-08 — "필드에서 먹은 패가 cap에 들어갈 때 어설픈 위치에
+    // 순간이동으로 뿅 하고 나타난다" 신고. 원인: 위 flyFrom 계열 3개는
+    // RebuildUI 끝에서 매번 Clear()된다("이번 리빌드에서 움직이는 카드"만
+    // 담는 용도) — 그런데 SlamToCap 애니메이션 자체는 최대 ~0.3~0.6초가
+    // 걸리는데, 한 턴 안에서 RebuildUI가 PLAY_STEP_DELAY(0.35초) 간격으로
+    // 여러 번 불릴 수 있다(예: 손패 캡처 배치 → 피뺏기 → 덱 캡처 배치가
+    // 전부 별도 RebuildUI). 앞선 캡처의 SlamToCap이 아직 날아가는 도중에
+    // 다음 RebuildUI가 그 Cap 존을 통째로 ClearChildren+다시 그리면,
+    // 목적지였던 "진짜" 카드(CanvasGroup alpha=0로 숨어서 고스트를 기다리던
+    // 것)가 파괴되고 flyFrom도 이미 비어 있어(그 카드는 이전 리빌드에서
+    // "이동 완료 처리"된 것으로 잘못 취급됨) 새로 그려지는 카드가 애니메이션
+    // 없이 즉시 나타난다 — 이게 "순간이동으로 뿅"의 정체다. 동시에 옛
+    // 고스트는 이미 사라진 목적지를 향해 계속 날아가다 SlamToCap 끝의
+    // `if (rt != null)` 가드로 조용히 무시되므로, 화면엔 "엉뚱한 자리로
+    // 날아가다 사라지는 고스트"와 "그 옆에 뜬금없이 팝업하는 진짜 카드"
+    // 둘 다 보인다("어설픈위치"+"순간이동" 두 증상이 사실은 하나의 원인).
+    //
+    // 고침: flyFrom과 달리 RebuildUI가 끝나도 안 지우는 별도 딕셔너리로
+    // "지금 이 카드를 향해 날아가는 중인 고스트"를 추적한다. 새 RebuildUI가
+    // 같은 카드를 다시 그릴 때 이 딕셔너리에 아직 살아있는 고스트가 있으면
+    // "정적 카드"로 취급하는 대신, 그 고스트의 현재 위치·크기를 그대로
+    // 이어받아 새 목적지로 다시 날아가게 한다(FillCapZone.MakeOne 참고) —
+    // 옛 고스트는 그 자리에서 즉시 파괴하고(SlamToCap의 기존
+    // `if (ghost == null) yield break;` 가드가 다음 프레임에 스스로
+    // 멈춰준다 — 옛 코루틴을 따로 안 건드려도 안전하다), 카드가 항상
+    // "지금 눈에 보이는 자리"에서 이어서 움직이지 순간이동하지 않는다.
+    readonly Dictionary<HwatuCard, RectTransform> capFlightGhosts = new();
 
     // 2026-09-06 — "카드가 뚝뚝 끊기게 움직인다" 신고(예: 내 턴이 아니다가
     // 내 턴이 될 때 손패가 y=-50에서 0으로 순간이동, 카드를 내서 손패가
@@ -733,7 +870,7 @@ public partial class GoStop3PGame : MonoBehaviour
         if (msg.type == GoStopNetMessage.Type.ChatLog)
         {
             if (isNetworkHost) HandleIncomingGuestChat(fromSeat, msg.text);
-            else LogLocalLine(msg.text, msg.boolValue);
+            else LogLocalLine(msg.text, msg.boolValue, msg.cardId);
             return;
         }
         if (!isNetworkGuest) return;
@@ -904,7 +1041,11 @@ public partial class GoStop3PGame : MonoBehaviour
         }
         else
         {
-            if (gameOverOverlayShown) ui?.HideOverlay();
+            // 2026-09-13(2차) — 게스트 쪽 게임오버 화면도 resultOverlay로
+            // 옮겨갔으므로 같이 닫는다(호스트 쪽 NewGameSeq()의 같은
+            // 수정과 대칭 — 안 그러면 호스트가 새 판을 시작해도 게스트
+            // 화면엔 결과 팝업이 계속 남는다).
+            if (gameOverOverlayShown) { ui?.HideOverlay(); resultOverlay?.Hide(); }
             gameOverOverlayShown = false;
         }
     }
@@ -985,17 +1126,23 @@ public partial class GoStop3PGame : MonoBehaviour
 
         if (snap.gameOverIsNagari)
         {
-            string nagariSub = $"아무도 {CaptureLine}점을 못 넘겼습니다 · 다음 판 판돈 {snap.gameOverStakeMultiplier}배";
-            ui?.ShowOverlay(new Color(.6f, .6f, .6f), "나가리", "-", nagariSub, "타이틀", GoToTitle);
-            StartCoroutine(GuestAutoRestartCountdownSeq(nagariSub));
+            string nagariSub = $"아무도 {CaptureLine}점을 못 넘겼습니다\n다음 판 판돈 {snap.gameOverStakeMultiplier}배";
+            resultOverlay?.Show(new Color(.6f, .6f, .6f), "나가리", "-", null,
+                null, null, null, false, false, false, null, null, nagariSub,
+                "타이틀", GoToTitle);
+            StartCoroutine(GuestAutoRestartCountdownSeq());
             return;
         }
 
         int winnerSeat = snap.gameOverWinnerSeat;
         string title = winnerSeat == PLAYER_SEAT ? "승리!" : $"{SeatName(winnerSeat)} 승리";
         Color col = winnerSeat == PLAYER_SEAT ? HwatuTheme.Gold : new Color(.55f, .55f, .60f);
+        // 게스트는 호스트처럼 패자별 광박/피박/배율 상세를 받지 않는다(현재
+        // StateSync에 그 정보가 안 실린다 — 알려진 한계) — 그래서 단순
+        // 모드(plainSub)로만 보여준다. "독박"만은 이미 예전부터 스냅샷에
+        // 있던 정보라 그대로 표시한다.
         string sub = snap.gameOverDokbakSeat >= 0
-            ? $"{SeatName(snap.gameOverDokbakSeat)} 독박 · 내 머니 {money[PLAYER_SEAT]:N0}원"
+            ? $"{SeatName(snap.gameOverDokbakSeat)} 독박\n내 머니 {money[PLAYER_SEAT]:N0}원"
             : $"내 머니 {money[PLAYER_SEAT]:N0}원";
         // gameOverRefilledSeats 필드명은 그대로 재사용하지만(스냅샷 구조체 변경
         // 회피), 2026-08-23부터는 "리필된 좌석"이 아니라 "파산해서 세션이
@@ -1003,14 +1150,17 @@ public partial class GoStop3PGame : MonoBehaviour
         // 세션이 완전히 끝나는 것이라(호스트도 자동 재시작을 안 한다)
         // 카운트다운을 안 띄운다.
         bool sessionEnding = snap.gameOverRefilledSeats != null && snap.gameOverRefilledSeats.Length > 0;
+        string extraNote = null;
         if (sessionEnding)
         {
             string names = string.Join(", ", snap.gameOverRefilledSeats.Select(s => SeatName(s)));
-            sub += $" · {names} 잔액을 모두 잃어 이 판을 끝으로 세션을 종료합니다";
+            extraNote = $"{names} 잔액을 모두 잃어 이 판을 끝으로 세션을 종료합니다";
         }
         ui?.SetScore(money[PLAYER_SEAT]);
-        ui?.ShowOverlay(col, title, snap.gameOverFinalScore.ToString(), sub, "타이틀", GoToTitle);
-        if (!sessionEnding) StartCoroutine(GuestAutoRestartCountdownSeq(sub));
+        resultOverlay?.Show(col, title, snap.gameOverFinalScore.ToString(), null,
+            null, null, null, false, false, false, null, null, sub,
+            "타이틀", GoToTitle, extraNote: extraNote);
+        if (!sessionEnding) StartCoroutine(GuestAutoRestartCountdownSeq());
     }
 
     /// <summary>필드 초이스/9월열끗/참가선언처럼 "지금 이 좌석 한 명만
@@ -1555,6 +1705,12 @@ public partial class GoStop3PGame : MonoBehaviour
         // 그 사이 뒤에서 뜬 팝업이 오버레이에 가려 아무 반응이 없는
         // 것처럼 보였다).
         ui?.HideOverlay();
+        // 2026-09-13(2차) — 게임오버 결과 화면이 GoStopUIManager의 정적
+        // Overlay에서 GoStopResultOverlay(진짜 팝업)로 옮겨가면서, 위
+        // ui?.HideOverlay()가 더 이상 이 화면을 안 닫는다 — 여기서
+        // 명시적으로 같이 닫아야 "다시 시작"을 눌러도 결과 화면이 안
+        // 사라지는 회귀가 안 생긴다.
+        resultOverlay?.Hide();
         Time.timeScale = 1f; // 새 판은 항상 정상 속도로 시작(결과 넘기기 배속 잔여 방지)
         if (skipResultBtn != null) skipResultBtn.gameObject.SetActive(false); // 딜링 중엔 지난 판 표시 잔상 없이(RebuildUI가 새로 판단해서 켠다)
 
@@ -1638,6 +1794,7 @@ public partial class GoStop3PGame : MonoBehaviour
             calledGo[s] = false;
             lastGoScore[s] = -1; // CAPTURE_LINE보다 항상 작게 — 첫 도달은 반드시 걸리게
             shookMonths[s].Clear();
+            personalTurnCount[s] = 0;
         }
 
         // 2026-08-23: "조커도 손패로 나와야 한다" 요청으로 딜링을 50장(48+조커2)
@@ -1777,7 +1934,7 @@ public partial class GoStop3PGame : MonoBehaviour
         // dualPi 카드 자체를 쌍피 계열로 친다. 지불은 딜러를 제외한
         // 2·3번째(나를 밀어낸 두 명) **각자**가 장당 100원씩(사용자 확인
         // 규칙 — 기존의 "활성 좌석 전원이 나눠 낸다"는 방식에서 교체).
-        bool CountsForGwangSale(HwatuCard c) => c.kind == HwatuKind.Gwang || c.piValue == 2 || c.dualPi || c.isJoker;
+        bool CountsForGwangSale(HwatuCard c) => c.kind == HwatuKind.Gwang || c.piValue >= 2 || c.dualPi || c.isJoker;
         var soldCards = hand[sittingOutSeat].Where(CountsForGwangSale).ToList();
         int sellableCount = soldCards.Count;
 
@@ -1800,6 +1957,7 @@ public partial class GoStop3PGame : MonoBehaviour
                 payAmounts[payer] = pay;
                 FlyMoneyFX(payer, sittingOutSeat, pay, "광팔이");
             }
+            RefreshMoneyLabelsOnly(); // 2026-09-08 — 광팔이 직후 즉시 화면 반영
             GoStopAudio.Instance?.Money();
             // 어떤 패로 팔았는지·총 얼마인지·누가 내는지를 화면에 직접
             // 보여준다 — 토스트 한 줄("광팔이! (N장)")만으로는 근거를 알 수
@@ -1829,11 +1987,14 @@ public partial class GoStop3PGame : MonoBehaviour
             if (GoStopRules.IsChongtong(hand[s]))
             {
                 Toast(s, "총통!");
-                FireChongtong(s);
+
+                FireChongtong(s, GoStopRules.FilterChongtong(hand[s]));
                 // 2026-08-26(사용자 확인) — 총통은 고정 3점으로 정산한다.
                 // 예전엔 extraMultiplier:4를 곱해 최종 12점이 나왔는데,
                 // 3점(배수 없음)이 맞는 값이었다.
-                EndGame(s, fixedBaseScore: 3);
+                // 2026-09-12 — isChongtong:true로 "캡처 0장 예외"를 꺼야
+                // 실제로 돈이 오간다(위 EndGame 주석 참고).
+                EndGame(s, fixedBaseScore: 3, isChongtong: true);
                 newGameStarting = false;
                 yield break;
             }
@@ -1862,6 +2023,9 @@ public partial class GoStop3PGame : MonoBehaviour
         if (currentSeat != PLAYER_SEAT) StartCoroutine(DelayedAiTurn(currentSeat));
         else if (isNetworkHost || isNetworkGuest) StartCoroutine(TurnPlayTimeoutSeq());
         newGameStarting = false;
+
+        skipResultBtn.interactable = true;
+        if (skipResultBtnLabel != null) skipResultBtnLabel.text = "결과 넘기기";
     }
 
     static void SortHand(List<HwatuCard> h) =>
@@ -1973,6 +2137,7 @@ public partial class GoStop3PGame : MonoBehaviour
             money[o] -= pay; money[seat] += pay;
             FlyMoneyFX(o, seat, pay, reason);
         }
+        RefreshMoneyLabelsOnly(); // 2026-09-08 — 첫뻑/연뻑/첫따닥/첫뻑먹기 등 직후 즉시 화면 반영
     }
 
     // ── 토스트 ───────────────────────────────────────────
@@ -1980,7 +2145,7 @@ public partial class GoStop3PGame : MonoBehaviour
     {
         ShowTimedToast((seat == PLAYER_SEAT ? "" : SeatName(seat) + " ") + label);
         GoStopAudio.Instance?.PlayForLabel(label);
-        ShowActionPopup(label);
+        ShowActionPopup(seat, label);
         // 채팅창 로그 — 여기서 다시 브로드캐스트하지 않는다(LogLocalLine,
         // AppendChatLine 아님). 이 이벤트는 바로 아래에서 EventMsg로 이미
         // 게스트에게 전달되고, 게스트는 그걸 받아 이 Toast() 함수를 자기
@@ -2023,7 +2188,7 @@ public partial class GoStop3PGame : MonoBehaviour
     static readonly Color MoneyEventColor = new Color(0.20f, 0.85f, 0.45f);
     static bool IsMoneyEventLabel(string label) => label == "첫뻑" || label == "연뻑" || label == "첫따닥" || label == "첫뻑먹기";
 
-    void ShowActionPopup(string label)
+    void ShowActionPopup(int seat, string label)
     {
         // "따닥"은 전용 프리팹을 새로 굽는 대신(2026-08-20) EffectJjok의
         // 구조(팝인·유지·페이드)를 그대로 재사용하고 Play()의 overrideColor로
@@ -2062,10 +2227,20 @@ public partial class GoStop3PGame : MonoBehaviour
         Vector2 local = canvasRoot.InverseTransformPoint(sourceWorldPos);
 
         bool moneyEvent = IsMoneyEventLabel(label);
+        // 2026-09-13(아이템9) — 연속 뻑(ppeokStreak)에 비례해 버스트를 키운다.
+        // "뻑 먹기"/"자뻑"(기존 뻑을 해소하는 사건)은 별개 개념이라 대상에서
+        // 뺀다 — ppeokStreak는 연속 *형성* 이벤트("뻑"/"첫뻑"/"연뻑")만 센다.
+        bool isFormationPpeok = label == "뻑" || label == "첫뻑" || label == "연뻑";
+        int streak = isFormationPpeok ? Mathf.Max(1, ppeokStreak[seat]) : 1;
         // 2026-08-19: "파티클 이펙트로 애니메이션을 좀 더 역동적으로" 요청 —
         // 텍스트 팝업과 같은 자리에 원형 파티클 버스트를 같이 터뜨린다.
         // 금전 이벤트는 살짝 더 화려하게(16개, 기본 12개보다 많이).
-        GoStopIcons.SpawnBurst(canvasRoot, local, moneyEvent ? MoneyEventColor : BurstColorForLabel(label), moneyEvent ? 16 : 12);
+        int burstCount = moneyEvent ? 16 : 12;
+        if (isFormationPpeok && streak >= 2) burstCount += (streak - 1) * 6;
+        GoStopIcons.SpawnBurst(canvasRoot, local, moneyEvent ? MoneyEventColor : BurstColorForLabel(label), burstCount);
+        // 연속 뻑(streak≥2)엔 기존 SpawnBurst 위에 진짜 UIParticle 버스트를
+        // 추가로 얹어서 "스트릭이 유지되고 있다"는 압박감을 누적시킨다.
+        if (isFormationPpeok && streak >= 2) GoStopFX.PlayStreakBurst(canvasRoot, local, streak);
 
         var fx = HwatuUI.InstantiateEffect<GoStopEffectPopup>(prefabName, canvasRoot);
         if (fx == null) return;
@@ -2807,6 +2982,10 @@ public partial class GoStop3PGame : MonoBehaviour
         var color = EmergencyColor("3광"); // 광 계열 톤
 
         GoStopIcons.SpawnBurst(canvasRoot, local, color, 30);
+        // 2026-09-13(아이템5) — 5광은 광 계열 중 최고 등급(15점)이라 특별히
+        // 필름컷 플래시를 더한다. 3광/4광/비삼광은 자주 나오는 편이라 플래시
+        // 없이 기존 연출(카드 슬램인+파티클)만 유지 — 5광에만 한 겹 더한다.
+        if (count >= 5) GoStopFX.PlayDramaticFlash(canvasRoot, color);
 
         var co = GoStopVectorEffect.Ensure().Play($"{SeatName(seat)}님이 {label} 완성!", color, gwangCards);
 
@@ -2815,14 +2994,16 @@ public partial class GoStop3PGame : MonoBehaviour
         return co;
     }
 
-    /// <summary>총통(딜 직후 같은 달 4장으로 즉시 승리) 전용 족보 이펙트 —
-    /// 예전엔 프리팹 없이 코드가 직접 금색 파티클만 뿌렸는데, 다른 족보
-    /// (고도리/홍단/초단/청단/광)와 같은 패턴으로 통일했다. 프리팹
-    /// (EffectChongtong)이 "총통!" 등 정적 문구·기본색을 담당하고, 코드는
-    /// 좌석 이름만 얹는다(FireAchievement류와 동일한 원칙). 사운드는
-    /// Toast(s, "총통!")가 이미 GoStopAudio.PlayForLabel을 거쳐
+    /// <summary>총통(딜 직후 같은 달 4장으로 즉시 승리) 전용 족보 이펙트.
+    /// 2026-09-08(사용자 요청) — "총통에 해당되는 패를 전면에 4장 svg로
+    /// 깔아주고 그 레이어 앞쪽에 가운데 큼직한 텍스트로 [N월 총통]\n누구누구,
+    /// 가운데 정렬로" — 예전 래스터 팝업(EffectChongtong)을 걷어내고 족보
+    /// 완성과 같은 벡터 카드 자산(GoStopVectorEffect)의 전용 트리
+    /// (ChongtongRow/ChongtongTitleLabel)로 교체했다. 파티클 버스트는
+    /// 그대로 유지 — 카드+텍스트와 별개의 부가 연출이라 안 건드렸다.
+    /// 사운드는 Toast(s, "총통!")가 이미 GoStopAudio.PlayForLabel을 거쳐
     /// Chongtong() 전용 음을 재생하므로 여기서 또 부르지 않는다.</summary>
-    void FireChongtong(int seat)
+    void FireChongtong(int seat, List<HwatuCard> cards)
     {
         if (fieldArea == null) return;
         // 2026-09-06 버그 수정 — "뻑 이펙트가 뻑난 카드 위가 아니라
@@ -2840,13 +3021,13 @@ public partial class GoStop3PGame : MonoBehaviour
         var color = new Color(1f, 0.85f, 0.3f);
 
         GoStopIcons.SpawnBurst(canvasRoot, local, color, 30);
+        // 2026-09-13(아이템5) — 딜 직후 즉시 승리라는 가장 극적인 순간이라
+        // 짧은 필름컷 플래시로 무게감을 더한다.
+        GoStopFX.PlayDramaticFlash(canvasRoot, color);
 
-        var fx = HwatuUI.InstantiateEffect<GoStopEffectPopup>("EffectChongtong", canvasRoot);
-        if (fx != null)
-        {
-            fx.root.anchoredPosition = local;
-            fx.Play(SeatName(seat), color);
-        }
+        int month = cards.Count > 0 ? cards[0].month : 0;
+        string title = $"[{month}월 총통]\n{SeatName(seat)}";
+        GoStopVectorEffect.Ensure().PlayChongtong(title, cards);
     }
 
     /// <summary>나가리(승자 없음) 전용 이펙트 — EndGame(winnerSeat &lt; 0)이
@@ -2937,6 +3118,10 @@ public partial class GoStop3PGame : MonoBehaviour
         {
             pendingShakeCard = card;
             shakePopup.messageText.text = $"{card.month}월 흔들기 선언하시겠습니까?";
+            // 2026-09-08 — "Cards 안 card1/2/3을 흔드는 패 3장 스프라이트로"
+            // 요청. 이 시점의 hand[PLAYER_SEAT]엔 아직 card가 그대로 있으므로
+            // (아직 안 냄) 같은 달 3장을 그대로 뽑으면 정확히 흔든 패 3장이다.
+            shakePopup.SetCardSprites(hand[PLAYER_SEAT].Where(c => c.month == card.month).ToList());
             shakePopup.Show();
             // design.md §50.1 — 무응답 10초면 안전한 기본값(흔들기 포기)으로
             // 강제 처리. 버튼 클릭 이벤트라 WaitUntil 리팩터가 아니라
@@ -3132,6 +3317,11 @@ public partial class GoStop3PGame : MonoBehaviour
             yield break;
         }
 
+        // 2026-09-08 — 조커 처리(위 if 블록)는 턴을 안 끝내므로 여기,
+        // "진짜 카드를 내는 지점"에서만 정확히 1번 증가한다(폭탄도 카드
+        // 3장을 한 번에 내지만 이 지점은 한 번만 지나가므로 자동으로
+        // "1턴"으로 셈해진다).
+        personalTurnCount[seat]++;
         GoStopAudio.Instance?.CardPlay();
         // 2026-08-28: "채팅창에 아무것도 안 올라온다" 신고 — 그동안은
         // 뻑/따닥/쪽/폭탄/흔들기 등 "특별한" 사건만 Toast()를 거쳐 로그에
@@ -3139,7 +3329,7 @@ public partial class GoStop3PGame : MonoBehaviour
         // 그런 특별한 사건이 한동안 안 터지면(흔한 경우) 채팅창이 계속
         // 비어 있어 보인다 — 매턴 기본 로그를 하나 깔아서 항상 뭔가
         // 올라오게 한다.
-        AppendChatLine($"{SeatNameFor(seat, -1)}님이 {card.month}월 패를 냈습니다");
+        AppendChatLine($"{SeatNameFor(seat, -1)}님이 패를 냈습니다", cardSpriteName: card.spriteName);
 
         if (h.Count(c => c.month == card.month) == 3 && declareShake && shookMonths[seat].Add(card.month))
         {
@@ -3154,8 +3344,14 @@ public partial class GoStop3PGame : MonoBehaviour
             // 상태박스 자리에만 그 크기 그대로 표시하는 PlayShake로 교체.
             int shakeSlot = SlotOf(seat);
             if (shakeSlot >= 0)
+            {
                 GoStopVectorEffect.Ensure().PlayShake(NormalizedBoxOf(statusBoxRefs[shakeSlot]),
                     h.Where(c => c.month == card.month).ToList());
+                // 2026-09-13(아이템12) — 부채(UI Toolkit이라 UIEffect를 못 붙임)와
+                // 같은 자리에 겹쳐 뜨는 UIParticle 스파크로 "짜잔"을 보탠다.
+                var shakeCanvas = GoStopCanvasRoot();
+                GoStopFX.PlayShakeSparkle(shakeCanvas, shakeCanvas.InverseTransformPoint(statusBoxRefs[shakeSlot].position));
+            }
         }
 
         bool wasFirstPlay = !playedFirstHandCard[seat];
@@ -3172,7 +3368,12 @@ public partial class GoStop3PGame : MonoBehaviour
         // 넘기는 턴(DeckOnlySeq)은 이미 그 마지막 턴이 지난 뒤라 이 예외가
         // 다시 적용되지 않는다(사용자 확인 — 손이 빈 이후 턴부터는 정상적으로
         // 쪽/따닥/싹쓸이가 붙는다).
-        bool isLastHandCard = h.Count == 0;
+        // 2026-09-08 정정(사용자 확인) — h.Count==0(손패가 이 카드로
+        // 빈다)이 아니라 personalTurnCount[seat]가 HandSizeLimit에 도달
+        // 했는지로 판정한다 — 위 8-26 정정 코멘트의 "각자 손패의 마지막
+        // 장"이라는 취지는 유지하되, 폭탄/조커로 손패가 일찍 비어도
+        // 이 판정 자체는 안 당겨지게 만든 것.
+        bool isFinalPersonalTurn = personalTurnCount[seat] == HandSizeLimit;
 
         // 따닥 — 필드에 같은 달이 2장 있어 손패로 그중 하나를 고른 뒤, 같은
         // 턴의 뒷패가 남은 나머지 한 장과 마저 맞아떨어지는 것(사용자 확인
@@ -3184,12 +3385,17 @@ public partial class GoStop3PGame : MonoBehaviour
         bool r1HadChoice = !bomb && r1.choiceCandidates != null;
         if (r1HadChoice)
         {
-            // 이 2장 매칭이 사실은 "보너스피가 얹힌 뻑"이면(그 달에 ppeokBonusPi
-            // 항목이 있으면) 선택 팝업을 띄우지 말고 조커까지 포함해 통째로
-            // 쓸어간다 — 안 그러면 고르지 않은 1장+조커가 필드에 영원히 남는다.
-            if (ppeokBonusPi.TryGetValue(card.month, out var jokerAtCard))
+            // 2026-09-12 복원 — 조커 3종 리팩터 중 통째로 빠졌던 분기.
+            // 이 2장 매칭이 사실은 "보너스피가 얹힌 뻑"이면(그 달에
+            // ppeokBonusPi 항목이 있으면) 선택 팝업을 띄우지 말고 조커까지
+            // 포함해 통째로 쓸어간다 — 조커는 month==0이라 GoStopRules.Resolve
+            // 의 월 매칭에 절대 안 걸리므로, 조커가 parking된 무더기 위에
+            // 2번째 실카드가 나와도 matchCount==3(정상 뻑 해소) 경로를 못
+            // 타고 이 matchCount==2(선택) 경로로 잘못 빠진다 — 안 막으면
+            // 고르지 않은 1장+조커가 필드에 영원히 미아로 남는다.
+            if (ppeokBonusPi.TryGetValue(card.month, out var jokersAtCard))
             {
-                r1 = GoStopRules.ResolveJokerPpeok(card, r1.choiceCandidates, jokerAtCard, field);
+                r1 = GoStopRules.ResolveJokerPpeok(card, r1.choiceCandidates, jokersAtCard, field);
                 r1HadChoice = false;
                 // 조커를 이미 캡처 목록에 포함시켰다 — ApplyMatchBonus의 별도
                 // ppeokBonusPi 핸드오프(matchCount==3 분기)가 또 한 번 넘겨주면
@@ -3231,13 +3437,19 @@ public partial class GoStop3PGame : MonoBehaviour
             // 교체(위 흔들기 분기 주석 참고).
             int bombSlot = SlotOf(seat);
             if (bombSlot >= 0)
+            {
                 GoStopVectorEffect.Ensure().PlayShake(NormalizedBoxOf(statusBoxRefs[bombSlot]), r1.captured.Take(3).ToList());
+                // 2026-09-13(아이템12) — 흔들기와 같은 이유로 같은 스파클.
+                var bombCanvas = GoStopCanvasRoot();
+                GoStopFX.PlayShakeSparkle(bombCanvas, bombCanvas.InverseTransformPoint(statusBoxRefs[bombSlot].position));
+            }
         }
 
-        bool willDraw = !bomb && drawPile.Count > 0;
+        
         // 뻑 감지: 뒷패 공개로 뒤집힐 수 있는 건 순수 1:1 매칭(선택도
-        // 폭탄도 아님)뿐이다 — 이 조건 하나로 "결과를 아직 확정 지으면
-        // 안 되는" 카드를 가려낸다(2026-08-22 결정 그대로 유지).
+        // 폭탄도 아님)뿐이다 — 폭탄은 그 달 4장을 한 번에 다 가져가므로
+        // 뒤에 남는 카드 자체가 없어 애초에 뻑이 성립할 수 없다(위 willDraw
+        // 수정과 별개로 이 조건은 그대로 맞다).
         bool couldBePpeok = !bomb && !r1HadChoice && r1.matchCount == 1;
 
         var dualPiPending = new List<HwatuCard>();
@@ -3284,6 +3496,16 @@ public partial class GoStop3PGame : MonoBehaviour
         // DrawField가 나중에 실제로 그리는 자리가 절대 어긋날 수 없다
         // (예전엔 애니메이션은 월 기준 그리드 공식, 실제 렌더링은 다른
         // 공식을 따로 계산해서 싱크가 안 맞을 수 있었다 — 그 버그의 원인).
+        // 2026-09-08 버그 수정 — 조커 리빌 지점 참조용 스냅샷인데, 초기값
+        // 계산에 FieldSlotWorldPos(=pos 마커 자체의 피벗 좌표, center)를
+        // 그대로 썼다. 바로 아래 non-bomb 분기의 주석이 정확히 경고하는
+        // 그 함정이다 — "카드 피벗(top-center)과 마커 피벗(center)이 달라
+        // 카드 반 장 높이(FIELD_H/2)만큼 어긋난다." 실측으로 걸린 -98(=
+        // FIELD_H 196의 정확히 절반) 오프셋이 이 값이었다 — 조커가 anchor
+        // 자리에 파킹될 때(ResolveBonusJoker의 revealFrom) 이 잘못된
+        // 좌표에서 SlamIn을 시작해 눈에 띄게 어긋난 위치를 잠깐 거쳐갔다.
+        // 여기 초기값은 안전망일 뿐이고, 아래 두 분기(폭탄/일반) 모두 실제
+        // 고스트가 착지한 정확한 좌표(ghost.transform.position)로 덮어쓴다.
         Vector3 handActualLanding = FieldSlotWorldPos(card); // 조커 리빌 지점 참조용(Vector3 스냅샷 그대로 필요)
         var handGhosts = new List<GameObject>();
 
@@ -3311,6 +3533,10 @@ public partial class GoStop3PGame : MonoBehaviour
         RectTransform matchedSlot = matchedFieldCard != null ? FieldSlotTransform(matchedFieldCard) : null;
         if (bomb)
         {
+            // 2026-09-13(아이템11) — 슬램(호쾌 프리셋)+임팩트 플래시+파티클
+            // 버스트만으로도 충분히 세지만, 여기에 아주 짧은 전체화면
+            // 필름컷 플래시를 한 겹 더 얹어 "쾅" 하는 타격감을 배가한다.
+            GoStopFX.PlayDramaticFlash(GoStopCanvasRoot(), new Color(1f, 0.35f, 0.15f));
             // r1.captured = [card, partner1, partner2, fieldMatch] — 앞 3장이
             // 손패에서 나온 카드다. 파파팍 — 짧은 간격으로 하나씩 내려친다.
             // 매 반복마다 target.childCount가 방금 내려친 카드만큼 늘어나
@@ -3329,6 +3555,7 @@ public partial class GoStop3PGame : MonoBehaviour
                     dropHeight: 230f, dropDur: 0.07f, punchDur: 0.12f, punchScale: 1.4f, cardMonth: hc.month));
                 handGhosts.Add(ghost);
                 flyFrom[hc] = landing;
+                handActualLanding = landing; // 위 버그 수정 — 정확한(피벗 보정된) 좌표로 갱신, 루프가 끝나면 마지막 카드 기준으로 남는다
                 yield return new WaitForSeconds(0.07f);
             }
             yield return new WaitForSeconds(0.10f); // 마지막 카드가 실제로 착지할 여유
@@ -3359,86 +3586,105 @@ public partial class GoStop3PGame : MonoBehaviour
                 cardMonth: card.month));
             handGhosts.Add(ghost);
             flyFrom[card] = landing;
+            handActualLanding = landing; // 위 버그 수정 — 정확한(피벗 보정된) 좌표로 갱신
         }
 
         // --- ② 뒷패 슬램다운(있다면) ---
         HwatuCard drawn = null;
         GameObject deckGhost = null;
-        if (willDraw)
+        // 2026-09-12 버그 수정 — 이 가드(예전 이름 willDraw)가 리팩터 중
+        // 통째로 빠져서 drawPile[0]을 무조건 인덱싱하고 있었다. 총 필요
+        // 드로우 수와 더미 장수가 "평균적으로는" 맞아떨어지게 설계돼
+        // 있지만(조커마다 +1 드로우가 필요해 더미도 조커 수만큼 여유를
+        // 더 갖게 딜된다), 이건 판 전체 합계가 맞는다는 뜻일 뿐 턴/좌석
+        // 단위로 항상 맞는다는 보장은 아니다 — 턴 순서상 남들이 먼저
+        // 조커의 "여윳값"을 다 써버리면, 아직 손패가 남은 다른 좌석의
+        // 평범한 PlaySeq 턴에서도 더미가 먼저 바닥날 수 있다(DeckOnlySeq는
+        // 이미 이 경우를 막는 가드가 있었는데 PlaySeq만 빠져 있었다).
+        // 실제로 이 상태에서 drawPile[0]을 부르면 IndexOutOfRangeException
+        // 으로 코루틴이 조용히 죽어(actionBusy가 못 풀리고 턴이 멈춘 것처럼
+        // 보임) — 아래 ③ 이후 코드는 이미 drawn==null을 정상적으로
+        // 처리하도록 짜여 있으므로, 여기서만 막아주면 된다.
+        if (drawPile.Count > 0)
         {
-            drawn = drawPile[0]; drawPile.RemoveAt(0);
+        drawn = drawPile[0]; drawPile.RemoveAt(0);
+        // 2026-09-08 — "로그에 손패 낸 것만 나온다" 요청. 위 손패
+        // 로그(AppendChatLine, 이 함수 앞부분)와 대칭되는 이벤트라
+        // 같은 방식으로 채팅 로그에 남긴다.
+        AppendChatLine(drawn.isJoker
+            ? $"{SeatNameFor(seat, -1)}님의 뒷패로 보너스패가 나왔습니다"
+            : $"{SeatNameFor(seat, -1)}님의 뒷패로 패가 나왔습니다",
+            cardSpriteName: drawn.isJoker ? null : drawn.spriteName);
 
-            if (drawn.isJoker)
-            {
-                // 2026-09-06 4차 재설계(사용자 확정 명세) — 뒷패 조커는
-                // "이번 턴에 낸 손패(card)의 자리에 일단 얹힌다"는 게
-                // 유일한 원칙이다. couldBePpeok/완전 무매칭/따닥(ddadakWatch)
-                // 같은 손패 쪽 세부 경로가 무엇이었든, AssignFieldSlot은
-                // 월 기준으로 슬롯을 찾으므로 최종 도착지는 항상 같다.
-                // 2026-09-07 정정 — ResolveBonusJoker가 이제 "일단 무조건
-                // 파킹 후 곧바로 뒷패로 운명을 확정"하는 구조로 바뀌면서
-                // (용량 가드는 "뻑으로 묻을지" 판단 시점으로만 옮겨졌다 —
-                // 아래 ResolveBonusJoker 참고), 여기서도 파킹 자체는
-                // 무조건 일어난다고 보고 슬롯을 항상 미리 잡아둔다 —
-                // 예전처럼 용량 조건으로 걸러내면 애니메이션이 실제
-                // 데이터(항상 파킹)와 다시 어긋난다.
-                fieldSlotAssign[drawn] = AssignFieldSlot(card);
+        if (drawn.isJoker)
+        {
+            // 2026-09-06 4차 재설계(사용자 확정 명세) — 뒷패 조커는
+            // "이번 턴에 낸 손패(card)의 자리에 일단 얹힌다"는 게
+            // 유일한 원칙이다. couldBePpeok/완전 무매칭/따닥(ddadakWatch)
+            // 같은 손패 쪽 세부 경로가 무엇이었든, AssignFieldSlot은
+            // 월 기준으로 슬롯을 찾으므로 최종 도착지는 항상 같다.
+            // 2026-09-07 정정 — ResolveBonusJoker가 이제 "일단 무조건
+            // 파킹 후 곧바로 뒷패로 운명을 확정"하는 구조로 바뀌면서
+            // (용량 가드는 "뻑으로 묻을지" 판단 시점으로만 옮겨졌다 —
+            // 아래 ResolveBonusJoker 참고), 여기서도 파킹 자체는
+            // 무조건 일어난다고 보고 슬롯을 항상 미리 잡아둔다 —
+            // 예전처럼 용량 조건으로 걸러내면 애니메이션이 실제
+            // 데이터(항상 파킹)와 다시 어긋난다.
+            fieldSlotAssign[drawn] = AssignFieldSlot(card);
 
-                var target = FieldSlotTransform(drawn);
-                Debug.Log("[GoStopJokerGhost] drawn=" + drawn.spriteName + " cardMonth=" + card.month +
-                    " target=" + target.name);
-                deckGhost = SpawnGhostCard(drawn, target);
-                // 위 손패 슬램과 같은 이유(2026-09-02) — target.position이
-                // 아니라 고스트의 실제 착지 자리를 flyFrom에 기록한다.
-                flyFrom[drawn] = deckGhost.transform.position;
-                // 2026-09-04 — 뒷패는 "뭐가 나올지 모르는" 유일한 순간이라
-                // 모든 덱 뒤집기(조커 포함)에 짧은 긴장 펄스를 건다.
-                yield return StartCoroutine(SlamDown(deckGhost.transform as RectTransform, target, dropHeight: 90f, cardMonth: drawn.month, suspensePulses: 2));
-            }
-            else if (couldBePpeok && drawn.month == card.month)
-            {
-                // 뻑이 형성되는 바로 그 순간 — 뒷패는 방금 손패 고스트가
-                // 내려친 그 슬롯의 3번째 자리(원래 있던 필드패 1장 + 손패
-                // 고스트 1장 = childCount 2)로 쌓인다. 2026-09-02 구조적
-                // 재설계 — 예전엔 flyFrom[card](손패 고스트의 착지 좌표)를
-                // 그대로 재사용해서 뒷패가 손패와 완전히 같은 자리에 겹쳐
-                // 떨어졌다(3장째라는 시각적 단서가 없었다) — 위 ①의 매칭
-                // 고스트와 같은 SpawnGhostCard(RectTransform) 메커니즘을
-                // 재사용해서 target.childCount가 정확한 3번째 자리를
-                // 자동으로 내주게 했다.
-                var target = FieldSlotTransform(card);
-                deckGhost = SpawnGhostCard(drawn, target);
-                var landing = deckGhost.transform.position;
-                // 2026-09-02(사용자 확인) — 뻑은 "아무도 못 먹고 묶이는"
-                // 김빠지는 결과라, 다른 착지보다 낮게(dropHeight)·느리게
-                // (dropDur)·거의 안 튕기게(punchScale≈1) 힘없이 내려놓는다.
-                // 2026-09-04 — 이 순간이야말로 가장 "쪼는" 순간이다(뒷패가
-                // 방금 낸 손패와 같은 달인 걸 보는 그 찰나) — 펄스를 걸고
-                // 나서 힘없이 떨어뜨린다("어? 뻑이잖아..." 하는 느낌).
-                yield return StartCoroutine(SlamDown(deckGhost.transform as RectTransform, target,
-                    dropHeight: 60f, dropDur: 0.22f, punchDur: 0.16f, punchScale: 1.06f, cardMonth: drawn.month, suspensePulses: 2));
-                flyFrom[drawn] = landing;
-            }
-            else
-            {
-                var target = FieldSlotTransform(drawn);
-                // 2026-09-04(사용자 확인) — 뒷패는 실제로 코드가 아는 정보
-                // (field는 r1이 이미 갱신해 둔 상태라 GoStopRules.Resolve와
-                // 같은 답이 나온다)로도 결과를 미리 알 수 있지만, 화면에는
-                // 아직 "뒤집기 전"처럼 보여야 하므로 펄스로 긴장을 준 뒤
-                // 결과에 맞는 완급(호쾌/힘없이)으로 떨어뜨린다 — target에
-                // 이미 카드가 있으면(같은 달) 곧 잡아먹힐 패라는 뜻.
-                bool willCapture = target.childCount > 0;
-                bool bigCapture = willCapture && target.childCount >= 3;
-                var mood = LandingMood(willCapture, bigCapture);
-                deckGhost = SpawnGhostCard(drawn, target);
-                // 위와 같은 이유(2026-09-02).
-                flyFrom[drawn] = deckGhost.transform.position;
-                yield return StartCoroutine(SlamDown(deckGhost.transform as RectTransform, target,
-                    dropHeight: mood.dropHeight, dropDur: mood.dropDur, punchDur: mood.punchDur, punchScale: mood.punchScale,
-                    cardMonth: drawn.month, suspensePulses: 2));
-            }
+            var target = FieldSlotTransform(drawn);
+            deckGhost = SpawnGhostCard(drawn, target);
+            // 위 손패 슬램과 같은 이유(2026-09-02) — target.position이
+            // 아니라 고스트의 실제 착지 자리를 flyFrom에 기록한다.
+            flyFrom[drawn] = deckGhost.transform.position;
+            // 2026-09-04 — 뒷패는 "뭐가 나올지 모르는" 유일한 순간이라
+            // 모든 덱 뒤집기(조커 포함)에 짧은 긴장 펄스를 건다.
+            yield return StartCoroutine(SlamDown(deckGhost.transform as RectTransform, target, dropHeight: 90f, cardMonth: drawn.month, suspensePulses: 2));
         }
+        else if (couldBePpeok && drawn.month == card.month)
+        {
+            // 뻑이 형성되는 바로 그 순간 — 뒷패는 방금 손패 고스트가
+            // 내려친 그 슬롯의 3번째 자리(원래 있던 필드패 1장 + 손패
+            // 고스트 1장 = childCount 2)로 쌓인다. 2026-09-02 구조적
+            // 재설계 — 예전엔 flyFrom[card](손패 고스트의 착지 좌표)를
+            // 그대로 재사용해서 뒷패가 손패와 완전히 같은 자리에 겹쳐
+            // 떨어졌다(3장째라는 시각적 단서가 없었다) — 위 ①의 매칭
+            // 고스트와 같은 SpawnGhostCard(RectTransform) 메커니즘을
+            // 재사용해서 target.childCount가 정확한 3번째 자리를
+            // 자동으로 내주게 했다.
+            var target = FieldSlotTransform(card);
+            deckGhost = SpawnGhostCard(drawn, target);
+            var landing = deckGhost.transform.position;
+            // 2026-09-02(사용자 확인) — 뻑은 "아무도 못 먹고 묶이는"
+            // 김빠지는 결과라, 다른 착지보다 낮게(dropHeight)·느리게
+            // (dropDur)·거의 안 튕기게(punchScale≈1) 힘없이 내려놓는다.
+            // 2026-09-04 — 이 순간이야말로 가장 "쪼는" 순간이다(뒷패가
+            // 방금 낸 손패와 같은 달인 걸 보는 그 찰나) — 펄스를 걸고
+            // 나서 힘없이 떨어뜨린다("어? 뻑이잖아..." 하는 느낌).
+            yield return StartCoroutine(SlamDown(deckGhost.transform as RectTransform, target,
+                dropHeight: 60f, dropDur: 0.22f, punchDur: 0.16f, punchScale: 1.06f, cardMonth: drawn.month, suspensePulses: 2));
+            flyFrom[drawn] = landing;
+        }
+        else
+        {
+            var target = FieldSlotTransform(drawn);
+            // 2026-09-04(사용자 확인) — 뒷패는 실제로 코드가 아는 정보
+            // (field는 r1이 이미 갱신해 둔 상태라 GoStopRules.Resolve와
+            // 같은 답이 나온다)로도 결과를 미리 알 수 있지만, 화면에는
+            // 아직 "뒤집기 전"처럼 보여야 하므로 펄스로 긴장을 준 뒤
+            // 결과에 맞는 완급(호쾌/힘없이)으로 떨어뜨린다 — target에
+            // 이미 카드가 있으면(같은 달) 곧 잡아먹힐 패라는 뜻.
+            bool willCapture = target.childCount > 0;
+            bool bigCapture = willCapture && target.childCount >= 3;
+            var mood = LandingMood(willCapture, bigCapture);
+            deckGhost = SpawnGhostCard(drawn, target);
+            // 위와 같은 이유(2026-09-02).
+            flyFrom[drawn] = deckGhost.transform.position;
+            yield return StartCoroutine(SlamDown(deckGhost.transform as RectTransform, target,
+                dropHeight: mood.dropHeight, dropDur: mood.dropDur, punchDur: mood.punchDur, punchScale: mood.punchScale,
+                cardMonth: drawn.month, suspensePulses: 2));
+        }
+        } // if (drawPile.Count > 0) — 2026-09-12 재도입
 
         // --- ③ 뻑 판정(순수 1:1 매칭이었을 때만) ---
         if (couldBePpeok)
@@ -3482,24 +3728,30 @@ public partial class GoStop3PGame : MonoBehaviour
                 field.Add(card);
                 r1.captured.Clear();
             }
-            // 2026-09-06 — 위와는 반대 방향의 구멍을 마저 막는다. "이번 매칭이
-            // 뻑도 아니고 뒷패도 조커가 아니어서" 정상 캡처(④)로 그냥
-            // 넘어가는 경우, 만약 이 anchor(card.month)에 예전 다른 턴부터
-            // 이미 조커가 파킹돼 있었다면(ppeokBonusPi) 그 조커는 anchor와
-            // 함께 딸려가지 못하고 field에 혼자 남는다 — 월이 없는 조커는
-            // 아무도 다시 못 잡으므로, 이 판이 끝날 때까지 영원히 못 먹는
-            // 카드가 된다. couldBePpeok는 "이 anchor가 field에 정확히 1장뿐인
-            // 상태에서 매칭됐다"는 뜻이라, ppeokBonusPi에 이 달 항목이
-            // 있으면 그 1장이 바로 파킹된 anchor라는 게 확정이다 — 정상
-            // 캡처에 조커까지 같이 쓸어 담는다.
-            else if (!ppeokFormed && ppeokBonusPi.TryGetValue(card.month, out var parkedJokerHere))
+            // 2026-09-12 복원 — 조커 3종 리팩터 중 통째로 빠졌던 분기(위
+            // r1HadChoice 분기와 같은 이유·같은 신고로 추가됐던 것).
+            // "이번 매칭이 뻑도 아니고 뒷패도 조커가 아니어서" 정상
+            // 캡처(④)로 그냥 넘어가는 경우, 만약 이 anchor(card.month)에
+            // 예전 다른 턴부터 이미 조커가 파킹돼 있었다면(ppeokBonusPi)
+            // 그 조커는 anchor와 함께 딸려가지 못하고 field에 혼자 남는다
+            // — 월이 없는 조커는 아무도 다시 못 잡으므로, 이 판이 끝날
+            // 때까지 영원히 못 먹는 카드가 된다. couldBePpeok는 "이
+            // anchor가 field에 정확히 1장뿐인 상태에서 매칭됐다"는 뜻이라,
+            // ppeokBonusPi에 이 달 항목이 있으면 그 1장이 바로 파킹된
+            // anchor라는 게 확정이다 — 정상 캡처에 조커까지 같이 쓸어
+            // 담는다.
+            else if (!ppeokFormed && ppeokBonusPi.TryGetValue(card.month, out var parkedJokersHere))
             {
-                var jokerGo = FieldSlotTransform(parkedJokerHere).Find(parkedJokerHere.spriteName);
-                if (jokerGo != null) flyFrom[parkedJokerHere] = jokerGo.position;
-                field.Remove(parkedJokerHere);
-                r1.captured.Add(parkedJokerHere);
+                foreach (var parkedJoker in parkedJokersHere)
+                {
+                    var jokerGo = FieldSlotTransform(parkedJoker).Find(parkedJoker.spriteName);
+                    if (jokerGo != null) flyFrom[parkedJoker] = jokerGo.position;
+                    field.Remove(parkedJoker);
+                    r1.captured.Add(parkedJoker);
+                }
                 ppeokBonusPi.Remove(card.month);
             }
+
             if (ppeokFormed)
             {
                 DestroyGhosts(handGhosts);
@@ -3569,7 +3821,19 @@ public partial class GoStop3PGame : MonoBehaviour
         // --- ⑤ 피 뺏기는 Cap 배치가 끝난 뒤 별도 비트로 ---
         if (r1.captured.Count > 0)
         {
-            bool stole = ApplyMatchBonus(seat, r1, bomb, allowSweep: bomb || !willDraw, wasFirstHandPlay: wasFirstPlay);
+            // 2026-09-07 — willDraw가 이제 bomb와 무관해졌으니(위 수정)
+            // "폭탄이면 무조건 이번이 마지막 이벤트"라는 가정도 같이
+            // 없앴다 — 덱을 마저 넘길 거면(drawn!=null, 옛 이름 willDraw)
+            // 그 결과까지 보고 나서 싹쓸이를 판정해야 한다(일반 손패
+            // 플레이와 동일한 규칙, bomb 여부와 무관).
+            // 2026-09-12 버그 수정 — 리팩터 중 이 호출부에서만
+            // allowLastTurnBonus 인자가 통째로 빠져서(다른 3개 호출부는
+            // 살아있었다) 기본값(true)이 적용돼, 뻑/자뻑/폭탄이 이 경로로
+            // 캡처될 때 "마지막 턴엔 피뺏기 억제"(d8adb46) 예외가 이
+            // 경로에서만 사라져 있었다. willDraw 변수 자체는 없어졌지만
+            // drawn이 정확히 같은 뜻(이번 턴에 덱 뒷패가 있었는지)이라
+            // 그대로 대체할 수 있다.
+            bool stole = ApplyMatchBonus(seat, r1, bomb, allowLastTurnBonus: drawn == null, wasFirstHandPlay: wasFirstPlay);
             if (stole)
             {
                 RebuildUI();
@@ -3577,180 +3841,189 @@ public partial class GoStop3PGame : MonoBehaviour
             }
         }
 
-        if (bomb)
-        {
-            bombCredits[seat] += 2;
-            foreach (var dual in dualPiPending)
-                yield return StartCoroutine(PromptDualPiChoice(dual, seat));
-            actionBusy = false;
-            onDone?.Invoke();
-            yield break;
-        }
+        // 2026-09-07 — 크레딧만 적립하고 끝(더미 뒷패는 바로 아래 willDraw
+        // 블록이 이제 폭탄과 무관하게 정상적으로 처리한다). dualPi 프롬프트도
+        // 여기서 따로 안 돌린다 — 함수 맨 끝(line ~3755)의 통합 dualPiPending
+        // 처리가 이제 이 실행 경로에도 그대로 이어지므로, 여기서 미리
+        // 돌리면 같은 카드가 두 번 물어봐지는 버그가 된다.
+        if (bomb) bombCredits[seat] += 2;
 
-        if (willDraw)
+        if (drawn.isJoker)
         {
-            if (drawn.isJoker)
+            // "필드에 방금 나온 패" = 이번에 낸 손패가 매칭 안 돼 그대로
+            // 필드에 남은 경우(r1.captured가 비었으면 card가 필드에 있다)
+            // 그 카드다. 손패가 뭔가를 잡았으면 남은 카드가 없어 겹쳐놓을
+            // 대상이 없다 — 그런 경우엔 즉시 캡처로 단순화한다.
+            // ResolveBonusJoker의 첫 동작이 곧장 RebuildUI라 여기서
+            // 지워도 화면 공백이 없다(동기 구간).
+            DestroyGhost(deckGhost);
+            HwatuCard anchor = r1.captured.Count == 0 ? card : null;
+            // 2026-09-07 버그 수정 — r1.captured가 비어있는 이유가 "완전
+            // 무매칭"이 아니라 couldBePpeok 페어를 조커가 보류시키며
+            // 섹션 ③이 강제로 비운 것일 수도 있다(matchedFieldCard가
+            // 실제 필드 매칭이 있었다는 증거) — 그 경우만 pendingPartner를
+            // 넘겨서, 조커가 "뻑 아님"으로 확정될 때 이 페어도 같이
+            // 캡처되게 한다(안 그러면 이 페어가 field에 영원히 미아로
+            // 남아 다음에 아무나 가져가 버린다 — 실전 재현된 버그).
+            HwatuCard pendingPartner = anchor != null && matchedFieldCard != null ? matchedFieldCard : null;
+            yield return StartCoroutine(ResolveBonusJoker(seat, drawn, anchor, cap, isFinalPersonalTurn, handActualLanding, pendingPartner));
+            // 조커 연쇄가 뻑으로 이어져 쓰리뻑 즉시승리(EndGame)까지
+            // 갈 수 있다 — 게임을 끝내는 분기 뒤에 아래 트레일링
+            // onDone을 부르면 안 된다(이 프로젝트가 이미 겪은 "3연뻑
+            // 버그"와 같은 함정 — onDone은 "턴이 정상적으로 끝났다"는
+            // 뜻이라 그 자체로 다음 턴 진행을 트리거한다).
+
+            if (state == State.GameOver)
             {
-                // "필드에 방금 나온 패" = 이번에 낸 손패가 매칭 안 돼 그대로
-                // 필드에 남은 경우(r1.captured가 비었으면 card가 필드에 있다)
-                // 그 카드다. 손패가 뭔가를 잡았으면 남은 카드가 없어 겹쳐놓을
-                // 대상이 없다 — 그런 경우엔 즉시 캡처로 단순화한다.
-                // ResolveBonusJoker의 첫 동작이 곧장 RebuildUI라 여기서
-                // 지워도 화면 공백이 없다(동기 구간).
-                DestroyGhost(deckGhost);
-                HwatuCard anchor = r1.captured.Count == 0 ? card : null;
-                // 2026-09-07 버그 수정 — r1.captured가 비어있는 이유가 "완전
-                // 무매칭"이 아니라 couldBePpeok 페어를 조커가 보류시키며
-                // 섹션 ③이 강제로 비운 것일 수도 있다(matchedFieldCard가
-                // 실제 필드 매칭이 있었다는 증거) — 그 경우만 pendingPartner를
-                // 넘겨서, 조커가 "뻑 아님"으로 확정될 때 이 페어도 같이
-                // 캡처되게 한다(안 그러면 이 페어가 field에 영원히 미아로
-                // 남아 다음에 아무나 가져가 버린다 — 실전 재현된 버그).
-                HwatuCard pendingPartner = anchor != null && matchedFieldCard != null ? matchedFieldCard : null;
-                yield return StartCoroutine(ResolveBonusJoker(seat, drawn, anchor, cap, isLastHandCard, handActualLanding, pendingPartner));
-                // 조커 연쇄가 뻑으로 이어져 쓰리뻑 즉시승리(EndGame)까지
-                // 갈 수 있다 — 게임을 끝내는 분기 뒤에 아래 트레일링
-                // onDone을 부르면 안 된다(이 프로젝트가 이미 겪은 "3연뻑
-                // 버그"와 같은 함정 — onDone은 "턴이 정상적으로 끝났다"는
-                // 뜻이라 그 자체로 다음 턴 진행을 트리거한다).
-                if (state == State.GameOver) yield break;
+                yield break;
             }
-            else
+
+        }
+        else
+        {
+            var r2 = GoStopRules.Resolve(drawn, field);
+            if (r2.choiceCandidates != null)
             {
-                var r2 = GoStopRules.Resolve(drawn, field);
-                if (r2.choiceCandidates != null)
+                // 2026-09-12 복원 — 위 r1HadChoice 분기와 완전히 같은 이유·
+                // 같은 버그로 통째로 빠져 있었다(뒷패 쪽 버전). 조커가
+                // parking된 무더기 위에 뒷패가 2번째 실카드로 매칭되는
+                // 경우도 GoStopRules.Resolve는 matchCount==2(선택)로 보므로,
+                // 그냥 ContinueChoice로 고르게 두면 고르지 않은 1장+조커가
+                // field에 영원히 미아로 남는다.
+                if (ppeokBonusPi.TryGetValue(drawn.month, out var jokersAtDrawn))
                 {
-                    if (ppeokBonusPi.TryGetValue(drawn.month, out var jokerAtDrawn))
-                    {
-                        r2 = GoStopRules.ResolveJokerPpeok(drawn, r2.choiceCandidates, jokerAtDrawn, field);
-                        ppeokBonusPi.Remove(drawn.month); // 이중 지급 방지 (위 r1 분기와 같은 이유)
-                    }
-                    else
-                    {
-                        GoStopRules.CaptureResult chosen2 = null;
-                        yield return StartCoroutine(ContinueChoice(drawn, r2, seat, res => chosen2 = res));
-                        r2 = chosen2;
-                    }
-                }
-                // 2026-09-02(사용자 확인 — "슬램다운 끝나고 필드패 나올 때까지
-                // 텀이 있어서 카드가 깜빡거림") — 고스트 파괴를 여기로 늦췄다.
-                // 예전엔 willDraw 진입 직후(위 선택 팝업이 뜨기도 전에) 미리
-                // 지워서, ContinueChoice가 응답을 기다리는 몇 초 동안 뒷패가
-                // 화면에서 통째로 사라져 있었다 — 결과가 확정된 지금부터는
-                // 바로 아래 RebuildUI가 실제 카드를 그려주므로 여기서 지워야
-                // 공백이 없다.
-                DestroyGhost(deckGhost);
-                if (r2.captured.Count > 0)
-                {
-                    // 필드 쪽 매칭 카드의 위치도 손패와 같은 방식으로 미리
-                    // 기록해 둔다(뒷패 쪽은 항상 손패 없이 1장이라 handSideCount
-                    // 개념 없이 바로 Skip(1)). fieldArea.Find 대신
-                    // FieldSlotTransform을 쓰는 이유는 위 r1 루프와 동일
-                    // (카드가 pos 슬롯의 자식이라 1단 깊이 Find로는 못 찾는다).
-                    foreach (var fc in r2.captured.Skip(1))
-                    {
-                        var go = FieldSlotTransform(fc).Find(fc.spriteName);
-                        if (go != null) flyFrom[fc] = go.position;
-                    }
-
-                    cap.AddRange(r2.captured);
-                    GoStopAudio.Instance?.Capture();
-                    // 2026-09-07 — r1과 같은 이유. 뻑먹기(matchCount==3)가
-                    // 뒷패 쪽에서 완성되는 경우, ApplyMatchBonus가 나중에
-                    // FieldSlotTransform을 다시 부르면 이미 반납된 슬롯이라
-                    // 엉뚱한 자리를 잡는다 — 위에서 이미 등록해 둔 flyFrom
-                    // 스냅샷(r2.captured.Skip(1)의 첫 카드)을 재사용한다.
-                    if (r2.matchCount == 3)
-                    {
-                        var r2FieldCard = r2.captured.Skip(1).FirstOrDefault();
-                        if (r2FieldCard != null && flyFrom.TryGetValue(r2FieldCard, out var r2Pos))
-                            comboEffectWorldPos = r2Pos;
-                    }
-                    bool chok = r1.placedOnField && r2.captured.Contains(card) && !isLastHandCard;
-                    // 따닥: 손패로 필드 2장 중 하나를 고른 뒤(ddadakWatch=고르지
-                    // 않은 나머지 한 장), 같은 턴의 뒷패가 그 나머지 한 장마저
-                    // 잡았다. chok과는 조건이 겹치지 않는다(chok은 r1.placedOnField,
-                    // 즉 손패가 아무것도 못 먹은 경우에만 성립하는데, ddadakWatch는
-                    // 반대로 손패가 선택 캡처로 뭔가를 먹었을 때만 채워진다).
-                    bool ddadak = ddadakWatch != null && r2.captured.Contains(ddadakWatch) && !isLastHandCard;
-
-                    if (seat == PLAYER_SEAT || IsRemoteSeat(seat))
-                    {
-                        var dual2 = r2.captured.FirstOrDefault(c => c.dualPi);
-                        if (dual2 != null) dualPiPending.Add(dual2);
-                    }
-
-                    RebuildUI();
-                    yield return new WaitForSeconds(PLAY_STEP_DELAY);
-
-                    // 피 뺏기 — 여기서도 Cap 배치 다음 별도 비트로 분리한다.
-                    bool stole2 = false;
-                    if (chok)
-                    {
-                        StealPiFromEachOther(seat, 1);
-                        // 2026-09-07 버그 수정("따닥 이펙트가 엉뚱한 pos에 뜬다") —
-                        // 이 시점엔 card가 이미 캡처되고 RebuildUI(3444줄)도
-                        // 한 번 돈 뒤라 SyncFieldSlotAssignments가 그 슬롯 배정을
-                        // 이미 반납했다 — FieldSlotTransform(card)를 여기서 다시
-                        // 부르면 "빈 슬롯 새로 찾기" 폴백을 타서 엉뚱한(대개 가장
-                        // 낮은 번호의) 자리를 돌려준다. 바로 위(3422줄)에서 이미
-                        // 캡처 직전에 정확한 위치를 flyFrom[card]로 스냅샷해
-                        // 뒀으니 그걸 그대로 재사용한다.
-                        comboEffectWorldPos = flyFrom.TryGetValue(card, out var chokPos) ? chokPos : FieldSlotTransform(card).position;
-                        Toast(seat, "쪽");
-                        stole2 = true;
-                        if (r2.sweep)
-                        {
-                            sweeps[seat]++;
-                            StealPiFromEachOther(seat, 1);
-                            Toast(seat, "싹쓸이");
-                        }
-                    }
-                    else if (ddadak)
-                    {
-                        StealPiFromEachOther(seat, 1);
-                        // 2026-08-26 — "첫따닥"(손패 첫 장으로 만든 따닥)은 정확히
-                        // 여기(뒷패가 나머지 한 장을 마저 잡아 따닥이 확정된 시점)
-                        // 에서만 판정한다 — 위 선택 시점에서 옮겨왔다(그때는 아직
-                        // 진짜 따닥인지 몰랐다). 피 뺏기는 원래대로 그대로 일어나고
-                        // (상대에게 피가 있다면), 첫 턴이면 그 위에 판돈을 추가로 얹는다.
-                        // 2026-09-07 버그 수정("pos4에서 따닥이 발생했는데 pos1
-                        // 포지션에서 등장") — 위 chok과 완전히 같은 원인(이 시점엔
-                        // ddadakWatch도 이미 캡처+RebuildUI를 거쳐 슬롯 배정이
-                        // 반납된 뒤라 FieldSlotTransform이 엉뚱한 빈 슬롯을 새로
-                        // 잡는다) — 캡처 직전 스냅샷인 flyFrom[ddadakWatch]를 쓴다.
-                        comboEffectWorldPos = flyFrom.TryGetValue(ddadakWatch, out var ddadakPos) ? ddadakPos : FieldSlotTransform(ddadakWatch).position;
-                        if (wasFirstPlay) { ApplyMoneyBonus(seat, PpeokMoney(), "첫따닥비"); Toast(seat, "첫따닥"); }
-                        else Toast(seat, "따닥");
-                        stole2 = true;
-                        if (r2.sweep)
-                        {
-                            sweeps[seat]++;
-                            StealPiFromEachOther(seat, 1);
-                            Toast(seat, "싹쓸이");
-                        }
-                    }
-                    else stole2 = ApplyMatchBonus(seat, r2, false, allowSweep: !isLastHandCard);
-
-                    if (stole2)
-                    {
-                        RebuildUI();
-                        yield return new WaitForSeconds(PLAY_STEP_DELAY);
-                    }
+                    r2 = GoStopRules.ResolveJokerPpeok(drawn, r2.choiceCandidates, jokersAtDrawn, field);
+                    ppeokBonusPi.Remove(drawn.month); // 이중 지급 방지 (위 r1 분기와 같은 이유)
                 }
                 else
                 {
+                    GoStopRules.CaptureResult chosen2 = null;
+                    yield return StartCoroutine(ContinueChoice(drawn, r2, seat, res => chosen2 = res));
+                    r2 = chosen2;
+                }
+            }
+            // 2026-09-02(사용자 확인 — "슬램다운 끝나고 필드패 나올 때까지
+            // 텀이 있어서 카드가 깜빡거림") — 고스트 파괴를 여기로 늦췄다.
+            // 예전엔 willDraw 진입 직후(위 선택 팝업이 뜨기도 전에) 미리
+            // 지워서, ContinueChoice가 응답을 기다리는 몇 초 동안 뒷패가
+            // 화면에서 통째로 사라져 있었다 — 결과가 확정된 지금부터는
+            // 바로 아래 RebuildUI가 실제 카드를 그려주므로 여기서 지워야
+            // 공백이 없다.
+            DestroyGhost(deckGhost);
+            if (r2.captured.Count > 0)
+            {
+                // 필드 쪽 매칭 카드의 위치도 손패와 같은 방식으로 미리
+                // 기록해 둔다(뒷패 쪽은 항상 손패 없이 1장이라 handSideCount
+                // 개념 없이 바로 Skip(1)). fieldArea.Find 대신
+                // FieldSlotTransform을 쓰는 이유는 위 r1 루프와 동일
+                // (카드가 pos 슬롯의 자식이라 1단 깊이 Find로는 못 찾는다).
+                foreach (var fc in r2.captured.Skip(1))
+                {
+                    var go = FieldSlotTransform(fc).Find(fc.spriteName);
+                    if (go != null) flyFrom[fc] = go.position;
+                }
+
+                cap.AddRange(r2.captured);
+                GoStopAudio.Instance?.Capture();
+                // 2026-09-07 — r1과 같은 이유. 뻑먹기(matchCount==3)가
+                // 뒷패 쪽에서 완성되는 경우, ApplyMatchBonus가 나중에
+                // FieldSlotTransform을 다시 부르면 이미 반납된 슬롯이라
+                // 엉뚱한 자리를 잡는다 — 위에서 이미 등록해 둔 flyFrom
+                // 스냅샷(r2.captured.Skip(1)의 첫 카드)을 재사용한다.
+                if (r2.matchCount == 3)
+                {
+                    var r2FieldCard = r2.captured.Skip(1).FirstOrDefault();
+                    if (r2FieldCard != null && flyFrom.TryGetValue(r2FieldCard, out var r2Pos))
+                        comboEffectWorldPos = r2Pos;
+                }
+                bool chok = r1.placedOnField && r2.captured.Contains(card) && !isFinalPersonalTurn;
+                // 따닥: 손패로 필드 2장 중 하나를 고른 뒤(ddadakWatch=고르지
+                // 않은 나머지 한 장), 같은 턴의 뒷패가 그 나머지 한 장마저
+                // 잡았다. chok과는 조건이 겹치지 않는다(chok은 r1.placedOnField,
+                // 즉 손패가 아무것도 못 먹은 경우에만 성립하는데, ddadakWatch는
+                // 반대로 손패가 선택 캡처로 뭔가를 먹었을 때만 채워진다).
+                bool ddadak = ddadakWatch != null && r2.captured.Contains(ddadakWatch) && !isFinalPersonalTurn;
+
+                if (seat == PLAYER_SEAT || IsRemoteSeat(seat))
+                {
+                    var dual2 = r2.captured.FirstOrDefault(c => c.dualPi);
+                    if (dual2 != null) dualPiPending.Add(dual2);
+                }
+
+                RebuildUI();
+                yield return new WaitForSeconds(PLAY_STEP_DELAY);
+
+                // 피 뺏기 — 여기서도 Cap 배치 다음 별도 비트로 분리한다.
+                bool stole2 = false;
+                if (chok)
+                {
+                    StealPiFromEachOther(seat, 1);
+                    // 2026-09-07 버그 수정("따닥 이펙트가 엉뚱한 pos에 뜬다") —
+                    // 이 시점엔 card가 이미 캡처되고 RebuildUI(3444줄)도
+                    // 한 번 돈 뒤라 SyncFieldSlotAssignments가 그 슬롯 배정을
+                    // 이미 반납했다 — FieldSlotTransform(card)를 여기서 다시
+                    // 부르면 "빈 슬롯 새로 찾기" 폴백을 타서 엉뚱한(대개 가장
+                    // 낮은 번호의) 자리를 돌려준다. 바로 위(3422줄)에서 이미
+                    // 캡처 직전에 정확한 위치를 flyFrom[card]로 스냅샷해
+                    // 뒀으니 그걸 그대로 재사용한다.
+                    comboEffectWorldPos = flyFrom.TryGetValue(card, out var chokPos) ? chokPos : FieldSlotTransform(card).position;
+                    Toast(seat, "쪽");
+                    stole2 = true;
+                    if (r2.sweep)
+                    {
+                        sweeps[seat]++;
+                        StealPiFromEachOther(seat, 1);
+                        Toast(seat, "싹쓸이");
+                    }
+                }
+                else if (ddadak)
+                {
+                    StealPiFromEachOther(seat, 1);
+                    // 2026-08-26 — "첫따닥"(손패 첫 장으로 만든 따닥)은 정확히
+                    // 여기(뒷패가 나머지 한 장을 마저 잡아 따닥이 확정된 시점)
+                    // 에서만 판정한다 — 위 선택 시점에서 옮겨왔다(그때는 아직
+                    // 진짜 따닥인지 몰랐다). 피 뺏기는 원래대로 그대로 일어나고
+                    // (상대에게 피가 있다면), 첫 턴이면 그 위에 판돈을 추가로 얹는다.
+                    // 2026-09-07 버그 수정("pos4에서 따닥이 발생했는데 pos1
+                    // 포지션에서 등장") — 위 chok과 완전히 같은 원인(이 시점엔
+                    // ddadakWatch도 이미 캡처+RebuildUI를 거쳐 슬롯 배정이
+                    // 반납된 뒤라 FieldSlotTransform이 엉뚱한 빈 슬롯을 새로
+                    // 잡는다) — 캡처 직전 스냅샷인 flyFrom[ddadakWatch]를 쓴다.
+                    comboEffectWorldPos = flyFrom.TryGetValue(ddadakWatch, out var ddadakPos) ? ddadakPos : FieldSlotTransform(ddadakWatch).position;
+                    if (wasFirstPlay) { ApplyMoneyBonus(seat, PpeokMoney(), "첫따닥비"); Toast(seat, "첫따닥"); }
+                    else Toast(seat, "따닥");
+                    stole2 = true;
+                    if (r2.sweep)
+                    {
+                        sweeps[seat]++;
+                        StealPiFromEachOther(seat, 1);
+                        Toast(seat, "싹쓸이");
+                    }
+                }
+                else stole2 = ApplyMatchBonus(seat, r2, false, allowLastTurnBonus: !isFinalPersonalTurn);
+
+                if (stole2)
+                {
                     RebuildUI();
                     yield return new WaitForSeconds(PLAY_STEP_DELAY);
                 }
+            }
+            else
+            {
+                RebuildUI();
+                yield return new WaitForSeconds(PLAY_STEP_DELAY);
             }
         }
 
         foreach (var dual in dualPiPending)
             yield return StartCoroutine(PromptDualPiChoice(dual, seat));
 
+
         actionBusy = false;
+
+
         onDone?.Invoke();
+
     }
 
     /// <summary>손패 없이 덱만 한 장 넘긴다 — 폭탄 크레딧 소모, 또는 손패가 이미 바닥난 뒤.</summary>
@@ -3760,14 +4033,30 @@ public partial class GoStop3PGame : MonoBehaviour
 
         if (drawPile.Count == 0) { RebuildUI(); actionBusy = false; onDone?.Invoke(); yield break; }
 
+        // 2026-09-08 — 이 턴도 "진짜 개인 턴 하나"라 정확히 1번 증가한다.
+        // 손이 빈 뒤라 항상 예외 대상이 "아니었던" 예전 설계(h.Count==0
+        // 기반)와 달리, 이제는 폭탄/조커로 손이 일찍 빈 경우 그 밀린
+        // "진짜 N번째 턴"이 바로 여기(덱만 넘기는 턴들 중 하나)에서
+        // 뒤늦게 걸릴 수 있다.
+        personalTurnCount[seat]++;
+        bool isFinalPersonalTurn = personalTurnCount[seat] == HandSizeLimit;
+
         var drawn = drawPile[0]; drawPile.RemoveAt(0);
+        // 2026-09-08 — PlaySeq의 뒷패 로그와 동일(손패 없이 덱만 넘기는
+        // 턴에도 똑같이 남긴다).
+        AppendChatLine(drawn.isJoker
+            ? $"{SeatNameFor(seat, -1)}님의 뒷패로 보너스패가 나왔습니다"
+            : $"{SeatNameFor(seat, -1)}님의 뒷패로 패가 나왔습니다",
+            cardSpriteName: drawn.isJoker ? null : drawn.spriteName);
 
         if (drawn.isJoker)
         {
             // 손패를 안 낸 턴(덱만 넘기기)이라 "이전 손패에서 선택한 패"가
-            // 없다 — 겹쳐놓을 대상이 없으므로 즉시 캡처로 단순화한다. 이미
-            // 손이 빈 뒤라 "마지막 손패 턴"이 아니다(isLastHandCard: false).
-            yield return StartCoroutine(ResolveBonusJoker(seat, drawn, null, cap, false));
+            // 없다 — 겹쳐놓을 대상이 없으므로 즉시 캡처로 단순화한다(anchor
+            // 자체가 없으니 chok/뻑 판정과 무관 — isFinalPersonalTurn을
+            // 넘기는 건 일관성을 위해서일 뿐, CaptureBonusJokerImmediately
+            // 경로는 이 값을 안 쓴다).
+            yield return StartCoroutine(ResolveBonusJoker(seat, drawn, null, cap, isFinalPersonalTurn));
         }
         else
         {
@@ -3775,7 +4064,7 @@ public partial class GoStop3PGame : MonoBehaviour
             // 마지막 한 장이 아니라 "각자 자기 손패의 마지막 장을 낼 때"를
             // 가리킨다. 이 턴은 손이 이미 다 떨어진 뒤(그 마지막 턴은 이미
             // 지났다)라 더 이상 예외 대상이 아니다 — 항상 정상적으로
-            // 쪽/따닥/싹쓸이가 붙는다(allowSweep 기본값 true 그대로).
+            // 쪽/따닥/싹쓸이/뻑먹기 피뺏기가 붙는다(allowLastTurnBonus 기본값 true 그대로).
             // 2026-09-04(사용자 확인) — "뒷패를 깔때마다" 요청으로 덱만
             // 넘기는 턴도 PlaySeq의 ② 뒷패 슬램다운과 같은 고스트+SlamDown
             // (긴장 펄스 + 결과별 완급)으로 통일했다 — 예전엔 이 턴만
@@ -3793,6 +4082,8 @@ public partial class GoStop3PGame : MonoBehaviour
             var r = GoStopRules.Resolve(drawn, field);
             if (r.choiceCandidates != null)
             {
+                // 2026-09-12 복원 — PlaySeq의 r1HadChoice/r2 분기와 완전히
+                // 같은 이유·같은 버그(DeckOnlySeq 버전).
                 if (ppeokBonusPi.TryGetValue(drawn.month, out var jokerAtDrawn2))
                 {
                     r = GoStopRules.ResolveJokerPpeok(drawn, r.choiceCandidates, jokerAtDrawn2, field);
@@ -3815,7 +4106,13 @@ public partial class GoStop3PGame : MonoBehaviour
             {
                 cap.AddRange(r.captured);
                 GoStopAudio.Instance?.Capture();
-                ApplyMatchBonus(seat, r, false);
+                // 2026-09-08 — 예전엔 여기가 항상 기본값(allowLastTurnBonus=
+                // true)이라 덱만 넘기는 턴엔 마지막턴 예외가 절대 안 걸렸다
+                // (h.Count==0 기반 시절엔 "손이 이미 빈 뒤"라 항상 맞는
+                // 가정이었지만, 폭탄/조커로 손이 일찍 빈 경우엔 진짜
+                // HandSizeLimit번째 턴이 바로 이런 덱-only 턴에 걸릴 수
+                // 있다 — 그 경우엔 여기서도 억제해야 한다.
+                ApplyMatchBonus(seat, r, false, allowLastTurnBonus: !isFinalPersonalTurn);
                 RegisterFlyViaField(r);
                 if (seat == PLAYER_SEAT || IsRemoteSeat(seat))
                     dualPending = r.captured.FirstOrDefault(c => c.dualPi);
@@ -3881,11 +4178,14 @@ public partial class GoStop3PGame : MonoBehaviour
     /// 손패 슬램다운이 착지한 지점을 넘겨주면 그 자리에서 나타난다. 안
     /// 주어지면(DeckOnlySeq처럼 이번 턴에 손패를 안 낸 경우) 기존처럼
     /// 더미 자리에서 나타난다.</param>
-    /// <param name="isLastHandCard">2026-08-26 — 이 조커가 "손패의 마지막
-    /// 장을 낸 턴"에 뒤집힌 것인지(PlaySeq가 자기 turn-scope의 isLastHandCard를
-    /// 그대로 넘겨준다). DeckOnlySeq에서 호출될 때는 이미 손이 빈 뒤라
-    /// 항상 false를 넘긴다 — 쪽/싹쓸이 예외는 정확히 그 한 번의 턴에만
-    /// 적용된다(사용자 확인).</param>
+    /// <param name="isFinalPersonalTurn">2026-09-08 정정(사용자 확인) — 이
+    /// 좌석의 실제 개인 턴 횟수가 정확히 HandSizeLimit(고스톱 7/맞고 10)
+    /// 번째에 도달했는지(PlaySeq/DeckOnlySeq가 자기 turn-scope에서 계산한
+    /// 값을 그대로 넘겨준다). h.Count==0(손패가 이번 카드로 비는지) 기반
+    /// 판정을 대체했다 — 폭탄/조커로 손이 일찍 비어도 이 값 자체는 안
+    /// 당겨져야 하므로, DeckOnlySeq(손이 이미 빈 뒤의 턴들)에서도 더 이상
+    /// 무조건 false가 아니라 실제 계산값을 넘긴다. 쪽/싹쓸이 예외는 정확히
+    /// 이 값이 true인 그 한 번의 턴에만 적용된다.</param>
     /// <param name="pendingPartner">2026-09-07 버그 수정("12월 쌍피 매칭 후
     /// 보너스패 → 뻑 안 남 → 내가 낸 패가 필드에 그대로 남아 상대가
     /// 가져감" 실전 재현) — anchor가 "완전 무매칭"이 아니라 couldBePpeok
@@ -3900,32 +4200,83 @@ public partial class GoStop3PGame : MonoBehaviour
     /// 커밋해서 고친다. anchor가 진짜 완전 무매칭이면(원래도 field에
     /// 혼자 남아 있다가 나중에 정상적으로 캡처되는 게 의도된 동작) null로
     /// 넘어와 이 로직 자체가 스킵된다.</param>
-    IEnumerator ResolveBonusJoker(int seat, HwatuCard joker, HwatuCard anchor, List<HwatuCard> cap, bool isLastHandCard,
-        Vector3? revealFrom = null, HwatuCard pendingPartner = null)
+    IEnumerator ResolveBonusJoker(int seat, HwatuCard joker, HwatuCard anchor, List<HwatuCard> cap, bool isFinalPersonalTurn,
+        Vector3? revealFrom = null, HwatuCard pendingPartner = null, List<HwatuCard> jokers = null)
     {
+        if(jokers == null)
+            jokers = new List<HwatuCard>();
+        if (!jokers.Contains(joker))
+            jokers.Add(joker);
+        
+        var next = drawPile[0]; 
+        drawPile.RemoveAt(0);
+        RectTransform nextTarget = next.isJoker ? FieldSlotTransform(anchor) : FieldSlotTransform(next);
+
+        var nextMood = LandingMood(nextTarget.childCount > 0, nextTarget.childCount >= 3);
+
         if (anchor == null)
         {
+
+            // 1. 현재 조커는 즉시 Cap
             yield return StartCoroutine(CaptureBonusJokerImmediately(seat, joker, cap, revealFrom));
+            
+            // 2. 조커를 깠으면 반드시 뒷패를 하나 더 깐다.
+            if (drawPile.Count == 0)
+            {
+                yield break;
+            }
+            
+
+            AppendChatLine(next.isJoker
+                ? $"{SeatNameFor(seat, -1)}님의 뒷패로 보너스패가 나왔습니다"
+                : $"{SeatNameFor(seat, -1)}님의 뒷패로 패가 나왔습니다",
+                cardSpriteName: next.isJoker ? null : next.spriteName);
+
+            // 3. 다음 카드도 조커라면 같은 규칙을 한 번 더 적용
+            if (next.isJoker)
+            {
+                var ng = SpawnGhostCard(next, nextTarget);
+                var nl = ng.transform.position;
+                
+                yield return StartCoroutine(SlamDown(ng.transform as RectTransform, nextTarget,
+                    dropHeight: nextMood.dropHeight, dropDur: nextMood.dropDur, punchDur: nextMood.punchDur, punchScale: nextMood.punchScale,
+                    cardMonth: next.month, suspensePulses: 2));
+
+                DestroyGhost(ng);
+                yield return StartCoroutine(
+                    ResolveBonusJoker(
+                        seat,
+                        next,
+                        null,
+                        cap,
+                        isFinalPersonalTurn,
+                        drawPileArea.position,
+                        null,
+                        jokers
+                    )
+                );
+                yield break;
+            }
+
+            // 4. 일반 카드라면 정상적인 "뒷패" 처리
+            yield return StartCoroutine(
+                ResolveBonusNextCardWithoutAnchor(
+                    seat,
+                    next,
+                    cap,
+                    isFinalPersonalTurn
+                )
+            );
             yield break;
         }
 
-        // 2026-09-07 버그 수정("보너스패만 가져가고 다음 뒷패를 안 뽑는다",
-        // 라이브에서 실제 재현) — 예전엔 여기서 "이 달이 이미 소진됐으면
-        // 파킹 자체를 포기하고 곧장 캡처"하는 용량 가드를 최상단에 뒀는데,
-        // 그러면 "곧바로 뒷패를 하나 더 깐다"는 사용자 명세의 필수 단계
-        // 자체가 통째로 스킵됐다 — 용량 부족은 "묻어도 되는지"만 막아야
-        // 하는 조건이지 "뒷패를 더 깔지 말지"를 막을 이유가 아니었다(용량이
-        // 부족해도 next 카드 자체는 이번 턴의 정상적인 뒷패 소모라 항상
-        // 뽑아야 한다). 용량 체크는 아래 "뻑!" 판정 시점으로 옮겼다 —
-        // next가 실제로 anchor와 같은 달일 때만, 그 순간 이 달 실카드가
-        // 정말 하나라도 더 남아있는지(=이 뻑이 언젠가 완성 가능한지)를
-        // 확인한다.
-        // 1) 이번 턴에 낸 패(anchor) 자리에 일단 붙여놓는다 — 아직 확정 아님.
         fieldSlotAssign[joker] = AssignFieldSlot(anchor);
         field.Add(joker);
         flyFrom[joker] = revealFrom ?? drawPileArea.position;
-        Toast(seat, "보너스패 대기");
+        Toast(seat, "보너스패 등장");
+
         RebuildUI();
+
         yield return new WaitForSeconds(PLAY_STEP_DELAY * 0.5f);
 
         // 2) 곧바로 뒷패를 하나 더 깐다 — 이 카드가 조커의 운명을 정한다.
@@ -3934,19 +4285,30 @@ public partial class GoStop3PGame : MonoBehaviour
             yield return StartCoroutine(CaptureBonusJokerImmediately(seat, joker, cap, null));
             yield break;
         }
-        var next = drawPile[0]; drawPile.RemoveAt(0);
+        
+
+
+
+        // 2026-09-08(사용자 신고 — "보너스패 다음 뒷패를 까면 그건 시스템
+        // 로그로 안 남아서 버그인줄 알았다") — PlaySeq/DeckOnlySeq의 일반
+        // 뒷패 로그(AppendChatLine)와 대칭되는 이벤트인데 이 함수만 빠져
+        // 있었다. "조커의 운명을 정하는 바로 그 카드"라는 걸 알 수 있게
+        // 같은 문구 패턴을 그대로 쓴다.
+        AppendChatLine(next.isJoker
+            ? $"{SeatNameFor(seat, -1)}님의 뒷패로 보너스패가 나왔습니다"
+            : $"{SeatNameFor(seat, -1)}님의 뒷패로 패가 나왔습니다",
+            cardSpriteName: next.isJoker ? null : next.spriteName);
+
 
         if (next.isJoker)
         {
-            // 조커는 anchor와 절대 못 맞는다 — 이번 조커(joker)는 "뻑 아님"
-            // 으로 확정돼 유저 소유가 되고, 새 조커(next)에 같은 규칙을
-            // 같은 anchor로 재귀 적용한다.
-            yield return StartCoroutine(CaptureBonusJokerImmediately(seat, joker, cap, null));
-            yield return StartCoroutine(ResolveBonusJoker(seat, next, anchor, cap, isLastHandCard, drawPileArea.position, pendingPartner));
+            yield return StartCoroutine(ResolveBonusJoker(seat, next, anchor, cap, isFinalPersonalTurn, drawPileArea.position, pendingPartner, jokers));
+
             yield break;
         }
 
         bool couldBury = next.month == anchor.month;
+
         if (couldBury)
         {
             // 용량 가드는 여기(실제로 묻을지 결정하는 순간)에서만 확인한다.
@@ -3961,7 +4323,19 @@ public partial class GoStop3PGame : MonoBehaviour
             int alreadyCapturedOfMonth = captured.Where(c2 => c2 != null)
                 .Sum(c2 => c2.Count(c => c.month == anchor.month));
             couldBury = reservedInField + 1 + alreadyCapturedOfMonth < 4;
+            nextMood = (dropHeight: 60f, dropDur: 0.22f, punchDur: 0.16f, punchScale: 1.06f) ;
         }
+        var nextGhost = SpawnGhostCard(next, nextTarget);
+
+        var nextLanding = nextGhost.transform.position;
+
+        yield return StartCoroutine(SlamDown(nextGhost.transform as RectTransform, nextTarget,
+            dropHeight: nextMood.dropHeight, dropDur: nextMood.dropDur, punchDur: nextMood.punchDur, punchScale: nextMood.punchScale,
+            cardMonth: next.month, suspensePulses: 2));
+
+
+        DestroyGhost(nextGhost);
+        flyFrom[next] = nextLanding;
 
         if (couldBury)
         {
@@ -3970,9 +4344,15 @@ public partial class GoStop3PGame : MonoBehaviour
             // 있으면 그대로, 이미 캡처돼 사라졌으면 그 상태 그대로 둔다.
             field.Add(next);
             fieldSlotAssign[next] = AssignFieldSlot(anchor);
-            flyFrom[next] = drawPileArea.position;
             ppeokCauser[anchor.month] = seat;
-            ppeokBonusPi[anchor.month] = joker;
+            if(!ppeokBonusPi.ContainsKey(anchor.month))
+                ppeokBonusPi.Add(anchor.month, new());
+
+            foreach (var j in jokers)
+            {
+                if (!ppeokBonusPi[anchor.month].Contains(j))
+                    ppeokBonusPi[anchor.month].Add(j);
+            }
 
             int total = ++ppeokTotalCount[seat];
             ++ppeokStreak[seat];
@@ -3988,31 +4368,40 @@ public partial class GoStop3PGame : MonoBehaviour
             yield break;
         }
 
-        // 뻑 아님 — 조커는 유저 소유로 확정.
-        yield return StartCoroutine(CaptureBonusJokerImmediately(seat, joker, cap, null));
+        // 뻑 아님 — 2026-09-14(사용자 신고: "조커/anchor가 먼저 따로
+        // Cap으로 가버리고 next 결과가 또 별도로 처리된다, 손패·뒷패·조커
+        // 전부 필드에 나온 뒤 한 번에 Cap으로 이동해야 쪼는 맛이 산다") —
+        // 예전엔 여기서 조커부터 CaptureBonusJokerImmediately로 즉시
+        // Cap에 보낸 뒤에야 next의 매칭을 계산해서, RebuildUI가 두 번
+        // 갈라져 있었다. field를 실제로 바꾸는 순서(게임 로직)는 원래와
+        // 완전히 동일하게 유지하되, 그 결과를 화면에 반영하는 시점
+        // (RebuildUI)만 맨 끝 하나로 합친다 — GoStopRules.Resolve/
+        // ResolveChoice 등은 순수하게 field만 건드릴 뿐 화면엔 손을
+        // 안 대는 함수들이라 이 분리가 가능하다.
 
-        // 2026-09-07 버그 수정 — couldBePpeok 페어가 조커 때문에 보류돼
-        // 있었다면(pendingPartner != null) 여기서 확정 커밋한다. anchor(=card)
-        // 자체도 아직 field에 있다는 전제 — 위 어느 분기도 anchor를 건드리지
-        // 않았으므로 항상 성립한다.
-        if (pendingPartner != null && field.Contains(anchor) && field.Contains(pendingPartner))
+        // 1) pendingPartner(couldBePpeok 쌍)가 있으면 먼저 field에서
+        // 빼둔다 — 이래야 바로 다음의 next 매칭 계산이 "이미 확정된 이
+        // 쌍"을 다시 건드리지 않는다(순서를 바꾸면 next가 우연히 같은
+        // 달이어서 엉뚱하게 다시 매칭되는 회귀가 생긴다). Cap 편입·화면
+        // 반영은 여기서 안 한다 — field에서 빼는 것까지만.
+        bool commitPendingPartner = pendingPartner != null && field.Contains(anchor) && field.Contains(pendingPartner);
+        if (commitPendingPartner)
         {
             field.Remove(anchor);
             field.Remove(pendingPartner);
-            cap.Add(anchor);
-            cap.Add(pendingPartner);
-            GoStopAudio.Instance?.Capture(); // 섹션 ④의 평범한 캡처와 같은 사운드(별도 이펙트 없음 — 뻑도 쪽도 아닌 평범한 2장 매칭)
-            RebuildUI();
-            yield return new WaitForSeconds(PLAY_STEP_DELAY);
         }
 
-        // next는 독립적인 새 카드로 정상 매칭 로직을 그대로 탄다(기존
-        // "extra 카드" 처리와 동일한 경로 — Resolve→선택→매칭 판정).
-        flyFrom[next] = drawPileArea.position;
+        // 2) next는 독립적인 새 카드로 정상 매칭 로직을 그대로 탄다(기존
+        // "extra 카드" 처리와 동일한 경로 — Resolve→선택→매칭 판정). 등장
+        // 연출은 이미 위에서 끝났다 — 여기부터는 순수하게 결과 판정만.
+        // 화면(RebuildUI)은 아직 안 건드린다 — ContinueChoice(필드 선택
+        // 팝업)만 예외로 사용자 입력을 기다린다.
         var r = GoStopRules.Resolve(next, field);
 
         if (r.choiceCandidates != null)
         {
+            // 2026-09-12 복원 — 다른 4곳과 완전히 같은 이유·같은 버그
+            // (ResolveBonusJoker의 anchor!=null "뻑 아님" 꼬리 버전).
             if (ppeokBonusPi.TryGetValue(next.month, out var jokerAtNext))
             {
                 r = GoStopRules.ResolveJokerPpeok(next, r.choiceCandidates, jokerAtNext, field);
@@ -4026,16 +4415,35 @@ public partial class GoStop3PGame : MonoBehaviour
             }
         }
 
+        // 3) 이제 전부 확정 — anchor 쌍·조커·next 매칭 결과를 한 번에 Cap
+        // 으로 편입한다. flyFrom은 field.Remove 직전(아직 화면에 실제
+        // GameObject가 남아있는 시점)에 실제 렌더 위치로 기록해야 부드럽게
+        // 날아간다 — CaptureBonusJokerImmediately가 조커 하나에 대해 하던
+        // 것과 같은 패턴을 조커 전체에 적용한다.
+        if (commitPendingPartner)
+        {
+            cap.Add(anchor);
+            cap.Add(pendingPartner);
+        }
+        foreach (var j in jokers)
+        {
+            var slot = FieldSlotTransform(j);
+            var jokerGo = slot != null ? slot.Find(j.spriteName) : null;
+            flyFrom[j] = jokerGo != null ? jokerGo.position : fieldArea.position;
+            field.Remove(j);
+            cap.Add(j);
+        }
+        Toast(seat, "보너스 획득");
+
         if (r.captured.Count > 0)
         {
             cap.AddRange(r.captured);
-            GoStopAudio.Instance?.Capture();
             RegisterFlyViaField(r);
 
             // 쪽 — anchor가 이 next에 맞춰 잡혔다(anchor가 아직 field에
             // 남아있던 경우에만 성립 — Resolve가 실제 field 카드만 매칭
             // 하므로 이미 캡처돼 사라진 anchor는 자연히 걸리지 않는다).
-            bool chok = anchor != null && r.captured.Contains(anchor) && !isLastHandCard;
+            bool chok = anchor != null && r.captured.Contains(anchor) && !isFinalPersonalTurn;
             if (chok)
             {
                 StealPiFromEachOther(seat, 1);
@@ -4048,7 +4456,7 @@ public partial class GoStop3PGame : MonoBehaviour
                     Toast(seat, "싹쓸이");
                 }
             }
-            else ApplyMatchBonus(seat, r, false, allowSweep: !isLastHandCard);
+            else ApplyMatchBonus(seat, r, false, allowLastTurnBonus: !isFinalPersonalTurn);
 
             if (seat == PLAYER_SEAT || IsRemoteSeat(seat))
             {
@@ -4057,6 +4465,7 @@ public partial class GoStop3PGame : MonoBehaviour
             }
         }
 
+        GoStopAudio.Instance?.Capture();
         RebuildUI();
         yield return new WaitForSeconds(PLAY_STEP_DELAY);
     }
@@ -4068,19 +4477,43 @@ public partial class GoStop3PGame : MonoBehaviour
     /// 등장 연출 없이 바로 거둬간다.</summary>
     IEnumerator CaptureBonusJokerImmediately(int seat, HwatuCard joker, List<HwatuCard> cap, Vector3? revealFrom)
     {
-        if (!field.Contains(joker))
+
+        bool alreadyInField = field != null && field.Contains(joker);
+
+        if (!alreadyInField)
         {
             field.Add(joker);
-            flyFrom[joker] = revealFrom ?? drawPileArea.position;
+
+            Vector3 startPos = revealFrom ?? drawPileArea.position;
+            flyFrom[joker] = startPos;
+
             RebuildUI();
+
             yield return new WaitForSeconds(PLAY_STEP_DELAY * 0.5f);
         }
+
+
+        var slot = FieldSlotTransform(joker);
+
+
+        var jokerGo = slot != null ? slot.Find(joker.spriteName) : null;
+
+
         field.Remove(joker);
+
         cap.Add(joker);
-        flyFrom[joker] = fieldArea.position;
+
+        flyFrom[joker] = jokerGo != null
+            ? jokerGo.position
+            : fieldArea.position;
+
+
         Toast(seat, "보너스 획득");
+
         RebuildUI();
+
         yield return new WaitForSeconds(PLAY_STEP_DELAY * 0.5f);
+
     }
 
     /// <summary>폭탄이 아닌 매칭 보너스(뻑 해소/자뻑·싹쓸이) — 쪽은 <see cref="PlaySeq"/>에서
@@ -4094,7 +4527,7 @@ public partial class GoStop3PGame : MonoBehaviour
     /// true를 넘긴다 — r2(뒷패)·DeckOnlySeq·ResolveBonusJoker는 손패를 낸
     /// 게 아니므로 항상 기본값(false) 그대로 둔다. matchCount==3(뻑 먹기)
     /// 분기에서만 쓰인다 — "첫뻑먹기" 판돈 보너스 판정용.</param>
-    bool ApplyMatchBonus(int seat, GoStopRules.CaptureResult r, bool bomb, bool allowSweep = true, bool wasFirstHandPlay = false)
+    bool ApplyMatchBonus(int seat, GoStopRules.CaptureResult r, bool bomb, bool allowLastTurnBonus = true, bool wasFirstHandPlay = false)
     {
         bool did = false;
         // 폭탄/뻑 먹기/자뻑은 전부 "필드의 특정 달 슬롯 하나"에서 일어나므로
@@ -4123,13 +4556,22 @@ public partial class GoStop3PGame : MonoBehaviour
             // 확인하는 용도로만 쓰고, 스틸 자체는 항상 StealPiFromEachOther
             // 하나로 통일한다.
             int month = r.captured[0].month;
+            // 2026-09-08(사용자 확인, 표준 규칙) — 뻑/자뻑도 쪽·따닥·싹쓸이와
+            // 같은 "마지막 턴" 예외 대상이다: 그 좌석의 진짜 마지막 개인
+            // 턴(HandSizeLimit번째)에 뻑을 완성해도 캡처(4장 획득) 자체는
+            // 그대로지만 피는 못 뺏는다. 새 매개변수를 따로 안 만들고
+            // allowLastTurnBonus(호출부가 이미 싹쓸이용으로 계산해 둔
+            // isFinalPersonalTurn 기반 값)를 그대로 재사용한다 — "이번이
+            // 이 턴의 마지막 이벤트인가"라는 완전히 같은 개념이라서다.
             if (ppeokCauser.TryGetValue(month, out int causer))
             {
                 bool selfPpeok = causer == seat;
-                StealPiFromEachOther(seat, selfPpeok ? 2 : 1);
+                if (allowLastTurnBonus) StealPiFromEachOther(seat, selfPpeok ? 2 : 1);
                 // 2026-08-26 — "첫뻑먹기"(손패 첫 장이 기존 뻑을 먹은 경우)는
                 // 자뻑/일반 뻑 먹기와 무관하게 항상 같은 판돈 보너스
                 // (PpeokMoney())가 추가로 붙는다 — 첫뻑/첫따닥과 같은 원칙.
+                // "마지막 턴" 예외는 피뺏기만 막을 뿐 이 판돈 보너스와는
+                // 무관한 별개 조건(이번 판의 첫 수인가)이라 그대로 둔다.
                 if (wasFirstHandPlay) { ApplyMoneyBonus(seat, PpeokMoney(), "첫뻑먹기비"); Toast(seat, "첫뻑먹기"); }
                 else Toast(seat, selfPpeok ? "자뻑" : "뻑 먹기");
                 ppeokCauser.Remove(month);
@@ -4147,24 +4589,29 @@ public partial class GoStop3PGame : MonoBehaviour
                 // "누가 이 무더기를 만들었는지"가 애초에 성립하지 않는
                 // 상황이라 자뻑 배수(2배)를 적용할 근거가 없다 — 일반
                 // 뻑 먹기와 같은 1배로, 각 상대에게서 1장씩 가져온다.
-                StealPiFromEachOther(seat, 1);
+                if (allowLastTurnBonus) StealPiFromEachOther(seat, 1);
                 Toast(seat, "뻑 먹기");
                 did = true;
             }
             // 그 뻑에 보너스피가 같이 묻혀 있었으면(ResolveBonusJoker 참고)
             // 지금 이걸 해소하는 사람이 그 보너스피도 같이 가져간다.
-            if (ppeokBonusPi.TryGetValue(month, out var bonus))
+            if (ppeokBonusPi.TryGetValue(month, out var bonuses))
             {
-                field.Remove(bonus);
-                captured[seat].Add(bonus);
-                flyFrom[bonus] = fieldArea.position;
+                foreach(var bonus in bonuses)
+                {
+                    var bonusGo = FieldSlotTransform(bonus).Find(bonus.spriteName);
+                    field.Remove(bonus);
+                    captured[seat].Add(bonus);
+                    flyFrom[bonus] = bonusGo != null ? bonusGo.position : fieldArea.position;    
+                }
+                
                 ppeokBonusPi.Remove(month);
                 Toast(seat, "보너스 획득");
                 did = true;
             }
         }
 
-        if (r.sweep && allowSweep)
+        if (r.sweep && allowLastTurnBonus)
         {
             sweeps[seat]++;
             StealPiFromEachOther(seat, 1);
@@ -4249,6 +4696,7 @@ public partial class GoStop3PGame : MonoBehaviour
     // ── 턴 이후 판정 ─────────────────────────────────────
     void AfterAction(int seat)
     {
+
         if (seat != PLAYER_SEAT && !IsRemoteSeat(seat))
         {
             // AI는 팝업이 없으니 9월 열끗을 곧바로 유리한 쪽으로 최적화한다.
@@ -4262,17 +4710,12 @@ public partial class GoStop3PGame : MonoBehaviour
             }
         }
 
-        if (CheckHandsEmpty()) return;
+        bool handsEmpty = CheckHandsEmpty();
+
+
+        if (handsEmpty) return;
 
         int rawScore = GoStopRules.CalcScore(captured[seat], sweeps[seat]).Total;
-
-        // 더 낼 손패도, 쓸 폭탄 크레딧도 없으면 점수 변동 여부와 무관하게
-        // 그 자리에서 끝난다 — 더 진행할 방법이 없다.
-        if (seat == PLAYER_SEAT && hand[PLAYER_SEAT].Count == 0 && bombCredits[PLAYER_SEAT] == 0 && rawScore >= CaptureLine)
-        {
-            EndGame(PLAYER_SEAT);
-            return;
-        }
 
         // lastGoScore보다 실제로 더 올라갔을 때만 다시 묻는다 — 안 그러면
         // 아무것도 못 먹어 점수가 그대로인 턴에도 매번 고/스톱을 물어보게
@@ -4286,12 +4729,34 @@ public partial class GoStop3PGame : MonoBehaviour
         // 안 걸리는지 정확한 수치가 남는다.
         if (seat == PLAYER_SEAT)
         {
-            Debug.Log($"[GoStopGate] seat={seat} rawScore={rawScore} lastGoScore={lastGoScore[seat]} " +
+            Logger.Log($"[GoStopGate] seat={seat} rawScore={rawScore} lastGoScore={lastGoScore[seat]} " +
                 $"willPrompt={rawScore >= CaptureLine && rawScore > lastGoScore[seat]} " +
                 $"capturedCount={captured[seat].Count} goCount={goCount[seat]} captureLine={CaptureLine}");
         }
         if (rawScore >= CaptureLine && rawScore > lastGoScore[seat])
         {
+            // 2026-09-08(사용자 확인) — "손비면 자동승리가 특정 점수를
+            // 달성했을 때(=바로 이 조건, rawScore>=CaptureLine이면서
+            // 직전 고 시점보다 실제로 올랐을 때)는 맞는 행동이지만,
+            // 점수달성을 못했을 때는 다음 유저턴으로 넘어가야지." — 예전
+            // 단축(2026-09-08 초반에 제거)은 lastGoScore 비교 없이
+            // rawScore>=CaptureLine만 봐서, 이미 고를 부른 뒤로 점수가
+            // 하나도 안 올라도 손이 비는 순간 계속 승리 처리되는 게
+            // 문제였다(그래서 제거를 요청하셨다). 지금은 이 if 블록
+            // 자체가 이미 "새로 그 기준을 넘었을 때"만 걸리므로, 그
+            // 조건 위에 "손패도 폭탄크레딧도 더는 없다"만 추가하면
+            // 정확히 사용자가 원하는 좁은 조건이 된다 — 더 낼 방법이
+            // 없는데 방금 막 기준을 넘긴 경우에만 프롬프트 없이 즉시
+            // 승리, 나머지(아직 손이 남았거나 크레딧이 있어 더 낼 수
+            // 있는 경우)는 기존처럼 정상적으로 고/스톱을 묻는다. 좌석을
+            // 안 가려 AI/원격에도 동일하게 적용한다 — 어차피 못 내는
+            // 처지에서 물어보는 건 누구에게든 의미가 없다.
+            if (hand[seat].Count == 0 && bombCredits[seat] == 0)
+            {
+                EndGame(seat);
+                return;
+            }
+
             if (seat == PLAYER_SEAT)
             {
                 ShowGoStopPrompt(rawScore);
@@ -4329,7 +4794,9 @@ public partial class GoStop3PGame : MonoBehaviour
             StartCoroutine(EndGameAfterStop(seat));
             return;
         }
+
         AdvanceTurn();
+
     }
 
     /// <summary>원격 좌석의 고/스톱 결정 — 로컬 플레이어의 ShowGoStopPrompt/
@@ -4455,8 +4922,15 @@ public partial class GoStop3PGame : MonoBehaviour
     /// `AdvanceTurn()`을 부르면 되므로 단 한 곳도 안 고쳐도 된다.</summary>
     void AdvanceTurn()
     {
-        if (pendingSetEffectCount > 0) { StartCoroutine(AdvanceTurnAfterPendingEffects()); return; }
+
+        if (pendingSetEffectCount > 0)
+        {
+            StartCoroutine(AdvanceTurnAfterPendingEffects());
+            return;
+        }
+
         AdvanceTurnImmediate();
+
     }
 
     IEnumerator AdvanceTurnAfterPendingEffects()
@@ -4663,39 +5137,56 @@ public partial class GoStop3PGame : MonoBehaviour
     }
 
     /// <param name="winnerSeat">-1이면 나가리.</param>
-    // 2026-09-07 — 승패 오버레이 요약용. FinalScoreMulti가 이미 계산해 둔
-    // payout(고/흔들기/폭탄/총통 등 공통 배수 + 패자별 광박/피박)을 그대로
-    // 읽어 "배율이 왜 이렇게 됐는지" 한 줄로 압축한다. 특별한 요소가 아무것도
-    // 없으면(고 0회·흔들기 0회·추가배수 없음) null을 돌려줘 그 줄 자체를 뺀다.
-    string BuildOverlayMultiplierLine(GoStopRules.MultiPayout payout)
+    // 2026-09-13 전면 재설계 — 예전엔 이 둘이 문자열을 조립해서 하나의
+    // sub 텍스트 블록으로 합쳐졌는데(GoStopUIManager의 평문 Overlay),
+    // 이제 GoStopResultOverlay가 구조화된 데이터(칩 목록/행 목록)를 직접
+    // 받아 실제 배지·칩 UI로 그린다 — 그래서 문자열이 아니라 List를
+    // 돌려준다. "배율이 왜 이렇게 됐는지"를 칩 여러 개로 나열한다 —
+    // 특별한 요소가 아무것도 없으면(고 0회·흔들기 0회·추가배수 없음)
+    // 빈 리스트를 돌려줘 그 줄 자체를 뺀다.
+    List<string> BuildMultiplierChips(GoStopRules.MultiPayout payout)
     {
         int commonMult = payout.goMultiplier;
         for (int i = 0; i < payout.heundeulCount; i++) commonMult *= 2;
         commonMult *= payout.extraMultiplier;
-        var parts = new List<string>();
-        if (payout.goCount > 0) parts.Add($"고 {payout.goCount}회(+{payout.goBonus}점)");
-        if (payout.heundeulCount > 0) parts.Add($"흔들기/폭탄 {payout.heundeulCount}회");
-        if (payout.extraMultiplier > 1) parts.Add("총통/쓰리뻑");
-        if (parts.Count == 0 && commonMult <= 1) return null;
-        return $"{string.Join(" · ", parts)}{(parts.Count > 0 ? " → " : "")}배율 ×{commonMult}";
+        var chips = new List<string>();
+        if (payout.goCount > 0) chips.Add($"고 {payout.goCount}회(+{payout.goBonus}점)");
+        if (payout.heundeulCount > 0) chips.Add($"흔들기/폭탄 {payout.heundeulCount}회");
+        if (payout.extraMultiplier > 1) chips.Add("총통/쓰리뻑");
+        if (chips.Count > 0 || commonMult > 1) chips.Add($"배율 ×{commonMult}");
+        return chips;
     }
 
-    // "누가 왜 얼마 냈는지" — 실제로 돈을 낸(amount>0) 패자만 나열한다.
-    // 이번 판 한 장도 못 먹어 정산에서 빠진 패자(amount==0)는 표시할 근거
-    // 자체가 없으므로 조용히 건너뛴다.
-    string BuildOverlayBreakdownLine(GoStopRules.MultiPayout payout, List<int> loserSeats)
+    /// <summary>"다른 플레이어" 목록 행 — 나(PLAYER_SEAT)를 제외한 활성
+    /// 좌석 전원(승자 포함)을 한 줄씩 돌려준다. 승자가 나 자신이면 승자는
+    /// (내 정보 카드에 이미 나오므로) 목록에서 빠진다. 패자 중 나 자신도
+    /// 같은 이유로 빠진다 — 내 몫은 항상 MyRow가 담당한다.</summary>
+    List<GoStopResultOverlay.Row> BuildResultRows(GoStopRules.MultiPayout payout, List<int> loserSeats,
+        int winnerSeat, int actualTotalReceived, int dokbakIdx)
     {
-        var parts = new List<string>();
+        var rows = new List<GoStopResultOverlay.Row>();
+        if (winnerSeat != PLAYER_SEAT)
+        {
+            rows.Add(new GoStopResultOverlay.Row
+            {
+                name = SeatName(winnerSeat),
+                amountText = HwatuTheme.MoneyColored(actualTotalReceived, $"+{actualTotalReceived:N0}원"),
+            });
+        }
         for (int i = 0; i < loserSeats.Count; i++)
         {
+            if (loserSeats[i] == PLAYER_SEAT) continue;
             int amount = payout.amounts[i];
-            if (amount <= 0) continue;
-            string tag = "";
-            if (i < payout.gwangBakPerLoser.Count && payout.gwangBakPerLoser[i]) tag += "광박";
-            if (i < payout.piBakPerLoser.Count && payout.piBakPerLoser[i]) tag += (tag.Length > 0 ? "·피박" : "피박");
-            parts.Add($"{SeatName(loserSeats[i])} -{amount:N0}원{(tag.Length > 0 ? $"({tag})" : "")}");
+            rows.Add(new GoStopResultOverlay.Row
+            {
+                name = SeatName(loserSeats[i]),
+                amountText = amount > 0 ? HwatuTheme.MoneyColored(-amount, $"-{amount:N0}원") : "변동 없음",
+                gwangBak = i < payout.gwangBakPerLoser.Count && payout.gwangBakPerLoser[i],
+                piBak = i < payout.piBakPerLoser.Count && payout.piBakPerLoser[i],
+                dokbak = i == dokbakIdx,
+            });
         }
-        return parts.Count > 0 ? string.Join(" · ", parts) : null;
+        return rows;
     }
 
     /// <summary>2026-09-08 — "연출과 팝업이 뒤죽박죽" 점검으로 추가.
@@ -4707,10 +5198,10 @@ public partial class GoStop3PGame : MonoBehaviour
     /// 결과 오버레이가 먼저 뜨고(같은 프레임에 동기로 진행) 완성 이펙트가
     /// 그 위에 0.3초쯤 뒤늦게 겹쳐서 "팝업이 뜨고 나서 연출이 나온다"는
     /// 신고와 정확히 같은 증상이 났다. `showAction`은 그 분기의
-    /// `ui?.ShowOverlay(...)`(및 시점을 맞춰야 하는 `HostAutoRestartSeq`
-    /// 시작 등 화면과 바로 연결된 후속 동작)를 그대로 담은 클로저다 —
-    /// 네트워크 브로드캐스트처럼 화면과 무관한 동작은 이 안에 안 넣고
-    /// 예전처럼 즉시 실행한다.</summary>
+    /// <see cref="GoStopResultOverlay.Show"/> 호출(및 시점을 맞춰야 하는
+    /// `HostAutoRestartSeq` 시작 등 화면과 바로 연결된 후속 동작)을 그대로
+    /// 담은 클로저다 — 네트워크 브로드캐스트처럼 화면과 무관한 동작은 이
+    /// 안에 안 넣고 예전처럼 즉시 실행한다.</summary>
     void ShowResultOverlayDeferred(System.Action showAction)
     {
         if (pendingSetEffectCount == 0) { showAction(); return; }
@@ -4723,10 +5214,35 @@ public partial class GoStop3PGame : MonoBehaviour
         showAction();
     }
 
-    void EndGame(int winnerSeat, int? fixedBaseScore = null, int extraMultiplier = 1)
+    // 2026-09-12 버그 수정 — 총통(딜 직후 즉시 승리)에서 돈이 전혀 안
+    // 오가던 문제. GoStopRules.FinalScoreMulti의 "캡처 0장인 패자는
+    // 정산 제외" 규칙이 총통에도 그대로 걸려서(총통은 아직 한 턴도 안
+    // 돈 시점이라 승자·패자 전원의 captured가 항상 비어 있다) 지급액이
+    // 항상 0으로 나왔다 — isChongtong=true인 호출부만 그 예외를 끈다.
+    /// <summary>2026-09-13(아이템2) — 판이 끝난 순간 필드에 남아있는 카드를
+    /// 전부 흑백으로 죽인다("이제 의미 없는 패"라는 시각 신호). 다음 판
+    /// 딜링(<c>ClearBoardForDealing</c>)이 이 GameObject들을 통째로 파괴하고
+    /// 새로 그리므로 별도 원복 로직이 필요 없다 — 흑백 상태가 다음 판으로
+    /// 새는 일 자체가 구조적으로 불가능하다.</summary>
+    void ApplyGameOverFieldGrayscale()
+    {
+        foreach (var c in field)
+        {
+            var slot = FieldSlotTransform(c);
+            if (slot == null) continue;
+            var cardGo = slot.Find(c.spriteName);
+            if (cardGo == null) continue;
+            var art = cardGo.transform.Find("Art");
+            if (art == null) continue;
+            GoStopFX.ApplyDeadTone(art.GetComponent<Graphic>(), true);
+        }
+    }
+
+    void EndGame(int winnerSeat, int? fixedBaseScore = null, int extraMultiplier = 1, bool isChongtong = false)
     {
         state = State.GameOver;
         Time.timeScale = 1f; // "결과 넘기기"로 배속 중이었다면 결과가 나온 이 시점에 정상 속도로 복귀
+        ApplyGameOverFieldGrayscale();
 
 
 
@@ -4755,7 +5271,7 @@ public partial class GoStop3PGame : MonoBehaviour
             // 2026-08-26: 나가리 이펙트 — 여기 한 곳에서만 불러도 나가리로
             // 끝나는 모든 경로(점수 미달·필드 4장 등)가 자동으로 커버된다.
             FireNagari();
-            string nagariSub = $"아무도 {CaptureLine}점을 못 넘겼습니다 · 다음 판 판돈 {stakeMultiplier}배";
+            string nagariSub = $"아무도 {CaptureLine}점을 못 넘겼습니다\n다음 판 판돈 {stakeMultiplier}배";
             if (isNetworkHost)
             {
                 // 2026-09-05(사용자 확인) — 네트워크 대전은 "다시 시작"
@@ -4765,14 +5281,18 @@ public partial class GoStop3PGame : MonoBehaviour
                 // 같은 문구로 카운트다운만(연출용) 보여준다.
                 ShowResultOverlayDeferred(() =>
                 {
-                    ui?.ShowOverlay(new Color(.6f, .6f, .6f), "나가리", "-", nagariSub, "타이틀", GoToTitle);
-                    StartCoroutine(HostAutoRestartSeq(nagariSub));
+                    resultOverlay?.Show(new Color(.6f, .6f, .6f), "나가리", "-", null,
+                        null, null, null, false, false, false, null, null, nagariSub,
+                        "타이틀", GoToTitle);
+                    StartCoroutine(HostAutoRestartSeq());
                 });
             }
             else
             {
                 ShowResultOverlayDeferred(() =>
-                    ui?.ShowOverlay(new Color(.6f, .6f, .6f), "나가리", "-", nagariSub, "다시 시작", NewGame, "타이틀", GoToTitle));
+                    resultOverlay?.Show(new Color(.6f, .6f, .6f), "나가리", "-", null,
+                        null, null, null, false, false, false, null, null, nagariSub,
+                        "다시 시작", NewGame, "타이틀", GoToTitle));
             }
             if (isNetworkHost)
             {
@@ -4808,7 +5328,8 @@ public partial class GoStop3PGame : MonoBehaviour
         // 기본값(5)을 그대로 쓰므로 2인일 때만 명시적으로 7을 넘긴다.
         var payout = GoStopRules.FinalScoreMulti(captured[winnerSeat], sweeps[winnerSeat], goCount[winnerSeat],
             heundeulCount[winnerSeat], bombCount[winnerSeat], loserCaptured, WON_PER_POINT,
-            dokbakIdx, fixedBaseScore, extraMultiplier, piBakThreshold: SEATS == 2 ? 7 : GoStopRules.PI_BAK_THRESHOLD_3P);
+            dokbakIdx, fixedBaseScore, extraMultiplier, piBakThreshold: SEATS == 2 ? 7 : GoStopRules.PI_BAK_THRESHOLD_3P,
+            skipZeroCaptureExemption: isChongtong);
         pendingPayout = payout;
         pendingWinnerSeat = winnerSeat;
         pendingLoserSeats = loserSeats;
@@ -4847,6 +5368,19 @@ public partial class GoStop3PGame : MonoBehaviour
         var bankruptSeats = BankruptSeats();
         bool downgrade = CanDowngrade(bankruptSeats);
         string bankruptNames = bankruptSeats.Count > 0 ? string.Join(", ", bankruptSeats.Select(SeatName)) : null;
+
+        // 2026-09-13(아이템8) — 파산한 AI 캐릭터(플레이어 자신은 리셋 후 계속
+        // 하므로 대상이 아니다)의 상태박스 위에 회색 재가 흩날리는 연출.
+        // ApplyDowngrade가 이후 좌석을 재배치하기 *전*(SlotOf가 아직 원래
+        // 번호를 가리킬 때)에 미리 트리거해야 정확한 자리에 뜬다.
+        foreach (var s in bankruptSeats)
+        {
+            if (s == PLAYER_SEAT) continue;
+            int slot = SlotOf(s);
+            if (slot < 0 || statusBoxRefs[slot] == null) continue;
+            var ashCanvas = GoStopCanvasRoot();
+            GoStopFX.PlayRetirementAsh(ashCanvas, ashCanvas.InverseTransformPoint(statusBoxRefs[slot].position));
+        }
 
         // 2026-08-24(design.md §49.4 네트워크 확장) — 판 도중 재접속 유예를
         // 넘겨 영구 이탈이 확정된 좌석(permaGoneNetworkSeat)이 있으면, 이
@@ -4896,22 +5430,29 @@ public partial class GoStop3PGame : MonoBehaviour
         // PLAYER_STARTING_MONEY로 리셋했으므로 이 delta는 "리셋 후"
         // 기준이 된다 — 아래에서 별도 파산 문구로 구분한다.)
         int myDelta = money[PLAYER_SEAT] - pendingMoneyBefore[PLAYER_SEAT];
-        string myDeltaStr = myDelta == 0 ? "변동 없음" : (myDelta > 0 ? $"+{myDelta:N0}원" : $"{myDelta:N0}원");
-        string moneyLine = $"이번 판 {myDeltaStr} · 내 머니 {money[PLAYER_SEAT]:N0}원";
-        // 2026-09-07(사용자 요청) — "누가 왜 얼마 냈는지, 누가 얼마를 받았는지"가
-        // 안 보인다는 지적으로 sub를 여러 줄로 확장했다. ScoreDetailPopup(점수
-        // 상세 버튼)이 이미 항목별 전체 근거를 카드 실물까지 보여주므로, 여기서는
-        // 그걸 중복하지 않고 한눈에 훑을 압축 요약만 담는다 — 이 sub 문자열
-        // 하나를 6개 ShowOverlay 호출부(나가리 없는 승리 분기 전부)가 공유한다.
-        var subLines = new List<string>();
-        if (dokbakIdx >= 0) subLines.Add($"{SeatName(loserSeats[dokbakIdx])} 독박");
-        string multiplierLine = BuildOverlayMultiplierLine(payout);
-        if (!string.IsNullOrEmpty(multiplierLine)) subLines.Add(multiplierLine);
-        string breakdownLine = BuildOverlayBreakdownLine(payout, loserSeats);
-        if (!string.IsNullOrEmpty(breakdownLine)) subLines.Add(breakdownLine);
-        if (winnerSeat != PLAYER_SEAT) subLines.Add($"{SeatName(winnerSeat)} 총 +{actualTotalReceived:N0}원 획득");
-        subLines.Add(moneyLine);
-        string sub = string.Join("\n", subLines);
+        // 2026-09-12(사용자 요청) — 결과화면도 획득=초록/손실=빨강 규칙 적용.
+        string myDeltaStr = myDelta == 0 ? "변동 없음" : HwatuTheme.MoneyColored(myDelta, myDelta > 0 ? $"+{myDelta:N0}원" : $"{myDelta:N0}원");
+        string myBalanceStr = $"잔액 {money[PLAYER_SEAT]:N0}원";
+
+        // 2026-09-13 전면 재설계 — 예전엔 이 아래 전부가 평문 sub 하나를
+        // 조립해서 GoStopUIManager의 정적 Overlay에 넘겼는데("내 정보"와
+        // "다른 유저 정보"가 안 갈리고 "(피박)" 텍스트 태그뿐이라 지적받음),
+        // 이제 GoStopResultOverlay가 구조화된 데이터를 직접 받아 실제
+        // 배지·행·칩 UI로 그린다 — 이 rows/chips 하나를 6개 분기가 공유한다.
+        int myLoserIdx = winnerSeat != PLAYER_SEAT ? loserSeats.IndexOf(PLAYER_SEAT) : -1;
+        bool myGwangBak = myLoserIdx >= 0 && myLoserIdx < payout.gwangBakPerLoser.Count && payout.gwangBakPerLoser[myLoserIdx];
+        bool myPiBak = myLoserIdx >= 0 && myLoserIdx < payout.piBakPerLoser.Count && payout.piBakPerLoser[myLoserIdx];
+        bool myDokbak = myLoserIdx >= 0 && myLoserIdx == dokbakIdx;
+        var otherRows = BuildResultRows(payout, loserSeats, winnerSeat, actualTotalReceived, dokbakIdx);
+        var multiplierChips = BuildMultiplierChips(payout);
+
+        void ShowRich(string primaryLabel, System.Action primaryAction, string secondaryLabel = null, System.Action secondaryAction = null,
+            string tertiaryLabel = null, System.Action tertiaryAction = null, string extraNote = null) =>
+            resultOverlay?.Show(col, title, finalScore.ToString(), null,
+                "나", myDeltaStr, myBalanceStr, myGwangBak, myPiBak, myDokbak,
+                otherRows, multiplierChips, null,
+                primaryLabel, primaryAction, secondaryLabel, secondaryAction, tertiaryLabel, tertiaryAction,
+                extraNote: extraNote);
 
         ui?.SetScore(money[PLAYER_SEAT]); // 상단 HUD의 SCORE는 판점이 아니라 내 보유 머니를 보여준다(사용자 요청)
         if (permaGoneSeats.Count > 0 && !networkDowngrade)
@@ -4919,9 +5460,8 @@ public partial class GoStop3PGame : MonoBehaviour
             // 압축해도 2명 미만이 남는다 — 더 이어갈 수 없다(design.md
             // §49.4 "방 폭파"). §50.2 확장 전의 OnGuestLeftDuringGame
             // 즉시-종료 동작을 그대로 재사용한다.
-            sub += $" · {permaGoneNames} 연결이 끊겨 더 이상 진행할 수 없습니다";
-            ShowResultOverlayDeferred(() =>
-                ui?.ShowOverlay(col, title, finalScore.ToString(), sub, "타이틀", GoToTitle)); // "다시 시작" 없음
+            string note = $"{permaGoneNames} 연결이 끊겨 더 이상 진행할 수 없습니다";
+            ShowResultOverlayDeferred(() => ShowRich("타이틀", GoToTitle, extraNote: note)); // "다시 시작" 없음
             GoStopNetLobby.Instance?.BroadcastToGuests(
                 new GoStopNetMessage { type = GoStopNetMessage.Type.Bye, text = $"{permaGoneNames} 연결이 끊겨 게임을 종료합니다." });
         }
@@ -4947,14 +5487,14 @@ public partial class GoStop3PGame : MonoBehaviour
                 GoStopNetLobby.Instance?.SendToSeat(kv.Value, GoStopNetMessage.SeatReassignMsg(kv.Value, SEATS));
             }
 
-            sub += $" · {permaGoneNames} 연결이 끊겨 퇴장 — 남은 {SEATS}명으로 계속합니다";
+            string note = $"{permaGoneNames} 연결이 끊겨 퇴장 — 남은 {SEATS}명으로 계속합니다";
             // networkDowngrade는 permaGoneSeats가 isNetworkHost일 때만
             // 채워지므로(위 계산부 참고) 이 분기는 항상 네트워크 호스트다
             // — "다시 시작" 버튼 없이 3초 자동 재시작으로 통일한다.
             ShowResultOverlayDeferred(() =>
             {
-                ui?.ShowOverlay(col, title, finalScore.ToString(), sub, "타이틀", GoToTitle, "점수 상세", ShowScoreDetail);
-                StartCoroutine(HostAutoRestartSeq(sub));
+                ShowRich("타이틀", GoToTitle, "점수 상세", ShowScoreDetail, extraNote: note);
+                StartCoroutine(HostAutoRestartSeq());
             });
         }
         else if (downgrade)
@@ -4962,15 +5502,13 @@ public partial class GoStop3PGame : MonoBehaviour
             // 표시 문자열은 다 만들었으니 이제 실제로 좌석을 재배치한다 —
             // 이 아래로는 SEATS/좌석 번호가 이미 새 구성이다.
             ApplyDowngrade(bankruptSeats);
-            sub += $" · {bankruptNames} 잔액을 모두 잃어 퇴장 — 남은 {SEATS}명으로 계속합니다";
-            ShowResultOverlayDeferred(() => ui?.ShowOverlay(col, title, finalScore.ToString(), sub,
-                "다시 시작", NewGame, "타이틀", GoToTitle, "점수 상세", ShowScoreDetail));
+            string note = $"{bankruptNames} 잔액을 모두 잃어 퇴장 — 남은 {SEATS}명으로 계속합니다";
+            ShowResultOverlayDeferred(() => ShowRich("다시 시작", NewGame, "타이틀", GoToTitle, "점수 상세", ShowScoreDetail, extraNote: note));
         }
         else if (bankruptSeats.Count > 0)
         {
-            sub += $" · {bankruptNames} 잔액을 모두 잃어 이 판을 끝으로 세션을 종료합니다";
-            ShowResultOverlayDeferred(() =>
-                ui?.ShowOverlay(col, title, finalScore.ToString(), sub, "타이틀", GoToTitle)); // "다시 시작" 없음
+            string note = $"{bankruptNames} 잔액을 모두 잃어 이 판을 끝으로 세션을 종료합니다";
+            ShowResultOverlayDeferred(() => ShowRich("타이틀", GoToTitle, extraNote: note)); // "다시 시작" 없음
         }
         else if (isNetworkHost)
         {
@@ -4978,14 +5516,13 @@ public partial class GoStop3PGame : MonoBehaviour
             // 대전이면 "다시 시작" 버튼 없이 3초 뒤 자동으로 다음 판.
             ShowResultOverlayDeferred(() =>
             {
-                ui?.ShowOverlay(col, title, finalScore.ToString(), sub, "타이틀", GoToTitle, "점수 상세", ShowScoreDetail);
-                StartCoroutine(HostAutoRestartSeq(sub));
+                ShowRich("타이틀", GoToTitle, "점수 상세", ShowScoreDetail);
+                StartCoroutine(HostAutoRestartSeq());
             });
         }
         else
         {
-            ShowResultOverlayDeferred(() => ui?.ShowOverlay(col, title, finalScore.ToString(), sub,
-                "다시 시작", NewGame, "타이틀", GoToTitle, "점수 상세", ShowScoreDetail));
+            ShowResultOverlayDeferred(() => ShowRich("다시 시작", NewGame, "타이틀", GoToTitle, "점수 상세", ShowScoreDetail));
         }
 
         if (isNetworkHost)
@@ -5012,22 +5549,114 @@ public partial class GoStop3PGame : MonoBehaviour
     /// 안의 <see cref="GuestAutoRestartCountdownSeq"/>가 같은 문구로 카운트
     /// 다운만(순수 연출용, NewGame 호출 없음) 보여준다 — 프레임 단위로
     /// 정확히 안 맞아도 무해하다(실제 재시작은 다음 StateSync로 온다).</summary>
-    IEnumerator HostAutoRestartSeq(string baseSub)
+    IEnumerator HostAutoRestartSeq()
     {
         for (int remain = 3; remain >= 1; remain--)
         {
-            ui?.SetOverlaySub($"{baseSub}\n{remain}초 후 자동으로 다음 판을 시작합니다");
+            resultOverlay?.SetFooterNote($"{remain}초 후 자동으로 다음 판을 시작합니다");
             yield return new WaitForSeconds(1f);
         }
         NewGame();
     }
 
-    IEnumerator GuestAutoRestartCountdownSeq(string baseSub)
+    IEnumerator GuestAutoRestartCountdownSeq()
     {
         for (int remain = 3; remain >= 1; remain--)
         {
-            ui?.SetOverlaySub($"{baseSub}\n{remain}초 후 자동으로 다음 판이 시작됩니다");
+            resultOverlay?.SetFooterNote($"{remain}초 후 자동으로 다음 판이 시작됩니다");
             yield return new WaitForSeconds(1f);
         }
+    }
+    IEnumerator ResolveBonusNextCardWithoutAnchor(int seat, HwatuCard next, List<HwatuCard> cap, bool isFinalPersonalTurn)
+    {
+
+        var target = FieldSlotTransform(next);
+
+        bool willCaptureNow = target.childCount > 0;
+        bool bigCapture = willCaptureNow && target.childCount >= 3;
+
+        var mood = LandingMood(willCaptureNow, bigCapture);
+
+        var ghost = SpawnGhostCard(next, target);
+
+
+        flyFrom[next] = ghost.transform.position;
+
+        yield return StartCoroutine(
+            SlamDown(
+                ghost.transform as RectTransform,
+                target,
+                dropHeight: mood.dropHeight,
+                dropDur: mood.dropDur,
+                punchDur: mood.punchDur,
+                punchScale: mood.punchScale,
+                cardMonth: next.month,
+                suspensePulses: 2
+            )
+        );
+
+        DestroyGhost(ghost);
+
+        // 정상적인 뒷패 매칭 판정
+        var r = GoStopRules.Resolve(next, field);
+
+        if (r.choiceCandidates != null)
+        {
+            // 2026-09-12 복원 — PlaySeq/DeckOnlySeq와 완전히 같은 이유·
+            // 같은 버그(anchor==null 체인 이후 뒷패 버전). next의 달에
+            // 예전 턴부터 파킹된 조커가 있으면 선택 팝업 대신 통째로
+            // 쓸어간다.
+            if (ppeokBonusPi.TryGetValue(next.month, out var jokersAtNext))
+            {
+                r = GoStopRules.ResolveJokerPpeok(next, r.choiceCandidates, jokersAtNext, field);
+                ppeokBonusPi.Remove(next.month);
+            }
+            else
+            {
+                GoStopRules.CaptureResult chosen = null;
+
+                yield return StartCoroutine(
+                    ContinueChoice(
+                        next,
+                        r,
+                        seat,
+                        res => chosen = res
+                    )
+                );
+
+                r = chosen;
+            }
+        }
+
+        if (r.captured.Count > 0)
+        {
+            cap.AddRange(r.captured);
+
+            GoStopAudio.Instance?.Capture();
+
+            RegisterFlyViaField(r);
+
+            ApplyMatchBonus(
+                seat,
+                r,
+                false,
+                allowLastTurnBonus: !isFinalPersonalTurn
+            );
+
+            if (seat == PLAYER_SEAT || IsRemoteSeat(seat))
+            {
+                var dual = r.captured.FirstOrDefault(c => c.dualPi);
+
+                if (dual != null)
+                    yield return StartCoroutine(
+                        PromptDualPiChoice(dual, seat)
+                    );
+            }
+        }
+
+        RebuildUI();
+
+        yield return new WaitForSeconds(PLAY_STEP_DELAY);
+
     }
 }

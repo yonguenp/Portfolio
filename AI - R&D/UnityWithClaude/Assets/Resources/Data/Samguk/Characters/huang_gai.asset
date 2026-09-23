@@ -1,0 +1,25 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 114d2db584ce843f6a364df214eda9b5, type: 3}
+  m_Name: huang_gai
+  m_EditorClassIdentifier: Assembly-CSharp::SamgukDefense.SamgukCharacterData
+  id: huang_gai
+  displayName: "\uD669\uAC1C"
+  star: 3
+  baseHP: 290
+  baseAttack: 26
+  baseDefense: 12
+  baseAttackSpeed: 0.9
+  baseMoveSpeed: 2.1
+  baseAttackRange: 1.3
+  tintColor: {r: 0.12156863, g: 0.36078432, b: 0.2901961, a: 1}
+  icon: {fileID: 21300000, guid: a5cc27acf5d874703ba133f88a9a5642, type: 3}

@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 733f06df3b6b840bf967a05c409c350c, type: 3}
+  m_Name: jo_ssi_iljok
+  m_EditorClassIdentifier: Assembly-CSharp::SamgukDefense.SamgukSynergyData
+  id: jo_ssi_iljok
+  displayName: "\uC870\uC528 \uC77C\uC871"
+  requiredCharacterIds:
+  - cao_cao
+  - cao_hong
+  effectType: 1
+  effectValue: 0.1
+  description: "\uC704\uB97C \uC138\uC6B4 \uC77C\uAC00\uC758 \uACB0\uC18D."

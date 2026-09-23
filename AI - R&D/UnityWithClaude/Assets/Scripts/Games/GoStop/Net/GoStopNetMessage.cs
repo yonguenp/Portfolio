@@ -170,11 +170,18 @@ public class GoStopNetMessage
     // "카드+흔들기 여부"가 한 번의 결정이라 메시지 두 개로 쪼갤 이유가 없다.
     public static GoStopNetMessage PlayWithShake(string cardId, bool shake) => new GoStopNetMessage { type = Type.PlayCard, cardId = cardId, boolValue = shake };
     public static GoStopNetMessage EventMsg(string label, int seat) => new GoStopNetMessage { type = Type.Event, text = label, seat = seat };
-    public static GoStopNetMessage ByeMsg() => new GoStopNetMessage { type = Type.Bye };
+    // 2026-09-12 정리: ByeMsg()(인자 없는 팩토리)는 죽은 코드였다 — 실제로
+    // 나가는 Bye 메시지는 전부 이탈 사유(text)를 실어야 해서
+    // `new GoStopNetMessage { type = Type.Bye, text = ... }`를 그때그때
+    // 직접 만들지, 이 팩토리를 쓴 적이 없었다(grep으로 호출부 0개 확인).
     public static GoStopNetMessage LobbyUpdateMsg(string[] names) => new GoStopNetMessage { type = Type.LobbyUpdate, playerNames = names };
     public static GoStopNetMessage StartGameMsg(int seat, int playerCount, int pointPrice) => new GoStopNetMessage { type = Type.StartGame, seat = seat, playerCount = playerCount, pointPrice = pointPrice };
     public static GoStopNetMessage SeatReassignMsg(int seat, int playerCount) => new GoStopNetMessage { type = Type.SeatReassign, seat = seat, playerCount = playerCount };
     public static GoStopNetMessage DealerDrawPrompt(bool[] taken) => new GoStopNetMessage { type = Type.DealerDrawPrompt, text = string.Concat(taken.Select(t => t ? '1' : '0')) };
     public static GoStopNetMessage DealerDrawPick(int slotIndex) => new GoStopNetMessage { type = Type.DealerDrawPick, seat = slotIndex };
-    public static GoStopNetMessage ChatLogMsg(string text, bool isChat = false) => new GoStopNetMessage { type = Type.ChatLog, text = text, boolValue = isChat };
+    // 2026-09-13: cardSpriteName은 새 필드를 안 늘리고 PlayCard/FieldChoice가
+    // 쓰는 cardId(카드 spriteName 인코딩, GoStopDeck.Decode 참고)를 그대로
+    // 재사용한다 — ChatLog 타입에서는 원래 안 쓰던 필드라 충돌이 없다.
+    public static GoStopNetMessage ChatLogMsg(string text, bool isChat = false, string cardSpriteName = null) =>
+        new GoStopNetMessage { type = Type.ChatLog, text = text, boolValue = isChat, cardId = cardSpriteName };
 }

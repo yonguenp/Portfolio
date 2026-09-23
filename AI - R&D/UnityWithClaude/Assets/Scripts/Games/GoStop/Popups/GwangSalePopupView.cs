@@ -13,6 +13,11 @@ public class GwangSalePopupView : MonoBehaviour
     public TextMeshProUGUI amountText;
     public TextMeshProUGUI payerText;
 
-    public void Show() => dim.gameObject.SetActive(true);
+    public void Show()
+    {
+        dim.gameObject.SetActive(true);
+        // 2026-09-13(아이템4) — 즉시 나타나는 대신 짧게 페이드인.
+        GoStopFX.PlayPopupFadeIn(dim.GetComponent<UnityEngine.UI.Image>());
+    }
     public void Hide() => dim.gameObject.SetActive(false);
 }

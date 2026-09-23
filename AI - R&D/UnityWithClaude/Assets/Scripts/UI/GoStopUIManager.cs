@@ -5,7 +5,7 @@ using UnityEngine.SceneManagement;
 using TMPro;
 
 /// <summary>
-/// 고스톱 전용 UI — Assets/Prefabs/GoStopUI.prefab 하나만 존재하며
+/// 고스톱 전용 UI — Assets/Resources/Prefabs/GoStopUI.prefab 하나만 존재하며
 /// GoStop3PScene(2~4인 전부)이 그 인스턴스를 쓴다.
 ///
 /// 2026-08-22: <see cref="GameUIManager"/>(다른 7개 게임이 공유하는 공통

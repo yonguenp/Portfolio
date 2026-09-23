@@ -188,7 +188,7 @@ public class GoStopNetLobbyUI : MonoBehaviour
         {
             case Screen.NicknameSetup: subtitleLbl.text = "다른 유저에게 이 이름으로 보입니다"; ShowNicknameSetup(); break;
             case Screen.Home: subtitleLbl.text = "같은 와이파이 안에서 방을 만들거나 찾습니다"; ShowHome(); break;
-            case Screen.Hosting: subtitleLbl.text = $"방 열림 · {myName}"; ShowRoster(true); break;
+            case Screen.Hosting: subtitleLbl.text = $"{myName}님이 만든 방"; ShowRoster(true); break;
             case Screen.Scanning: subtitleLbl.text = "주변 방을 찾는 중..."; ShowScanning(); break;
             case Screen.Connecting: subtitleLbl.text = $"{connectingRoom?.hostName} 방에 접속 중..."; ShowConnecting(); break;
             case Screen.Waiting: subtitleLbl.text = "호스트가 시작하기를 기다리는 중"; ShowRoster(false); break;
@@ -398,18 +398,19 @@ public class GoStopNetLobbyUI : MonoBehaviour
 
         // 사용자 확인 값 — 안내 라벨(168)이 좌석 4개(117/51/-15/-81)보다
         // 위에 온다.
+        // 2026-09-13(사용자 요청) — "·" 구분자 제거, 괄호로 자연스럽게 묶었다.
         string modeHint = total switch
         {
-            2 => "2명 · 맞고",
-            3 => "3명 · 고스톱 (3인)",
-            4 => "4명 · 고스톱 (4인, 광팔이)",
-            _ => $"{total}명 · {MIN_NETWORK_PLAYERS}명 이상 모이면 시작할 수 있어요",
+            2 => "맞고 (2명)",
+            3 => "고스톱 (3인)",
+            4 => "고스톱 (4인, 광팔이)",
+            _ => $"{total}명 모였습니다 ({MIN_NETWORK_PLAYERS}명 이상부터 시작 가능)",
         };
         // 2026-08-23: Home에서 정한 1점 가격을 대기실에서도 계속 보여준다 —
         // 호스트 자신도 방금 뭘로 정했는지 잊기 쉽고, 게스트는 이 화면
         // 전까지는 알 방법이 없다(그냥 텍스트만 덧붙이는 거라 레이아웃
         // 위험이 없다).
-        modeHint += $" · 1점={FormatPointPrice(GoStopNetLobby.Instance.PointPrice)}";
+        modeHint += $" (1점 {FormatPointPrice(GoStopNetLobby.Instance.PointPrice)})";
         AddLabel(body, modeHint, 18f, T70).rectTransform.anchoredPosition = new Vector2(0f, 168f);
 
         float[] seatY = { 117f, 51f, -15f, -81f };

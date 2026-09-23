@@ -102,9 +102,119 @@ public static class GoStopCharacters
             backingChance: 0.85f, goAggression: 0.3f, stakeRiskAwareness: 0.3f)),
         new("너구리", GoStopTier.C, GoStopSkillProfile.Base(GoStopTier.C,
             cardCountingSkill: 0.9f, pressureDetection: 0.7f, handAccuracy: 0.4f, goAggression: 0.3f)),
-        new("점박이 교수", GoStopTier.C, GoStopSkillProfile.Base(GoStopTier.C,
+        new("점박이", GoStopTier.C, GoStopSkillProfile.Base(GoStopTier.C,
             setCompletionWeight: 0.9f, fieldSetAwareness: 0.9f, dualPiSkill: 0.85f,
             dokbakCaution: 0.2f, tiltResistance: 0.3f, goAggression: 0.25f)),
+
+        // 2026-09-08 — "인터넷 서칭해서 고스톱/화투 관련 캐릭터 10~30명만 더
+        // 리스트업" 요청으로 22명 추가. 위 13명이 전부 영화 "타짜"(1부, 원작
+        // 만화 1부 기준)였으므로, 같은 세계관의 **다른 파트**(만화 2부/3부,
+        // 영화 "신의 손"·"원 아이드 잭")에서 골라 겹치지 않게 했다 — 이미
+        // 검증된 "이름·성격만 참고, 대사·작화는 베끼지 않는다"는 원칙을
+        // 그대로 지켰다(나무위키 인물 소개 문서를 참고해 성격만 추출).
+        //
+        //   도일출(영화 "원 아이드 잭") — 짝귀의 친아들, 뚱뚱한 애송이에서
+        //     성장해가는 주인공. 고니(A)와 같은 "성장형 주인공" 포지션이라
+        //     tier A — 자신감(goAggression·참가율)과 다듬어진 정확도.
+        //   애꾸(원 아이드 잭) — 짝귀의 옛 동료, 배신당해 한쪽 눈을 잃은 노련한
+        //     조력자. 배신을 겪어본 경계심(독박회피)과 패흐름 읽는 연륜.
+        //   영미(원 아이드 잭) — 비중이 작은 젊은 인물이라 tier C, 그래도
+        //     눈치는 빠르다(필드선택·압박감지).
+        //   타짜 마귀/김장수(원 아이드 잭 최종보스) — 20년을 뒤에서 설계해온
+        //     흑막. 직접 무리하게 승부를 걸지 않고(goAggression 낮음) 상황을
+        //     조종하는 데 능하다(패흐름·밀어주기 대상 선정 최상급).
+        //   대길(영화 "신의 손"/만화 2부 주인공 함대길) — 고니의 조카, 고광렬
+        //     밑에서 배우는 재능 있지만 다혈질인 신예. 무모한 go 공격성 +
+        //     낮은 연패 저항(다혈질).
+        //   꼬장(신의 손) — 강남 하우스 대표. 판을 운영하는 사업가지 최정상급
+        //     플레이어는 아니라서 tier C, 대신 돈 계산은 철저하다.
+        //   송마담(신의 손) — 도박판의 치맛바람, 사람 다루는 사교 수완가.
+        //     밀어주기 대상 선정·압박감지·쌍피 흥정에 능하다.
+        //   서실장(신의 손) — 화투판을 설계하는 인물. 필드 세트 인식·완성
+        //     가중치가 특기.
+        //   허미나(만화 2부) — "작품 내 여성 중 최고 실력"이라고 명시되는
+        //     인물, "구라 칠 땐 눈을 보지 마라"는 심리전 고수. 정확도·필드
+        //     선택·쌍피 최적화 전부 최상급.
+        //   허광철(만화 2부) — 미나의 오빠, 여동생과 대길을 지키려 모든 걸
+        //     바치는 자기희생형. 밀어주기 최상급, 자기 안위(독박)는 안 챙김.
+        //   장동식(만화 2부 최종보스) — 미나를 착취하는 냉혹한 포식자.
+        //     go 공격성 최고, 협력(밀어주기)은 거의 안 한다.
+        //   안인길(만화 2부) — 재벌 2세 양아치, 감정적이고 무모한 배팅.
+        //     실력은 낮은데(handAccuracy) 집안 돈만 믿고 계속 지른다.
+        //   박영희(만화 2부) — 하우스 운영자, 정의감은 있지만 완전한 선인은
+        //     아닌 양가적 인물. 판을 조율하는 감각(밀어주기 대상 선정)은
+        //     있다.
+        //   우지연(만화 2부) — 돈 많은 과부, 여러 진영을 오가며 활동하는
+        //     기회주의자. 줄타기(밀어주기 대상 선정)엔 능하지만 진짜 실력은
+        //     tier C.
+        //   나라/포우(만화 3부) — 사채업자이자 도박학교를 운영하는 두목.
+        //     "갬블러에겐 사랑 대신 승부만 있다"는 냉철한 철학 — 패흐름·
+        //     판돈 위험 인지·연패 저항 전부 최상급, 무리한 go는 안 부른다.
+        //   마돈나/황두나(만화 3부) — 포커페이스와 배짱으로 유명한 인물,
+        //     끝까지 침착하게 판을 굴리다 크게 챙겨 사라진다. 쌍피 최적화·
+        //     연패 저항·압박감지 최상급.
+        //   이현지(만화 3부) — 복수를 위해 신중하게 움직이는 전략가지만
+        //     아직 젊어 tier C — 그래도 계산적인 면(밀어주기 대상·패흐름)은
+        //     있다.
+        //   변태섭(만화 3부) — "대한민국 1인자"로 불리는 도박학교 스승.
+        //     정확도·필드선택 최상급, 노련한 만큼 독박도 잘 피하고 폭탄
+        //     크레딧도 전략적으로 아꼈다 쓴다.
+        //   제갈공배(만화 3부) — 포우파 최연장자, 이혼 후 도박에 빠졌던
+        //     중독 성향의 과거가 있다 — 연륜(패흐름)은 있지만 연패 저항·
+        //     잔액 자제는 약하다(계속 들어가는 성향).
+        //   최광수(만화 3부) — 여동생 치료비 때문에 절실하게 뛰어든 초짜,
+        //     후반부 일출과 팀을 이룬다 — 밀어주기 최상급, 아직 tier C지만
+        //     신중한 참가 감각은 있다.
+        //   최동수(만화 3부) — 광수의 사촌, "모니터 요원"(정보 수집 담당)
+        //     이라는 설정 자체가 패흐름 카운팅에 정확히 대응된다 — 정체성이
+        //     관찰이라 직접 실전 정확도는 낮다.
+        //   허전(만화 3부 최종보스) — 탐욕스럽게 제자들의 수업료를 챙기는
+        //     노회한 스승. 정확도 최상급, 탐욕(참가율·go 공격성)은 높고
+        //     제자를 착취하니 협력은 안 한다.
+        new("도일출", GoStopTier.A, GoStopSkillProfile.Base(GoStopTier.A,
+            handAccuracy: 0.9f, goAggression: 0.75f, baseParticipation: 0.85f)),
+        new("애꾸", GoStopTier.A, GoStopSkillProfile.Base(GoStopTier.A,
+            cardCountingSkill: 0.85f, dokbakCaution: 0.8f, backingChance: 0.7f)),
+        new("영미", GoStopTier.C, GoStopSkillProfile.Base(GoStopTier.C,
+            fieldChoiceSkill: 0.75f, pressureDetection: 0.7f)),
+        new("마귀", GoStopTier.A, GoStopSkillProfile.Base(GoStopTier.A,
+            cardCountingSkill: 0.95f, allyTargetingSkill: 0.9f, goAggression: 0.3f, stakeRiskAwareness: 0.85f)),
+        new("대길", GoStopTier.B, GoStopSkillProfile.Base(GoStopTier.B,
+            handAccuracy: 0.75f, goAggression: 0.8f, tiltResistance: 0.3f)),
+        new("꼬장", GoStopTier.C, GoStopSkillProfile.Base(GoStopTier.C,
+            moneyCaution: 0.7f, stakeRiskAwareness: 0.75f, baseParticipation: 0.5f)),
+        new("송마담", GoStopTier.B, GoStopSkillProfile.Base(GoStopTier.B,
+            allyTargetingSkill: 0.85f, pressureDetection: 0.75f, dualPiSkill: 0.8f)),
+        new("서실장", GoStopTier.B, GoStopSkillProfile.Base(GoStopTier.B,
+            fieldSetAwareness: 0.9f, setCompletionWeight: 0.85f, cardCountingSkill: 0.8f)),
+        new("허미나", GoStopTier.A, GoStopSkillProfile.Base(GoStopTier.A,
+            handAccuracy: 0.95f, fieldChoiceSkill: 0.9f, dualPiSkill: 0.9f, pressureDetection: 0.8f)),
+        new("허광철", GoStopTier.C, GoStopSkillProfile.Base(GoStopTier.C,
+            backingChance: 0.95f, dokbakCaution: 0.15f, tiltResistance: 0.7f)),
+        new("장동식", GoStopTier.A, GoStopSkillProfile.Base(GoStopTier.A,
+            goAggression: 0.9f, dokbakCaution: 0.15f, backingChance: 0.05f, stakeRiskAwareness: 0.2f)),
+        new("안인길", GoStopTier.C, GoStopSkillProfile.Base(GoStopTier.C,
+            handAccuracy: 0.5f, goAggression: 0.85f, moneyCaution: 0.05f, tiltResistance: 0.2f)),
+        new("박영희", GoStopTier.B, GoStopSkillProfile.Base(GoStopTier.B,
+            allyTargetingSkill: 0.65f, moneyCaution: 0.55f, fieldChoiceSkill: 0.7f)),
+        new("우지연", GoStopTier.C, GoStopSkillProfile.Base(GoStopTier.C,
+            allyTargetingSkill: 0.8f, moneyCaution: 0.1f, stakeRiskAwareness: 0.6f)),
+        new("나라", GoStopTier.A, GoStopSkillProfile.Base(GoStopTier.A,
+            cardCountingSkill: 0.85f, goAggression: 0.4f, stakeRiskAwareness: 0.9f, tiltResistance: 0.9f)),
+        new("마돈나", GoStopTier.A, GoStopSkillProfile.Base(GoStopTier.A,
+            dualPiSkill: 0.95f, tiltResistance: 0.9f, pressureDetection: 0.85f, moneyCaution: 0.1f)),
+        new("이현지", GoStopTier.C, GoStopSkillProfile.Base(GoStopTier.C,
+            allyTargetingSkill: 0.75f, cardCountingSkill: 0.7f, backingChance: 0.3f)),
+        new("변태섭", GoStopTier.A, GoStopSkillProfile.Base(GoStopTier.A,
+            handAccuracy: 0.95f, fieldChoiceSkill: 0.9f, dokbakCaution: 0.8f, bombCreditStrategy: 0.8f)),
+        new("제갈공배", GoStopTier.B, GoStopSkillProfile.Base(GoStopTier.B,
+            cardCountingSkill: 0.7f, tiltResistance: 0.25f, moneyCaution: 0.15f, baseParticipation: 0.85f)),
+        new("최광수", GoStopTier.C, GoStopSkillProfile.Base(GoStopTier.C,
+            backingChance: 0.85f, handAccuracy: 0.6f, moneyCaution: 0.6f)),
+        new("최동수", GoStopTier.C, GoStopSkillProfile.Base(GoStopTier.C,
+            cardCountingSkill: 0.85f, pressureDetection: 0.7f, handAccuracy: 0.4f)),
+        new("허전", GoStopTier.A, GoStopSkillProfile.Base(GoStopTier.A,
+            handAccuracy: 0.9f, moneyCaution: 0.05f, goAggression: 0.8f, backingChance: 0.05f)),
     };
 
     /// <summary>티어별 최초 시드머니(사용자 확인) — A=100만, B=50만, C=10만.</summary>

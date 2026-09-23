@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 733f06df3b6b840bf967a05c409c350c, type: 3}
+  m_Name: cheonha_ui_maengjang_gwanwu_yeopo
+  m_EditorClassIdentifier: Assembly-CSharp::SamgukDefense.SamgukSynergyData
+  id: cheonha_ui_maengjang_gwanwu_yeopo
+  displayName: "\uCC9C\uD558\uC758 \uB9F9\uC7A5(\uAD00\uC6B0-\uC5EC\uD3EC)"
+  requiredCharacterIds:
+  - guan_yu
+  - lu_bu
+  effectType: 1
+  effectValue: 0.15
+  description: "\uBB34\uC608\uB85C \uC774\uB984\uC744 \uB098\uB780\uD788 \uD55C \uB450
+    \uC7A5\uC218."

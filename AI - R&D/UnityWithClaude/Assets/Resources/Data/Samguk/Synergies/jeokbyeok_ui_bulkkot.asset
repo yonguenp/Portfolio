@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 733f06df3b6b840bf967a05c409c350c, type: 3}
+  m_Name: jeokbyeok_ui_bulkkot
+  m_EditorClassIdentifier: Assembly-CSharp::SamgukDefense.SamgukSynergyData
+  id: jeokbyeok_ui_bulkkot
+  displayName: "\uC801\uBCBD\uC758 \uBD88\uAF43"
+  requiredCharacterIds:
+  - zhou_yu
+  - sun_quan
+  - huang_gai
+  effectType: 1
+  effectValue: 0.25
+  description: "\uC801\uBCBD\uC744 \uD0DC\uC6B4 \uD654\uACF5\uC758 \uBD88\uAE38."

@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using DG.Tweening;
 
 /// <summary>
 /// 좌석 정보 박스(닉네임/고+점수/금액/상태아이콘) 프리팹 뷰 —
@@ -38,9 +39,109 @@ using TMPro;
 /// 코드에 직접 박아 넣고 있었다 — 이제 <see cref="ApplyTurnState"/>가
 /// 이 프리팹의 필드 값으로 배경·글자색을 정하므로, 프리팹을 열어 색만
 /// 바꾸면 4개 좌석(상단/좌/우/하단) 전부에 반영된다.
+///
+/// 2026-09-12(옵저버 패턴 도입) — 예전엔 <c>GoStop3PGame</c>이 아래 SetXxx
+/// 메서드들을 매턴 직접 호출하는 순수 imperative View였다(사용자가
+/// "옵저버 패턴을 썼다"고 표현했지만 실제로는 이벤트 구독/발행이 전혀
+/// 없었다). 이제 <see cref="Bind"/>로 <see cref="GoStopSeatStatus"/>
+/// (Subject)를 한 번만 구독해 두면, 그 뒤로는 컨트롤러가 이 뷰를 직접
+/// 참조하지 않아도(GoStop3PGame이 seatStatus[slot]의 프로퍼티만 채우고
+/// NotifyIfDirty()만 부르면) <see cref="Render"/>가 알아서 최신 값을
+/// 당겨가 다시 그린다. SetXxx 메서드들은 이제 Render 내부에서만 불리므로
+/// private으로 좁혔다 — 이 뷰를 갱신하는 유일한 경로는 바인딩된 모델뿐이다.
 /// </summary>
 public class GoStopStatusBoxView : MonoBehaviour
 {
+    // 배지 위험/카운트 색 — 예전엔 GoStop3PGame.UI.cs에 있었는데, "화면에
+    // 어떻게 보여줄지"는 뷰의 책임이라 여기로 옮겼다. 오리엔탈 팔레트 —
+    // "색은 하나의 의미만"(위험=레드, 턴/보상=골드) 원칙에 맞춰 광박/멍박/
+    // 피박 3종을 전부 같은 레드로, 흔들기/뻑 카운트는 같은 골드로 통일.
+    static readonly Color GwangBakColor = HwatuTheme.HwatuRed;
+    static readonly Color MeongBakColor = HwatuTheme.HwatuRed;
+    static readonly Color PiBakColor = HwatuTheme.HwatuRed;
+    static readonly Color ShakeDotColor = HwatuTheme.Gold;
+    static readonly Color PpeokDotColor = HwatuTheme.Gold;
+
+    GoStopSeatStatus bound;
+
+    /// <summary>이 뷰가 표시할 모델을 구독한다 — 컨트롤러가 슬롯당 한 번만
+    /// 부르면 된다(멱등: 같은 모델을 다시 Bind해도 무해). 바인딩 즉시
+    /// 모델의 현재 값으로 한 번 그린다(다음 실제 변경까지 기다리지 않음) —
+    /// 이 최초 렌더는 애니메이션 없이 즉시 반영한다(게임을 새로 시작할
+    /// 때마다 0원에서 카운트업되는 것처럼 보이면 안 되므로).</summary>
+    public void Bind(GoStopSeatStatus status)
+    {
+        if (bound == status) return;
+        if (bound != null) bound.Changed -= OnChangedAnimated;
+        bound = status;
+        if (bound != null)
+        {
+            bound.Changed += OnChangedAnimated;
+            Render(bound, animateMoney: false);
+        }
+    }
+
+    void OnChangedAnimated(GoStopSeatStatus s) => Render(s, animateMoney: true);
+
+    void OnDestroy()
+    {
+        if (bound != null) bound.Changed -= OnChangedAnimated;
+        moneyTween?.Kill();
+    }
+
+    /// <summary>모델이 알려준 최신 값으로 화면을 다시 그린다 — 이 뷰의
+    /// 유일한 "쓰기" 경로. 아래 SetXxx들은 전부 이 안에서만 불린다.</summary>
+    void Render(GoStopSeatStatus s, bool animateMoney)
+    {
+        if (nameText) nameText.text = s.Name;
+        ApplyTurnState(s.Highlight);
+        RenderMoney(s.Money, s.MoneyVisible, animateMoney);
+        if (goScoreText) goScoreText.text = s.GoScoreText;
+        SetDim(s.Dim);
+        if (s.BadgesHidden)
+        {
+            HideAllBadges();
+            return;
+        }
+        SetDealer(s.IsDealer);
+        SetRisk(0, s.GwangBak, GwangBakColor, Color.white);
+        SetRisk(1, s.MeongBak, MeongBakColor, Color.white);
+        SetRisk(2, s.PiBak, PiBakColor, Color.white);
+        SetCountBadge(true, Mathf.Min(s.ShakeCount, 2), ShakeDotColor);
+        SetCountBadge(false, Mathf.Min(s.PpeokCount, 2), PpeokDotColor);
+        SetMoneyDelta(s.MoneyDelta);
+    }
+
+    // 2026-09-13(카운팅 애니메이션) — "보유 금액이 늘고 줄 때 딱딱해
+    // 보인다"는 요청. shownMoney는 "지금 화면 숫자가 실제로 얼마인지"를
+    // 추적한다(애니메이션 도중이면 그 순간 진행값) — 다음 변경이 왔을 때
+    // 항상 "지금 눈에 보이는 값"에서 이어서 출발해야 두 변경이 짧은
+    // 간격으로 겹쳐도 자연스럽다.
+    int shownMoney;
+    bool moneyShown; // 한 번이라도 렌더된 적 있는지 — false면 첫 렌더(애니메이션 스킵 대상)
+    Tween moneyTween;
+
+    void RenderMoney(int target, bool visible, bool animate)
+    {
+        if (!moneyText) return;
+        moneyText.gameObject.SetActive(visible);
+        if (!visible) { moneyTween?.Kill(); moneyShown = false; return; }
+        if (!animate || !moneyShown || shownMoney == target)
+        {
+            moneyTween?.Kill();
+            shownMoney = target;
+            moneyShown = true;
+            moneyText.text = FormatMoney(shownMoney);
+            return;
+        }
+        moneyTween?.Kill();
+        int from = shownMoney;
+        moneyTween = DOTween.To(() => from, v => { from = v; shownMoney = v; moneyText.text = FormatMoney(v); }, target, 0.6f)
+            .SetEase(Ease.OutCubic)
+            .OnComplete(() => shownMoney = target);
+    }
+
+    static string FormatMoney(int amount) => $"{amount:N0}원";
     [SerializeField] Image background;
     [SerializeField] RectTransform nameRect;
     [SerializeField] TextMeshProUGUI nameText;
@@ -70,11 +171,15 @@ public class GoStopStatusBoxView : MonoBehaviour
     [SerializeField] TextMeshProUGUI ppeokBadgeLabel;
     [SerializeField] Image[] ppeokDots = new Image[2];
 
-    public Image Background => background;
+    // 2026-09-12: Background/GoScoreText는 GoStop3PGame이 예전에 자기
+    // 배열(statusBoxImg[]/goScoreText[])로 캐싱해서 직접 쓰던 것 — 옵저버
+    // 전환으로 그 캐싱이 다 사라져서(모델을 거치지 않는 직접 텍스트/색
+    // 쓰기가 없어졌다) 이제 아무도 안 읽는 죽은 프로퍼티였다. NameText/
+    // MoneyText는 여전히 필요하다(FlyMoneyFX 등이 카드/코인 애니메이션
+    // 목적지로 이 Text의 실제 world position을 읽는다 — 데이터가 아니라
+    // 순수 기하 조회라 옵저버 대상이 아니다).
     public TextMeshProUGUI NameText => nameText;
-    public TextMeshProUGUI GoScoreText => goScoreText;
     public TextMeshProUGUI MoneyText => moneyText;
-    public RectTransform BadgeArea => badgeArea;
 
     // 2026-09-03 — "유저가 쉬는 중이면 dim 켜줘" 요청. 처음엔 CanvasGroup.alpha로
     // 코드에서 흐리는 방식으로 짰는데, 사용자가 "코드로 조절하라는 게 아니라
@@ -87,7 +192,7 @@ public class GoStopStatusBoxView : MonoBehaviour
     /// 프리팹의 Dim 오브젝트를 켠다. 슬롯이 영구적이라(매턴 재생성 안 됨)
     /// 쉬지 않는 정상 상태로 돌아올 때도 반드시 false로 다시 불러줘야
     /// 지난 판의 dim이 안 남는다.</summary>
-    public void SetDim(bool active)
+    void SetDim(bool active)
     {
         if (dimOverlay) dimOverlay.SetActive(active);
     }
@@ -116,15 +221,23 @@ public class GoStopStatusBoxView : MonoBehaviour
     }
 
     /// <summary>선(딜러) 여부 — 슬롯 자체는 항상 같은 자리, 표시만 껐다 켠다.</summary>
-    public void SetDealer(bool isDealer) => dealerIcon.gameObject.SetActive(isDealer);
+    void SetDealer(bool isDealer) => dealerIcon.gameObject.SetActive(isDealer);
 
-    /// <summary>ScoreRow 우측의 "광 X · 멍 Y · 피 Z" 요약 — 목업에 있고 이
-    /// 프리팹엔 빠져 있던 항목이라 새로 추가했다. 피는 장수가 아니라
-    /// EffectivePiValue 합(쌍피=2)으로 넘겨받는다 — 실제 점수 집계와
-    /// 같은 기준이라야 숫자가 의미 있다.</summary>
-    public void SetCounts(int gwang, int meong, int pi)
+    /// <summary>2026-09-08(사용자 요청) — ScoreRow 우측(두번째 Sub)이
+    /// 원래 보여주던 "광 X · 멍 Y · 피 Z"는 획득패(Cap) 실물 카드를 보면
+    /// 이미 다 알 수 있는 중복 정보라, 그 자리를 세션 시작(선 정하기) 이후
+    /// 누적 머니 변동으로 바꿨다 — "이게 더 중요한 정보인 것 같다"는
+    /// 판단. 변동 0이면 "변동 없음", +면 초록(HwatuTheme.DarkGreen — 크림
+    /// 배경 위에서도 대비되는 오리엔탈 팔레트 색), -면 빨강(HwatuTheme.
+    /// HwatuRed)으로 표시한다. 예전 SetCounts(gwang,meong,pi)는 이 메서드로
+    /// 완전히 대체됐다(호출부가 하나뿐이라 API를 그대로 바꿨다).</summary>
+    void SetMoneyDelta(int delta)
     {
-        if (countsText) countsText.text = $"광 {gwang} · 멍 {meong} · 피 {pi}";
+        if (!countsText) return;
+        if (delta == 0) { countsText.text = "변동 없음"; return; }
+        string sign = delta > 0 ? "+" : "";
+        string hex = ColorUtility.ToHtmlStringRGB(delta > 0 ? HwatuTheme.DarkGreen : HwatuTheme.HwatuRed);
+        countsText.text = $"<color=#{hex}>{sign}{delta:N0}원</color>";
     }
 
     // 오리엔탈 목업(panel_cream/panel_cream_gold, ui.md §9·§10) 참고 —
@@ -147,7 +260,7 @@ public class GoStopStatusBoxView : MonoBehaviour
     /// 골라 각 컴포넌트에 대입했는데, 이제 이 프리팹의 <see
     /// cref="normalBgColor"/> 등 필드로 색 자체를 디자인하고 이 메서드는
     /// "지금 어느 상태냐"만 전달받는다.</summary>
-    public void ApplyTurnState(bool highlight)
+    void ApplyTurnState(bool highlight)
     {
         if (glow) glow.SetActive(highlight); // 현재 턴(또는 고/스톱 선택 중)인 유저만 켠다
         if (!background) return;
@@ -164,7 +277,7 @@ public class GoStopStatusBoxView : MonoBehaviour
     /// 슬롯) 전부 꺼진 상태로 되돌린다. 예전엔 배지 영역 자체를
     /// ClearChildren으로 지워서 자동으로 해결됐는데, 지금은 슬롯이
     /// 영구적이라 명시적으로 리셋해야 지난 좌석의 상태가 남아있지 않는다.</summary>
-    public void HideAllBadges()
+    void HideAllBadges()
     {
         SetDealer(false);
         // active=false면 SetRisk가 DimBg/DimFg를 쓰므로 나머지 인자는 안 쓰인다.
@@ -178,15 +291,19 @@ public class GoStopStatusBoxView : MonoBehaviour
     /// <summary>광박/멍박/피박(index 0/1/2) 위험 표시 — 위험하면 진한 색+흰
     /// 글자, 아니면 표면색 배경+반투명 글자(<see cref="DimBg"/>/<see
     /// cref="DimFg"/>).</summary>
-    public void SetRisk(int index, bool active, Color activeBg, Color activeFg)
+    void SetRisk(int index, bool active, Color activeBg, Color activeFg)
     {
         riskIconBg[index].color = active ? activeBg : DimBg;
         riskIconFg[index].color = active ? activeFg : DimFg;
+        // 2026-09-13(아이템3) — 위험 배지가 켜지면 은은한 샤이니 스윕을
+        // 반복시켜 눈길을 끈다. 꺼지면 자동으로 멈춘다(SetRiskShinyPulse가
+        // active=false일 때 필터를 None으로 되돌림).
+        GoStopFX.SetRiskShinyPulse(riskIconBg[index], active);
     }
 
     /// <summary>흔들기/뻑 카운트 배지 — 점 <paramref name="count"/>개를
     /// <paramref name="dotColor"/>로 채우고 나머지는 흐리게 남긴다.</summary>
-    public void SetCountBadge(bool isShake, int count, Color dotColor)
+    void SetCountBadge(bool isShake, int count, Color dotColor)
     {
         var dots = isShake ? shakeDots : ppeokDots;
         for (int i = 0; i < dots.Length; i++)
