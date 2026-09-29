@@ -2,6 +2,8 @@
 
 Unity/C#과 Cocos2d-x/C++로 모바일 게임을 개발해 온 12년차 클라이언트 개발자입니다. 10여 개 게임의 출시와 라이브 서비스를 담당했습니다.
 
+[yonguen@naver.com](mailto:yonguen@naver.com)
+
 **이 포트폴리오에서 보여주고 싶은 것은 변화하는 요구를 빠르게 구현하고, 다음 업데이트도 쉽게 만드는 개발 방식입니다.** 게임 화면과 전투 로직을 직접 만들고, 필요하면 WebView·서버 연동·도구·빌드 흐름까지 손봐서 팀의 작업 시간을 줄였습니다.
 
 ## 먼저 볼 코드
@@ -28,7 +30,12 @@ Unity/C#과 Cocos2d-x/C++로 모바일 게임을 개발해 온 12년차 클라�
 - **운영 UI:** Google Sheets의 기획 데이터를 빌드에 자동 반영하고, React 인게임 WebView로 아웃게임 화면을 앱 재배포 없이 수정할 수 있게 했습니다. [Unity WebView 컨트롤러](코드샘플/메타토이드래곤즈/유니티/WebView/SBWebViewController.cs)와 [React 컴포넌트](코드샘플/메타토이드래곤즈/인게임웹뷰_리액트/components)를 확인할 수 있습니다.
 - **리소스 업데이트:** CDN으로 내려받는 번들의 목록과 버전을 관리했습니다. [AssetBundle 관리자](코드샘플/메타토이드래곤즈/유니티/bundle/AssetBundleManager.cs).
 
-[Unity 코드 전체 보기](코드샘플/메타토이드래곤즈/유니티) · [Cocos Creator 코드 보기](코드샘플/메타토이드래곤즈/코코스크리에이터/Scripts) · [프로젝트 영상](https://youtu.be/ocvZkbXv6hI)
+[Unity 코드 전체 보기](코드샘플/메타토이드래곤즈/유니티) · [Cocos Creator 코드 보기](코드샘플/메타토이드래곤즈/코코스크리에이터/Scripts)
+
+**플레이 영상 — 미리보기를 누르면 YouTube에서 열립니다.**
+
+[<img src="https://img.youtube.com/vi/O6LPHZbqoA8/0.jpg" alt="메타 토이 드래곤즈 사가 영상 1 미리보기" width="300"/>](https://www.youtube.com/watch?v=O6LPHZbqoA8)
+[<img src="https://img.youtube.com/vi/ocvZkbXv6hI/0.jpg" alt="메타 토이 드래곤즈 사가 영상 2 미리보기" width="300"/>](https://www.youtube.com/watch?v=ocvZkbXv6hI)
 
 ## 2. 양어장 고양이
 
@@ -40,7 +47,12 @@ Unity/C#과 Cocos2d-x/C++로 모바일 게임을 개발해 온 12년차 클라�
 - **UGUI 컴포넌트:** [CutoutMask](코드샘플/양어장고양이/유니티/CutoutMaskUI.cs), [ImageBlur](코드샘플/양어장고양이/유니티/ImageBlur.cs), [ScrollRect 중심 이동](코드샘플/양어장고양이/유니티/Tool/ScrollToCenter.cs)을 구현했습니다.
 - **대용량 콘텐츠:** 2GB 이상 영상 리소스를 Play Asset Delivery와 Addressables로 기본 앱과 분리해 배포했습니다.
 
-[Unity 코드 전체 보기](코드샘플/양어장고양이/유니티) · [PHP 코드 보기](코드샘플/양어장고양이/PHP샘플/script) · [플레이 영상](https://youtu.be/3YrTkEd3PZ4)
+[Unity 코드 전체 보기](코드샘플/양어장고양이/유니티) · [PHP 코드 보기](코드샘플/양어장고양이/PHP샘플/script)
+
+**플레이 영상**
+
+[<img src="https://img.youtube.com/vi/CUUZ9LrLLco/0.jpg" alt="양어장 고양이 영상 1 미리보기" width="300"/>](https://www.youtube.com/watch?v=CUUZ9LrLLco)
+[<img src="https://img.youtube.com/vi/3YrTkEd3PZ4/0.jpg" alt="양어장 고양이 영상 2 미리보기" width="300"/>](https://www.youtube.com/watch?v=3YrTkEd3PZ4)
 
 ## 3. 공포의 술래잡기
 
@@ -52,7 +64,12 @@ Unity/C#과 Cocos2d-x/C++로 모바일 게임을 개발해 온 12년차 클라�
 - **시야와 연출:** [시야각 처리](코드샘플/공포의술래잡기/유니티/Fov/SBFieldOfView.cs)와 [시야 렌더링](코드샘플/공포의술래잡기/유니티/Fov/SBFieldOfRender.cs)을 구현했습니다.
 - **성능과 반복 작업:** [오브젝트 풀](코드샘플/공포의술래잡기/유니티/Managers/Core/PoolManager.cs)로 반복 생성 객체를 재사용했습니다. 기획 데이터 자동 반영과 에셋 빌드, Unity 에디터 도구도 개발해 변경 사항을 확인하는 시간을 줄였습니다.
 
-[Unity 코드 전체 보기](코드샘플/공포의술래잡기/유니티) · [플레이 영상](https://youtu.be/4zYNsM1SnWI)
+[Unity 코드 전체 보기](코드샘플/공포의술래잡기/유니티)
+
+**플레이 영상**
+
+[<img src="https://img.youtube.com/vi/I2k832B3NTU/0.jpg" alt="공포의 술래잡기 영상 1 미리보기" width="300"/>](https://www.youtube.com/watch?v=I2k832B3NTU&list=PLxlA7knZ2zb6_Tdz8YZTL-bDCJlo2Fu4Y)
+[<img src="https://img.youtube.com/vi/4zYNsM1SnWI/0.jpg" alt="공포의 술래잡기 영상 2 미리보기" width="300"/>](https://www.youtube.com/watch?v=4zYNsM1SnWI)
 
 ## 4. 공통 Unity SDK와 라이브 운영 도구
 
@@ -85,8 +102,41 @@ Jenkins CI에는 버전·빌드·기획 데이터·아트 리소스 재가공을
 - [Cocos Creator MCP 하루 개발](AI%20-%20R%26D/cocos_mcp%20활용%201일개발): 타워 디펜스 게임과 [웹 플레이](https://yonguenp.github.io/Portfolio/AI%20-%20R%26D/cocos_mcp%20%ED%99%9C%EC%9A%A9%201%EC%9D%BC%EA%B0%9C%EB%B0%9C/build/web-desktop/).
 - [Unity 개인 프로토타입](unitywithclaude): 아이디어와 AI 보조 개발을 시험한 미니게임 모음 · [웹 빌드 플레이](https://yonguenp.github.io/Portfolio/unitywithclaude/).
 
-## 영상과 연락처
+## 다른 프로젝트 영상
 
-영상은 선택해서 열 수 있도록 링크만 모았습니다. [메타 토이 드래곤즈 사가](https://youtu.be/ocvZkbXv6hI) · [공포의 술래잡기](https://youtu.be/4zYNsM1SnWI) · [양어장 고양이](https://youtu.be/3YrTkEd3PZ4) · [드래곤빌리지](https://www.youtube.com/watch?v=k6c1Yv_GXN0) · [Phoenix Darts](https://www.youtube.com/watch?v=4jQgMthDDQ8)
+아래 이미지는 영상 미리보기입니다. 클릭하면 해당 영상이 열립니다.
 
-연락처: yonguen@naver.com
+### 옐언니 옷입히기 · 샌드박스네트워크
+
+크리에이터 IP 기반 패션 드레스업 모바일 게임.
+
+[<img src="https://img.youtube.com/vi/rt0VsQ2QuH4/0.jpg" alt="옐언니 옷입히기 영상 미리보기" width="300"/>](https://www.youtube.com/watch?v=rt0VsQ2QuH4)
+
+### 셀프어쿠스틱 시리즈 · 샌드박스네트워크
+
+네일샵·헤어샵·캠핑장 등 크리에이터 IP를 활용한 힐링 시뮬레이션 게임.
+
+[<img src="https://img.youtube.com/vi/rJ9k5k8SLyM/0.jpg" alt="셀프어쿠스틱 영상 1 미리보기" width="180"/>](https://www.youtube.com/watch?v=rJ9k5k8SLyM&list=PLxlA7knZ2zb76LeUBEk4kU579NzmgknvV)
+[<img src="https://img.youtube.com/vi/CPqEhyBWdBg/0.jpg" alt="셀프어쿠스틱 영상 2 미리보기" width="180"/>](https://www.youtube.com/watch?v=CPqEhyBWdBg)
+[<img src="https://img.youtube.com/vi/C1CYlrEDeR0/0.jpg" alt="셀프어쿠스틱 영상 3 미리보기" width="180"/>](https://www.youtube.com/watch?v=C1CYlrEDeR0)
+[<img src="https://img.youtube.com/vi/hGcn45izybs/0.jpg" alt="셀프어쿠스틱 영상 4 미리보기" width="180"/>](https://www.youtube.com/watch?v=hGcn45izybs)
+[<img src="https://img.youtube.com/vi/wM13fk0lVtA/0.jpg" alt="셀프어쿠스틱 영상 5 미리보기" width="180"/>](https://www.youtube.com/watch?v=wM13fk0lVtA)
+[<img src="https://img.youtube.com/vi/0kenMfcXZGU/0.jpg" alt="셀프어쿠스틱 영상 6 미리보기" width="180"/>](https://www.youtube.com/watch?v=0kenMfcXZGU)
+
+### 드래곤빌리지 · 하이브로
+
+드래곤을 수집·합성·육성하는 모바일 RPG.
+
+[<img src="https://img.youtube.com/vi/k6c1Yv_GXN0/0.jpg" alt="드래곤빌리지 영상 미리보기" width="300"/>](https://www.youtube.com/watch?v=k6c1Yv_GXN0)
+
+### 지하철이야기 · 하이브로
+
+서울을 배경으로 한 픽셀 타일맵 심리스 오픈월드 MMORPG.
+
+[<img src="https://img.youtube.com/vi/UtUfj-K9B1U/0.jpg" alt="지하철이야기 영상 미리보기" width="300"/>](https://www.youtube.com/watch?v=UtUfj-K9B1U)
+
+### Phoenix Darts · 홍인터내셔날
+
+글로벌 아케이드 서비스 VSS(Virtual Sport System) UI 리뉴얼 프로젝트.
+
+[<img src="https://img.youtube.com/vi/4jQgMthDDQ8/0.jpg" alt="Phoenix Darts 영상 미리보기" width="300"/>](https://www.youtube.com/watch?v=4jQgMthDDQ8)
