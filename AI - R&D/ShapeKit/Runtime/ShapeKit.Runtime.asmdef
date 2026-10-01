@@ -2,15 +2,7 @@
     "name": "ShapeKit.Runtime",
     "rootNamespace": "ShapeKit",
     "references": [
-        "Unity.ugui",
-        "Unity.InputSystem"
+        "Unity.ugui"
     ],
-    "autoReferenced": true,
-    "versionDefines": [
-        {
-            "name": "com.unity.inputsystem",
-            "expression": "1.0.0",
-            "define": "SHAPEKIT_INPUT_SYSTEM"
-        }
-    ]
+    "autoReferenced": true
 }

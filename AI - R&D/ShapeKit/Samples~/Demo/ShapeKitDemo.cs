@@ -1,5 +1,4 @@
 using UnityEngine;
-using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 namespace ShapeKit.Samples
@@ -140,21 +139,10 @@ namespace ShapeKit.Samples
             scaler.referenceResolution = new Vector2(1080f, 1920f);
             scaler.matchWidthOrHeight = 0.5f;
 
-            if (FindAnyEventSystem() == null)
-            {
-                EventSystemUtility.CreateEventSystem();
-            }
+            EventSystemUtility.EnsureEventSystem();
             return canvas;
         }
 
-        static EventSystem FindAnyEventSystem()
-        {
-#if UNITY_2023_1_OR_NEWER
-            return FindFirstObjectByType<EventSystem>();
-#else
-            return FindObjectOfType<EventSystem>();
-#endif
-        }
 
         static RectTransform MakeRect(Transform parent, string name, Vector2 position, Vector2 size)
         {

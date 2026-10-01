@@ -1,6 +1,5 @@
 using UnityEditor;
 using UnityEngine;
-using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 namespace ShapeKit.Editor
@@ -94,16 +93,7 @@ namespace ShapeKit.Editor
             scaler.referenceResolution = new Vector2(1080f, 1920f);
             scaler.matchWidthOrHeight = 0.5f;
 
-#if UNITY_2023_1_OR_NEWER
-            bool hasEventSystem = Object.FindFirstObjectByType<EventSystem>() != null;
-#else
-            bool hasEventSystem = Object.FindObjectOfType<EventSystem>() != null;
-#endif
-            if (!hasEventSystem)
-            {
-                var es = EventSystemUtility.CreateEventSystem();
-                Undo.RegisterCreatedObjectUndo(es, "Create EventSystem");
-            }
+            EventSystemUtility.EnsureEventSystem();
             return canvas;
         }
     }
