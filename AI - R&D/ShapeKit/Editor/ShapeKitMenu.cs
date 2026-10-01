@@ -101,7 +101,7 @@ namespace ShapeKit.Editor
 #endif
             if (!hasEventSystem)
             {
-                var es = new GameObject("EventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
+                var es = EventSystemUtility.CreateEventSystem();
                 Undo.RegisterCreatedObjectUndo(es, "Create EventSystem");
             }
             return canvas;

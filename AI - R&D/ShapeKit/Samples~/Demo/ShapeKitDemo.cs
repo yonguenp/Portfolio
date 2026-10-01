@@ -142,7 +142,7 @@ namespace ShapeKit.Samples
 
             if (FindAnyEventSystem() == null)
             {
-                new GameObject("EventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
+                EventSystemUtility.CreateEventSystem();
             }
             return canvas;
         }
