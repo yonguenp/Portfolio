@@ -1,0 +1,9 @@
+{
+    "name": "ShapeKit.Samples",
+    "rootNamespace": "ShapeKit.Samples",
+    "references": [
+        "ShapeKit.Runtime",
+        "Unity.ugui"
+    ],
+    "autoReferenced": false
+}

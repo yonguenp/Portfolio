@@ -1,0 +1,21 @@
+{
+  "name": "com.yonguenp.shapekit",
+  "displayName": "ShapeKit - Sprite-free UI Shapes",
+  "version": "0.1.0",
+  "unity": "2021.3",
+  "description": "Rounded rectangles, pills and circles for uGUI without sprites. Per-corner radius, outline, linear gradient, drop shadow, circular sprite crop and shape-accurate raycasts, all batched with a single material. Includes a safe area fitter and press feedback for mobile.",
+  "keywords": ["ui", "ugui", "rounded corners", "shape", "sdf", "shadow", "gradient", "mobile"],
+  "author": {
+    "name": "Yonguen Park"
+  },
+  "dependencies": {
+    "com.unity.ugui": "1.0.0"
+  },
+  "samples": [
+    {
+      "displayName": "Demo",
+      "description": "Builds a demo screen at runtime: cards, pill buttons, avatars, gradients and a batching stress test.",
+      "path": "Samples~/Demo"
+    }
+  ]
+}

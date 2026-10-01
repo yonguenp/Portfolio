@@ -1,0 +1,8 @@
+{
+    "name": "ShapeKit.Runtime",
+    "rootNamespace": "ShapeKit",
+    "references": [
+        "Unity.ugui"
+    ],
+    "autoReferenced": true
+}

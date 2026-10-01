@@ -1,0 +1,12 @@
+{
+    "name": "ShapeKit.Editor",
+    "rootNamespace": "ShapeKit.Editor",
+    "references": [
+        "ShapeKit.Runtime",
+        "Unity.ugui"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "autoReferenced": false
+}
