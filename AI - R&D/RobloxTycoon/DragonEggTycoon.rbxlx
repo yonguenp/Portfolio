@@ -1,0 +1,1400 @@
+<roblox version="4">
+  <Item class="ReplicatedStorage" referent="0">
+    <Properties>
+      <string name="Name">ReplicatedStorage</string>
+    </Properties>
+    <Item class="Folder" referent="1">
+      <Properties>
+        <string name="Name">Shared</string>
+      </Properties>
+      <Item class="ModuleScript" referent="2">
+        <Properties>
+          <string name="Name">Config</string>
+          <string name="Source"><![CDATA[-- 게임 전체 밸런스와 설정값. 서버와 클라이언트가 함께 읽는다.
+-- Roblox 전용 타입(Color3 등)을 쓰지 않아 luau CLI 테스트에서도 그대로 불러올 수 있다.
+
+local Config = {}
+
+Config.GameName = "Dragon Egg Tycoon"
+
+-- 저장소 이름을 바꾸면 기존 저장 데이터와 분리된다.
+Config.DataStoreName = "DragonEggTycoon_v1"
+Config.AutosaveInterval = 60
+
+Config.StartingCash = 20
+Config.RebirthBonus = 0.5 -- 환생 1회당 수익 +50%
+
+-- Roblox 크리에이터 대시보드에서 만든 ID를 넣는다. 0이면 해당 상품은 숨겨진다.
+Config.GamePassIds = {
+	DoubleCash = 0,
+}
+Config.ProductIds = {
+	CashPack = 0,
+}
+Config.CashPackBaseAmount = 2500 -- 환생 횟수에 비례해 늘어난다.
+
+Config.PlotCount = 6 -- 서버 최대 인원도 이 값에 맞춘다.
+Config.BeltSpeed = 8
+Config.EggLifetime = 20
+Config.MaxEggsPerPlot = 60
+
+-- kind: Dropper(알 생성) / Upgrader(지나가는 알 가치 배수) / Decor(최종 장식)
+-- requires: 이 아이템을 산 뒤에야 구매 버튼이 나타난다.
+-- x: 컨베이어 방향(plot 로컬 X축)으로의 설치 위치.
+Config.Items = {
+	{ id = "dropper1", name = "Egg Nest", kind = "Dropper", price = 20, value = 2, interval = 2, x = -21, color = { 245, 235, 210 } },
+	{ id = "dropper2", name = "Twin Nest", kind = "Dropper", price = 60, value = 5, interval = 2, x = -15, color = { 140, 210, 120 }, requires = "dropper1" },
+	{ id = "dropper3", name = "Ember Nest", kind = "Dropper", price = 300, value = 12, interval = 2, x = -9, color = { 240, 120, 60 }, requires = "dropper2" },
+	{ id = "upgrader1", name = "Warm Lamp", kind = "Upgrader", price = 900, multiplier = 1.5, x = 13, color = { 255, 200, 80 }, requires = "dropper3" },
+	{ id = "dropper4", name = "Frost Nest", kind = "Dropper", price = 1800, value = 30, interval = 2, x = -3, color = { 120, 200, 255 }, requires = "upgrader1" },
+	{ id = "dropper5", name = "Storm Nest", kind = "Dropper", price = 6000, value = 70, interval = 2, x = 3, color = { 170, 120, 255 }, requires = "dropper4" },
+	{ id = "upgrader2", name = "Dragon Breath", kind = "Upgrader", price = 15000, multiplier = 2, x = 17, color = { 255, 90, 90 }, requires = "dropper5" },
+	{ id = "dropper6", name = "Royal Nest", kind = "Dropper", price = 40000, value = 180, interval = 2, x = 8, color = { 255, 215, 0 }, requires = "upgrader2" },
+	{ id = "goldenNest", name = "Golden Dragon Statue", kind = "Decor", price = 120000, color = { 255, 200, 40 }, requires = "dropper6" },
+}
+
+return Config
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="3">
+        <Properties>
+          <string name="Name">Economy</string>
+          <string name="Source"><![CDATA[-- 수익 배수, 구매 조건, 초당 수익 계산. Roblox API에 의존하지 않는 순수 함수만 둔다.
+
+local Economy = {}
+
+function Economy.multiplier(rebirths: number, hasDoubleCash: boolean, rebirthBonus: number): number
+	local m = 1 + rebirths * rebirthBonus
+	if hasDoubleCash then
+		m *= 2
+	end
+	return m
+end
+
+function Economy.isAvailable(item, owned): boolean
+	if owned[item.id] then
+		return false
+	end
+	return item.requires == nil or owned[item.requires] == true
+end
+
+function Economy.ownsAll(items, owned): boolean
+	for _, item in items do
+		if not owned[item.id] then
+			return false
+		end
+	end
+	return true
+end
+
+-- 다음에 살 수 있는 아이템 중 가장 싼 것.
+function Economy.nextItem(items, owned)
+	local best = nil
+	for _, item in items do
+		if Economy.isAvailable(item, owned) and (best == nil or item.price < best.price) then
+			best = item
+		end
+	end
+	return best
+end
+
+-- 모든 업그레이더가 모든 드로퍼의 하류에 있으므로 배수는 전체 알에 곱해진다.
+function Economy.incomePerSecond(items, owned, multiplier: number): number
+	local base = 0
+	local upgrade = 1
+	for _, item in items do
+		if owned[item.id] then
+			if item.kind == "Dropper" then
+				base += item.value / item.interval
+			elseif item.kind == "Upgrader" then
+				upgrade *= item.multiplier
+			end
+		end
+	end
+	return base * upgrade * multiplier
+end
+
+-- 알 하나를 수거했을 때 받는 금액. 최소 1.
+function Economy.eggPayout(eggValue: number, multiplier: number): number
+	return math.max(1, math.floor(eggValue * multiplier))
+end
+
+function Economy.cashPackAmount(base: number, rebirths: number): number
+	return base * (1 + rebirths)
+end
+
+return Economy
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="4">
+        <Properties>
+          <string name="Name">Format</string>
+          <string name="Source"><![CDATA[-- 큰 숫자를 1.2K, 3.4M 형태로 줄여 표시한다.
+
+local Format = {}
+
+local SUFFIXES = { "", "K", "M", "B", "T", "Qa", "Qi" }
+
+function Format.abbreviate(n: number): string
+	local sign = if n < 0 then "-" else ""
+	n = math.abs(n)
+	local tier = 1
+	while n >= 1000 and tier < #SUFFIXES do
+		n /= 1000
+		tier += 1
+	end
+	if tier == 1 then
+		return sign .. tostring(math.floor(n))
+	end
+	-- 반올림으로 999.95K가 "1000.0K"가 되지 않도록 소수 첫째 자리에서 내림한다.
+	local text = string.format("%.1f", math.floor(n * 10) / 10)
+	text = string.gsub(text, "%.0$", "")
+	return sign .. text .. SUFFIXES[tier]
+end
+
+function Format.cash(n: number): string
+	return "$" .. Format.abbreviate(n)
+end
+
+return Format
+]]></string>
+        </Properties>
+      </Item>
+    </Item>
+  </Item>
+  <Item class="ServerScriptService" referent="5">
+    <Properties>
+      <string name="Name">ServerScriptService</string>
+    </Properties>
+    <Item class="Folder" referent="6">
+      <Properties>
+        <string name="Name">Server</string>
+      </Properties>
+      <Item class="Script" referent="7">
+        <Properties>
+          <string name="Name">Main</string>
+          <token name="RunContext">0</token>
+          <string name="Source"><![CDATA[-- 서버 진입점: 맵 생성, 플레이어 입장/퇴장, 자동 저장, 환생 요청 처리.
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Config = require(ReplicatedStorage.Shared.Config)
+local MapBuilder = require(script.Parent.MapBuilder)
+local Monetization = require(script.Parent.Monetization)
+local PlayerData = require(script.Parent.PlayerData)
+local Tycoon = require(script.Parent.Tycoon)
+
+local remotes = Instance.new("Folder")
+remotes.Name = "Remotes"
+local notify = Instance.new("RemoteEvent")
+notify.Name = "Notify"
+notify.Parent = remotes
+local requestRebirth = Instance.new("RemoteEvent")
+requestRebirth.Name = "RequestRebirth"
+requestRebirth.Parent = remotes
+remotes.Parent = ReplicatedStorage
+
+MapBuilder.buildWorld()
+
+local tycoons = {}
+for index, cframe in MapBuilder.plotCFrames(Config.PlotCount) do
+	tycoons[index] = Tycoon.new(index, cframe, notify)
+end
+
+local tycoonOf = {} -- [Player] = Tycoon
+
+Monetization.init(notify)
+
+local function sendHome(player: Player, character: Model)
+	local tycoon = tycoonOf[player]
+	if not tycoon then
+		return
+	end
+	-- 캐릭터가 기본 스폰 위치에 놓인 뒤에 옮겨야 다시 광장으로 되돌아가지 않는다.
+	task.spawn(function()
+		local root = character:WaitForChild("HumanoidRootPart", 10)
+		task.wait()
+		if root and character.Parent then
+			character:PivotTo(tycoon:spawnCFrame())
+		end
+	end)
+end
+
+local function onPlayerAdded(player: Player)
+	local data = PlayerData.load(player)
+	if not data then
+		if player.Parent then
+			player:Kick("Could not load your save. Please rejoin in a moment.")
+		end
+		return
+	end
+
+	local tycoon = nil
+	for _, candidate in tycoons do
+		if candidate:isFree() then
+			tycoon = candidate
+			break
+		end
+	end
+	if not tycoon then
+		PlayerData.release(player)
+		player:Kick("This server is full. Please join another server.")
+		return
+	end
+
+	tycoonOf[player] = tycoon
+	tycoon:claim(player)
+	Monetization.onPlayerLoaded(player)
+
+	player.CharacterAdded:Connect(function(character)
+		sendHome(player, character)
+	end)
+	if player.Character then
+		sendHome(player, player.Character)
+	end
+	notify:FireClient(player, "Welcome to " .. Config.GameName .. "!", "gold")
+end
+
+local function onPlayerRemoving(player: Player)
+	local tycoon = tycoonOf[player]
+	if tycoon then
+		tycoon:release()
+		tycoonOf[player] = nil
+	end
+	PlayerData.release(player)
+end
+
+Players.PlayerAdded:Connect(onPlayerAdded)
+Players.PlayerRemoving:Connect(onPlayerRemoving)
+for _, player in Players:GetPlayers() do
+	task.spawn(onPlayerAdded, player)
+end
+
+requestRebirth.OnServerEvent:Connect(function(player)
+	local tycoon = tycoonOf[player]
+	if tycoon and tycoon:rebirth() then
+		PlayerData.save(player)
+	end
+end)
+
+task.spawn(function()
+	while true do
+		task.wait(Config.AutosaveInterval)
+		for _, player in PlayerData.players() do
+			task.spawn(PlayerData.save, player)
+		end
+	end
+end)
+
+game:BindToClose(function()
+	PlayerData.saveAll()
+end)
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="8">
+        <Properties>
+          <string name="Name">MapBuilder</string>
+          <string name="Source"><![CDATA[-- 맵과 타이쿤 구조물을 코드로 생성한다. Studio에서 직접 배치할 것이 없도록 하기 위해서다.
+-- 플롯 로컬 좌표: X축 = 컨베이어 진행 방향, +Z = 스폰/광장 방향, 바닥 윗면 y = 0.5.
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Config = require(ReplicatedStorage.Shared.Config)
+local Format = require(ReplicatedStorage.Shared.Format)
+
+local MapBuilder = {}
+
+local PLOT_SIZE = 64
+local BUTTON_ROW_Z = -16
+local BUTTON_SPACING = 6
+
+local function rgb(c)
+	return Color3.fromRGB(c[1], c[2], c[3])
+end
+
+local function part(props)
+	local p = Instance.new("Part")
+	p.Anchored = true
+	p.TopSurface = Enum.SurfaceType.Smooth
+	p.BottomSurface = Enum.SurfaceType.Smooth
+	for key, value in props do
+		if key ~= "Parent" then
+			p[key] = value
+		end
+	end
+	p.Parent = props.Parent
+	return p
+end
+
+local function billboard(parent: Instance, size: UDim2, offsetY: number)
+	local gui = Instance.new("BillboardGui")
+	gui.Size = size
+	gui.StudsOffset = Vector3.new(0, offsetY, 0)
+	gui.AlwaysOnTop = false
+	gui.MaxDistance = 80
+	gui.Parent = parent
+	return gui
+end
+
+local function label(parent: Instance, text: string, size: UDim2, position: UDim2, color: Color3)
+	local l = Instance.new("TextLabel")
+	l.BackgroundTransparency = 1
+	l.Size = size
+	l.Position = position
+	l.Font = Enum.Font.FredokaOne
+	l.TextScaled = true
+	l.TextColor3 = color
+	l.TextStrokeTransparency = 0.3
+	l.Text = text
+	l.Parent = parent
+	return l
+end
+
+function MapBuilder.buildWorld()
+	local world = Instance.new("Folder")
+	world.Name = "World"
+
+	part({
+		Name = "Ground",
+		Size = Vector3.new(260, 1, 240),
+		CFrame = CFrame.new(0, -0.5, 0),
+		Material = Enum.Material.Grass,
+		Color = Color3.fromRGB(96, 160, 80),
+		Parent = world,
+	})
+
+	local spawn = Instance.new("SpawnLocation")
+	spawn.Anchored = true
+	spawn.Size = Vector3.new(10, 1, 10)
+	spawn.CFrame = CFrame.new(0, 0.5, 0)
+	spawn.Material = Enum.Material.Slate
+	spawn.Color = Color3.fromRGB(200, 170, 120)
+	spawn.Neutral = true
+	spawn.Duration = 0
+	spawn.Parent = world
+
+	world.Parent = workspace
+	return world
+end
+
+-- 플롯 6개를 광장을 바라보도록 두 줄로 배치한다.
+function MapBuilder.plotCFrames(count: number)
+	local cframes = {}
+	local perRow = math.ceil(count / 2)
+	for i = 1, count do
+		local row = if i <= perRow then 0 else 1
+		local col = (i - 1) % perRow
+		local x = (col - (perRow - 1) / 2) * (PLOT_SIZE + 8)
+		if row == 0 then
+			table.insert(cframes, CFrame.new(x, 0, -50))
+		else
+			table.insert(cframes, CFrame.new(x, 0, 50) * CFrame.Angles(0, math.pi, 0))
+		end
+	end
+	return cframes
+end
+
+function MapBuilder.buildPlot(index: number, cf: CFrame)
+	local model = Instance.new("Model")
+	model.Name = "Plot" .. index
+
+	local function at(x, y, z)
+		return cf * CFrame.new(x, y, z)
+	end
+
+	part({
+		Name = "Floor",
+		Size = Vector3.new(PLOT_SIZE, 1, PLOT_SIZE),
+		CFrame = at(0, 0, 0),
+		Material = Enum.Material.WoodPlanks,
+		Color = Color3.fromRGB(160, 120, 80),
+		Parent = model,
+	})
+
+	local belt = part({
+		Name = "Belt",
+		Size = Vector3.new(44, 1, 6),
+		CFrame = at(-2, 1, 0),
+		Material = Enum.Material.DiamondPlate,
+		Color = Color3.fromRGB(60, 60, 70),
+		Parent = model,
+	})
+	-- 고정된 파트에 속도를 주면 위에 놓인 물체가 그 방향으로 실려 간다.
+	belt.AssemblyLinearVelocity = belt.CFrame.RightVector * Config.BeltSpeed
+
+	for _, side in { -1, 1 } do
+		part({
+			Name = "Rail",
+			Size = Vector3.new(44, 2, 0.5),
+			CFrame = at(-2, 2, side * 3.25),
+			Material = Enum.Material.Metal,
+			Color = Color3.fromRGB(120, 120, 130),
+			Parent = model,
+		})
+	end
+	part({
+		Name = "BeltStop",
+		Size = Vector3.new(0.5, 2, 6),
+		CFrame = at(-24.25, 2, 0),
+		Material = Enum.Material.Metal,
+		Color = Color3.fromRGB(120, 120, 130),
+		Parent = model,
+	})
+
+	local collector = part({
+		Name = "Collector",
+		Size = Vector3.new(6, 4, 8),
+		CFrame = at(23, 2, 0),
+		Material = Enum.Material.Neon,
+		Color = Color3.fromRGB(80, 220, 120),
+		Parent = model,
+	})
+	label(billboard(collector, UDim2.fromOffset(160, 40), 4), "SELL", UDim2.fromScale(1, 1), UDim2.new(), Color3.new(1, 1, 1))
+
+	local post = part({
+		Name = "SignPost",
+		Size = Vector3.new(1, 8, 1),
+		CFrame = at(-28, 4.5, 28),
+		Material = Enum.Material.Wood,
+		Color = Color3.fromRGB(110, 80, 50),
+		Parent = model,
+	})
+	local ownerLabel = label(
+		billboard(post, UDim2.fromOffset(240, 60), 5),
+		"Empty Plot",
+		UDim2.fromScale(1, 1),
+		UDim2.new(),
+		Color3.fromRGB(255, 240, 200)
+	)
+
+	local items = Instance.new("Folder")
+	items.Name = "Items"
+	items.Parent = model
+
+	local buttons = Instance.new("Folder")
+	buttons.Name = "Buttons"
+	buttons.Parent = model
+
+	local eggs = Instance.new("Folder")
+	eggs.Name = "Eggs"
+	eggs.Parent = model
+
+	model.Parent = workspace
+
+	return {
+		model = model,
+		cframe = cf,
+		belt = belt,
+		collector = collector,
+		ownerLabel = ownerLabel,
+		items = items,
+		buttons = buttons,
+		eggs = eggs,
+		spawnCFrame = at(0, 4, 20),
+	}
+end
+
+-- 아이템 순서대로 버튼 줄에 위치를 정한다.
+function MapBuilder.buildButton(plot, item, order: number)
+	local x = -24 + (order - 1) * BUTTON_SPACING
+	local button = part({
+		Name = "Button_" .. item.id,
+		Size = Vector3.new(4, 0.6, 4),
+		CFrame = plot.cframe * CFrame.new(x, 0.8, BUTTON_ROW_Z),
+		Material = Enum.Material.Neon,
+		Color = Color3.fromRGB(90, 200, 90),
+		Parent = plot.buttons,
+	})
+	local gui = billboard(button, UDim2.fromOffset(180, 70), 3)
+	label(gui, item.name, UDim2.fromScale(1, 0.55), UDim2.new(), Color3.new(1, 1, 1))
+	label(gui, Format.cash(item.price), UDim2.fromScale(1, 0.45), UDim2.fromScale(0, 0.55), Color3.fromRGB(140, 255, 140))
+	return button
+end
+
+-- 아이템 모델을 만들고, 드로퍼는 알이 떨어질 위치를, 업그레이더는 감지 영역을 함께 반환한다.
+function MapBuilder.buildItem(plot, item)
+	local model = Instance.new("Model")
+	model.Name = item.id
+	local color = rgb(item.color)
+	local cf = plot.cframe
+	local result = { model = model }
+
+	if item.kind == "Dropper" then
+		part({
+			Name = "Body",
+			Size = Vector3.new(4, 4, 4),
+			CFrame = cf * CFrame.new(item.x, 8.5, 0),
+			Material = Enum.Material.SmoothPlastic,
+			Color = color,
+			Parent = model,
+		})
+		part({
+			Name = "Nozzle",
+			Size = Vector3.new(2, 1.5, 2),
+			CFrame = cf * CFrame.new(item.x, 5.75, 0),
+			Material = Enum.Material.Metal,
+			Color = Color3.fromRGB(80, 80, 90),
+			Parent = model,
+		})
+		for _, side in { -1, 1 } do
+			part({
+				Name = "Leg",
+				Size = Vector3.new(0.6, 10, 0.6),
+				CFrame = cf * CFrame.new(item.x, 5.5, side * 4.2),
+				Material = Enum.Material.Metal,
+				Color = Color3.fromRGB(80, 80, 90),
+				Parent = model,
+			})
+		end
+		result.dropPosition = (cf * CFrame.new(item.x, 4, 0)).Position
+	elseif item.kind == "Upgrader" then
+		for _, side in { -1, 1 } do
+			part({
+				Name = "Pillar",
+				Size = Vector3.new(1, 6, 1),
+				CFrame = cf * CFrame.new(item.x, 3.5, side * 4),
+				Material = Enum.Material.Metal,
+				Color = Color3.fromRGB(70, 70, 80),
+				Parent = model,
+			})
+		end
+		part({
+			Name = "Top",
+			Size = Vector3.new(1.5, 1, 9),
+			CFrame = cf * CFrame.new(item.x, 7, 0),
+			Material = Enum.Material.Neon,
+			Color = color,
+			Parent = model,
+		})
+		result.zone = part({
+			Name = "Zone",
+			Size = Vector3.new(1, 4, 6),
+			CFrame = cf * CFrame.new(item.x, 3.5, 0),
+			Material = Enum.Material.ForceField,
+			Color = color,
+			Transparency = 0.4,
+			CanCollide = false,
+			Parent = model,
+		})
+		label(
+			billboard(result.zone, UDim2.fromOffset(120, 36), 4),
+			"x" .. item.multiplier,
+			UDim2.fromScale(1, 1),
+			UDim2.new(),
+			color
+		)
+	elseif item.kind == "Decor" then
+		part({
+			Name = "Pedestal",
+			Size = Vector3.new(8, 2, 8),
+			CFrame = cf * CFrame.new(22, 1.5, 22),
+			Material = Enum.Material.Marble,
+			Color = Color3.fromRGB(230, 230, 230),
+			Parent = model,
+		})
+		part({
+			Name = "Egg",
+			Shape = Enum.PartType.Ball,
+			Size = Vector3.new(6, 6, 6),
+			CFrame = cf * CFrame.new(22, 5.5, 22),
+			Material = Enum.Material.Neon,
+			Color = color,
+			Parent = model,
+		})
+		local light = Instance.new("PointLight")
+		light.Color = color
+		light.Range = 20
+		light.Brightness = 2
+		light.Parent = model:FindFirstChild("Egg")
+	end
+
+	model.Parent = plot.items
+	return result
+end
+
+function MapBuilder.buildEgg(plot, position: Vector3, color)
+	return part({
+		Name = "Egg",
+		Shape = Enum.PartType.Ball,
+		Size = Vector3.new(1.2, 1.2, 1.2),
+		Position = position,
+		Anchored = false,
+		Material = Enum.Material.SmoothPlastic,
+		Color = rgb(color),
+		Parent = plot.eggs,
+	})
+end
+
+return MapBuilder
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="9">
+        <Properties>
+          <string name="Name">Monetization</string>
+          <string name="Source"><![CDATA[-- 게임패스(2배 수익)와 개발자 상품(현금 팩) 처리.
+-- 현금 팩은 저장에 성공한 뒤에만 지급 완료를 알린다. 실패하면 Roblox가 나중에 다시 시도한다.
+
+local MarketplaceService = game:GetService("MarketplaceService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Config = require(ReplicatedStorage.Shared.Config)
+local Economy = require(ReplicatedStorage.Shared.Economy)
+local Format = require(ReplicatedStorage.Shared.Format)
+local PlayerData = require(script.Parent.PlayerData)
+
+local Monetization = {}
+
+local notify = nil
+
+local function processReceipt(receipt)
+	local player = Players:GetPlayerByUserId(receipt.PlayerId)
+	local data = player and PlayerData.get(player)
+	if not data then
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+	if PlayerData.hasReceipt(player, receipt.PurchaseId) then
+		return Enum.ProductPurchaseDecision.PurchaseGranted
+	end
+
+	if receipt.ProductId ~= Config.ProductIds.CashPack then
+		warn("[Monetization] Unknown product", receipt.ProductId)
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+
+	local amount = Economy.cashPackAmount(Config.CashPackBaseAmount, data.Rebirths)
+	PlayerData.addCash(player, amount)
+	PlayerData.addReceipt(player, receipt.PurchaseId)
+	if not PlayerData.save(player) then
+		PlayerData.addCash(player, -amount)
+		PlayerData.removeReceipt(player, receipt.PurchaseId)
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+
+	notify:FireClient(player, "+" .. Format.cash(amount) .. " Cash Pack!", "gold")
+	return Enum.ProductPurchaseDecision.PurchaseGranted
+end
+
+function Monetization.init(notifyRemote: RemoteEvent)
+	notify = notifyRemote
+	MarketplaceService.ProcessReceipt = processReceipt
+
+	MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player, passId, purchased)
+		if purchased and passId == Config.GamePassIds.DoubleCash then
+			PlayerData.setDoubleCash(player, true)
+			notify:FireClient(player, "2x Cash unlocked!", "gold")
+		end
+	end)
+end
+
+function Monetization.onPlayerLoaded(player: Player)
+	local passId = Config.GamePassIds.DoubleCash
+	if passId == 0 then
+		return
+	end
+	local ok, owns = pcall(MarketplaceService.UserOwnsGamePassAsync, MarketplaceService, player.UserId, passId)
+	if ok and owns then
+		PlayerData.setDoubleCash(player, true)
+	end
+end
+
+return Monetization
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="10">
+        <Properties>
+          <string name="Name">PlayerData</string>
+          <string name="Source"><![CDATA[-- 플레이어 저장 데이터와 세션 상태(leaderstats, 속성)를 관리한다.
+-- 로드에 실패한 플레이어는 저장하지 않는다. 빈 데이터로 기존 기록을 덮어쓰지 않기 위해서다.
+
+local DataStoreService = game:GetService("DataStoreService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+
+local Config = require(ReplicatedStorage.Shared.Config)
+local Economy = require(ReplicatedStorage.Shared.Economy)
+
+local MAX_RECEIPTS = 50
+
+local PlayerData = {}
+
+local store = nil
+do
+	local ok, result = pcall(function()
+		return DataStoreService:GetDataStore(Config.DataStoreName)
+	end)
+	if ok then
+		store = result
+	else
+		warn("[PlayerData] DataStore unavailable:", result)
+	end
+end
+
+-- [Player] = { data = table, canSave = boolean, hasDoubleCash = boolean }
+local sessions = {}
+
+local function template()
+	return {
+		Cash = Config.StartingCash,
+		Rebirths = 0,
+		Owned = {},
+		Receipts = {},
+	}
+end
+
+local function reconcile(saved)
+	local data = template()
+	if type(saved) == "table" then
+		for key, value in saved do
+			if data[key] ~= nil and type(value) == type(data[key]) then
+				data[key] = value
+			end
+		end
+	end
+	return data
+end
+
+local function keyFor(player: Player): string
+	return "player_" .. player.UserId
+end
+
+local function withRetries(label: string, fn)
+	for attempt = 1, 3 do
+		local ok, result = pcall(fn)
+		if ok then
+			return true, result
+		end
+		warn(string.format("[PlayerData] %s failed (attempt %d): %s", label, attempt, tostring(result)))
+		-- Studio에서 API 접근이 꺼져 있으면 재시도해도 소용없다.
+		if RunService:IsStudio() and string.find(tostring(result), "Studio") then
+			break
+		end
+		if attempt < 3 then
+			task.wait(attempt * 2)
+		end
+	end
+	return false, nil
+end
+
+local function createLeaderstats(player: Player, data)
+	local folder = Instance.new("Folder")
+	folder.Name = "leaderstats"
+
+	local cash = Instance.new("IntValue")
+	cash.Name = "Cash"
+	cash.Value = data.Cash
+	cash.Parent = folder
+
+	local rebirths = Instance.new("IntValue")
+	rebirths.Name = "Rebirths"
+	rebirths.Value = data.Rebirths
+	rebirths.Parent = folder
+
+	folder.Parent = player
+end
+
+-- 데이터를 불러와 세션을 만든다. 실패하면 nil을 반환하고 호출자가 플레이어를 내보낸다.
+function PlayerData.load(player: Player)
+	local data
+	local canSave = true
+
+	if store then
+		local ok, saved = withRetries("load " .. player.Name, function()
+			return store:GetAsync(keyFor(player))
+		end)
+		if ok then
+			data = reconcile(saved)
+		elseif RunService:IsStudio() then
+			warn("[PlayerData] Studio test without saving. Enable 'Studio Access to API Services' to test saves.")
+			data = template()
+			canSave = false
+		else
+			return nil
+		end
+	elseif RunService:IsStudio() then
+		data = template()
+		canSave = false
+	else
+		return nil
+	end
+
+	if not player.Parent then
+		return nil -- 로드 중에 나간 경우
+	end
+
+	sessions[player] = { data = data, canSave = canSave, hasDoubleCash = false }
+	createLeaderstats(player, data)
+	PlayerData.refresh(player)
+	return data
+end
+
+function PlayerData.get(player: Player)
+	local session = sessions[player]
+	return session and session.data
+end
+
+function PlayerData.multiplier(player: Player): number
+	local session = sessions[player]
+	if not session then
+		return 1
+	end
+	return Economy.multiplier(session.data.Rebirths, session.hasDoubleCash, Config.RebirthBonus)
+end
+
+function PlayerData.setDoubleCash(player: Player, value: boolean)
+	local session = sessions[player]
+	if session then
+		session.hasDoubleCash = value
+		PlayerData.refresh(player)
+	end
+end
+
+-- leaderstats와 클라이언트 HUD가 읽는 속성을 데이터에 맞춰 갱신한다.
+function PlayerData.refresh(player: Player)
+	local session = sessions[player]
+	if not session then
+		return
+	end
+	local data = session.data
+	local stats = player:FindFirstChild("leaderstats")
+	if stats then
+		stats.Cash.Value = data.Cash
+		stats.Rebirths.Value = data.Rebirths
+	end
+
+	local multiplier = PlayerData.multiplier(player)
+	local nextItem = Economy.nextItem(Config.Items, data.Owned)
+	player:SetAttribute("Multiplier", multiplier)
+	player:SetAttribute("HasDoubleCash", session.hasDoubleCash)
+	player:SetAttribute("CanRebirth", Economy.ownsAll(Config.Items, data.Owned))
+	player:SetAttribute("Income", Economy.incomePerSecond(Config.Items, data.Owned, multiplier))
+	player:SetAttribute("NextItemName", nextItem and nextItem.name or "")
+	player:SetAttribute("NextItemPrice", nextItem and nextItem.price or 0)
+end
+
+function PlayerData.addCash(player: Player, amount: number)
+	local data = PlayerData.get(player)
+	if not data then
+		return
+	end
+	data.Cash = math.max(0, data.Cash + amount)
+	local stats = player:FindFirstChild("leaderstats")
+	if stats then
+		stats.Cash.Value = data.Cash
+	end
+end
+
+function PlayerData.hasReceipt(player: Player, purchaseId: string): boolean
+	local data = PlayerData.get(player)
+	return data ~= nil and table.find(data.Receipts, purchaseId) ~= nil
+end
+
+function PlayerData.addReceipt(player: Player, purchaseId: string)
+	local data = PlayerData.get(player)
+	if not data then
+		return
+	end
+	table.insert(data.Receipts, purchaseId)
+	while #data.Receipts > MAX_RECEIPTS do
+		table.remove(data.Receipts, 1)
+	end
+end
+
+function PlayerData.removeReceipt(player: Player, purchaseId: string)
+	local data = PlayerData.get(player)
+	local index = data and table.find(data.Receipts, purchaseId)
+	if index then
+		table.remove(data.Receipts, index)
+	end
+end
+
+-- 저장 성공 여부를 반환한다. 저장이 꺼진 Studio 세션은 성공으로 취급한다.
+function PlayerData.save(player: Player): boolean
+	local session = sessions[player]
+	if not session then
+		return false
+	end
+	if not session.canSave then
+		return true
+	end
+	local ok = withRetries("save " .. player.Name, function()
+		store:UpdateAsync(keyFor(player), function()
+			return session.data
+		end)
+	end)
+	return ok
+end
+
+function PlayerData.release(player: Player)
+	if sessions[player] then
+		PlayerData.save(player)
+		sessions[player] = nil
+	end
+end
+
+function PlayerData.saveAll()
+	local pending = 0
+	for player in sessions do
+		pending += 1
+		task.spawn(function()
+			PlayerData.save(player)
+			pending -= 1
+		end)
+	end
+	local deadline = os.clock() + 25
+	while pending > 0 and os.clock() < deadline do
+		task.wait(0.1)
+	end
+end
+
+function PlayerData.players()
+	local list = {}
+	for player in sessions do
+		table.insert(list, player)
+	end
+	return list
+end
+
+return PlayerData
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="11">
+        <Properties>
+          <string name="Name">Tycoon</string>
+          <string name="Source"><![CDATA[-- 플롯 하나의 진행 상태: 주인, 구매한 아이템, 알 생산과 수거, 환생.
+-- 모든 판정은 서버에서 하고 클라이언트는 결과만 본다.
+
+local Debris = game:GetService("Debris")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Config = require(ReplicatedStorage.Shared.Config)
+local Economy = require(ReplicatedStorage.Shared.Economy)
+local Format = require(ReplicatedStorage.Shared.Format)
+local MapBuilder = require(script.Parent.MapBuilder)
+local PlayerData = require(script.Parent.PlayerData)
+
+local NOTIFY_COOLDOWN = 1.5
+
+local Tycoon = {}
+Tycoon.__index = Tycoon
+
+function Tycoon.new(index: number, cframe: CFrame, notify)
+	local self = setmetatable({}, Tycoon)
+	self.index = index
+	self.plot = MapBuilder.buildPlot(index, cframe)
+	self.owner = nil
+	self.notify = notify
+	self.eggCount = 0
+	self.lastNotify = 0
+
+	self.plot.collector.Touched:Connect(function(hit)
+		self:_collect(hit)
+	end)
+	return self
+end
+
+function Tycoon:isFree(): boolean
+	return self.owner == nil
+end
+
+function Tycoon:claim(player: Player)
+	self.owner = player
+	self.plot.ownerLabel.Text = player.DisplayName .. "'s Tycoon"
+	local data = PlayerData.get(player)
+	for _, item in Config.Items do
+		if data.Owned[item.id] then
+			self:_buildItem(item)
+		end
+	end
+	self:_refreshButtons()
+end
+
+function Tycoon:release()
+	self.owner = nil
+	self.plot.ownerLabel.Text = "Empty Plot"
+	self:_clear()
+end
+
+function Tycoon:spawnCFrame(): CFrame
+	return self.plot.spawnCFrame
+end
+
+-- 모든 아이템을 산 상태에서만 환생할 수 있다.
+function Tycoon:rebirth(): boolean
+	local player = self.owner
+	local data = player and PlayerData.get(player)
+	if not data or not Economy.ownsAll(Config.Items, data.Owned) then
+		return false
+	end
+	data.Rebirths += 1
+	data.Cash = Config.StartingCash
+	data.Owned = {}
+	self:_clear()
+	self:_refreshButtons()
+	PlayerData.refresh(player)
+	self.notify:FireClient(
+		player,
+		string.format("Rebirth #%d! Income x%s", data.Rebirths, tostring(PlayerData.multiplier(player))),
+		"gold"
+	)
+	return true
+end
+
+function Tycoon:_clear()
+	self.plot.items:ClearAllChildren()
+	self.plot.buttons:ClearAllChildren()
+	self.plot.eggs:ClearAllChildren()
+end
+
+function Tycoon:_refreshButtons()
+	self.plot.buttons:ClearAllChildren()
+	local player = self.owner
+	local data = player and PlayerData.get(player)
+	if not data then
+		return
+	end
+	for order, item in Config.Items do
+		if Economy.isAvailable(item, data.Owned) then
+			local button = MapBuilder.buildButton(self.plot, item, order)
+			button.Touched:Connect(function(hit)
+				local toucher = Players:GetPlayerFromCharacter(hit.Parent)
+				if toucher and toucher == self.owner then
+					self:_purchase(toucher, item)
+				end
+			end)
+		end
+	end
+end
+
+function Tycoon:_purchase(player: Player, item)
+	local data = PlayerData.get(player)
+	if not data or not Economy.isAvailable(item, data.Owned) then
+		return
+	end
+	if data.Cash < item.price then
+		local now = os.clock()
+		if now - self.lastNotify > NOTIFY_COOLDOWN then
+			self.lastNotify = now
+			self.notify:FireClient(player, "Need " .. Format.cash(item.price - data.Cash) .. " more", "red")
+		end
+		return
+	end
+
+	-- 같은 프레임에 Touched가 여러 번 와도 위의 isAvailable 검사에서 두 번째부터 걸러진다.
+	data.Cash -= item.price
+	data.Owned[item.id] = true
+	self:_buildItem(item)
+	self:_refreshButtons()
+	PlayerData.refresh(player)
+	self.notify:FireClient(player, "Built " .. item.name .. "!", "green")
+end
+
+function Tycoon:_buildItem(item)
+	local built = MapBuilder.buildItem(self.plot, item)
+	if item.kind == "Dropper" then
+		local model = built.model
+		task.spawn(function()
+			while model.Parent do
+				task.wait(item.interval)
+				if not model.Parent then
+					break
+				end
+				self:_spawnEgg(item, built.dropPosition)
+			end
+		end)
+	elseif item.kind == "Upgrader" then
+		local flag = "Up_" .. item.id
+		built.zone.Touched:Connect(function(hit)
+			if hit.Name == "Egg" and hit:GetAttribute("Plot") == self.index and not hit:GetAttribute(flag) then
+				hit:SetAttribute(flag, true)
+				hit:SetAttribute("Value", hit:GetAttribute("Value") * item.multiplier)
+				hit.Material = Enum.Material.Neon
+			end
+		end)
+	end
+end
+
+function Tycoon:_spawnEgg(item, position: Vector3)
+	if self.eggCount >= Config.MaxEggsPerPlot then
+		return
+	end
+	local egg = MapBuilder.buildEgg(self.plot, position, item.color)
+	egg:SetAttribute("Plot", self.index)
+	egg:SetAttribute("Value", item.value)
+	-- 물리 계산을 서버가 맡아 클라이언트가 알을 조작하지 못하게 한다.
+	egg:SetNetworkOwner(nil)
+	self.eggCount += 1
+	egg.Destroying:Connect(function()
+		self.eggCount -= 1
+	end)
+	Debris:AddItem(egg, Config.EggLifetime)
+end
+
+function Tycoon:_collect(hit: BasePart)
+	if hit.Name ~= "Egg" or hit:GetAttribute("Plot") ~= self.index or hit:GetAttribute("Collected") then
+		return
+	end
+	hit:SetAttribute("Collected", true)
+	local value = hit:GetAttribute("Value")
+	hit:Destroy()
+
+	local player = self.owner
+	if player then
+		PlayerData.addCash(player, Economy.eggPayout(value, PlayerData.multiplier(player)))
+	end
+end
+
+return Tycoon
+]]></string>
+        </Properties>
+      </Item>
+    </Item>
+  </Item>
+  <Item class="StarterPlayer" referent="12">
+    <Properties>
+      <string name="Name">StarterPlayer</string>
+    </Properties>
+    <Item class="StarterPlayerScripts" referent="13">
+      <Properties>
+        <string name="Name">StarterPlayerScripts</string>
+      </Properties>
+      <Item class="Folder" referent="14">
+        <Properties>
+          <string name="Name">Client</string>
+        </Properties>
+        <Item class="LocalScript" referent="15">
+          <Properties>
+            <string name="Name">Hud</string>
+            <string name="Source"><![CDATA[-- 화면 UI: 보유 현금, 초당 수익, 다음 목표, 환생 버튼, 상점 버튼, 알림.
+-- 표시만 담당하고 값은 서버가 넣어 주는 leaderstats와 플레이어 속성에서 읽는다.
+
+local MarketplaceService = game:GetService("MarketplaceService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+
+local Config = require(ReplicatedStorage.Shared.Config)
+local Format = require(ReplicatedStorage.Shared.Format)
+
+local player = Players.LocalPlayer
+local remotes = ReplicatedStorage:WaitForChild("Remotes")
+local notifyRemote = remotes:WaitForChild("Notify")
+local rebirthRemote = remotes:WaitForChild("RequestRebirth")
+
+local COLORS = {
+	green = Color3.fromRGB(120, 230, 120),
+	red = Color3.fromRGB(255, 110, 110),
+	gold = Color3.fromRGB(255, 210, 80),
+	panel = Color3.fromRGB(30, 30, 40),
+	text = Color3.fromRGB(255, 255, 255),
+	muted = Color3.fromRGB(180, 180, 190),
+	disabled = Color3.fromRGB(90, 90, 100),
+}
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "Hud"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = false
+gui.Parent = player:WaitForChild("PlayerGui")
+
+local function round(instance: GuiObject, radius: number)
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, radius)
+	corner.Parent = instance
+end
+
+local function stroke(instance: GuiObject)
+	local s = Instance.new("UIStroke")
+	s.Thickness = 2
+	s.Color = Color3.fromRGB(0, 0, 0)
+	s.Transparency = 0.5
+	s.Parent = instance
+end
+
+local function text(parent: Instance, props)
+	local l = Instance.new("TextLabel")
+	l.BackgroundTransparency = 1
+	l.Font = Enum.Font.FredokaOne
+	l.TextScaled = true
+	l.TextColor3 = COLORS.text
+	for key, value in props do
+		l[key] = value
+	end
+	l.Parent = parent
+	return l
+end
+
+local function button(parent: Instance, props)
+	local b = Instance.new("TextButton")
+	b.Font = Enum.Font.FredokaOne
+	b.TextScaled = true
+	b.TextColor3 = COLORS.text
+	b.AutoButtonColor = true
+	for key, value in props do
+		b[key] = value
+	end
+	round(b, 12)
+	stroke(b)
+	b.Parent = parent
+	return b
+end
+
+-- 상단 현금 패널
+local cashPanel = Instance.new("Frame")
+cashPanel.AnchorPoint = Vector2.new(0.5, 0)
+cashPanel.Position = UDim2.new(0.5, 0, 0, 8)
+cashPanel.Size = UDim2.fromOffset(260, 92)
+cashPanel.BackgroundColor3 = COLORS.panel
+cashPanel.BackgroundTransparency = 0.25
+round(cashPanel, 14)
+stroke(cashPanel)
+cashPanel.Parent = gui
+
+local cashLabel = text(cashPanel, {
+	Size = UDim2.new(1, -16, 0, 40),
+	Position = UDim2.fromOffset(8, 4),
+	TextColor3 = COLORS.green,
+	Text = "$0",
+})
+local incomeLabel = text(cashPanel, {
+	Size = UDim2.new(1, -16, 0, 20),
+	Position = UDim2.fromOffset(8, 44),
+	TextColor3 = COLORS.muted,
+	Text = "",
+})
+local nextLabel = text(cashPanel, {
+	Size = UDim2.new(1, -16, 0, 20),
+	Position = UDim2.fromOffset(8, 66),
+	TextColor3 = COLORS.gold,
+	Text = "",
+})
+
+-- 알림
+local toast = text(gui, {
+	AnchorPoint = Vector2.new(0.5, 0),
+	Position = UDim2.new(0.5, 0, 0, 110),
+	Size = UDim2.fromOffset(420, 36),
+	Text = "",
+	TextTransparency = 1,
+	TextStrokeTransparency = 1,
+})
+
+-- 오른쪽 아래 환생 버튼
+local rebirthButton = button(gui, {
+	AnchorPoint = Vector2.new(1, 1),
+	Position = UDim2.new(1, -12, 1, -12),
+	Size = UDim2.fromOffset(180, 56),
+	Text = "Rebirth",
+})
+
+-- 왼쪽 상점 버튼. ID가 설정된 상품만 보인다.
+local shop = Instance.new("Frame")
+shop.BackgroundTransparency = 1
+shop.AnchorPoint = Vector2.new(0, 0.5)
+shop.Position = UDim2.new(0, 12, 0.5, 0)
+shop.Size = UDim2.fromOffset(150, 124)
+shop.Parent = gui
+local shopLayout = Instance.new("UIListLayout")
+shopLayout.Padding = UDim.new(0, 8)
+shopLayout.Parent = shop
+
+local doubleCashButton = nil
+if Config.GamePassIds.DoubleCash ~= 0 then
+	doubleCashButton = button(shop, {
+		Size = UDim2.fromOffset(150, 52),
+		BackgroundColor3 = Color3.fromRGB(200, 140, 30),
+		Text = "2x Cash",
+	})
+	doubleCashButton.Activated:Connect(function()
+		MarketplaceService:PromptGamePassPurchase(player, Config.GamePassIds.DoubleCash)
+	end)
+end
+
+if Config.ProductIds.CashPack ~= 0 then
+	local cashPackButton = button(shop, {
+		Size = UDim2.fromOffset(150, 52),
+		BackgroundColor3 = Color3.fromRGB(60, 160, 80),
+		Text = "Cash Pack",
+	})
+	cashPackButton.Activated:Connect(function()
+		MarketplaceService:PromptProductPurchase(player, Config.ProductIds.CashPack)
+	end)
+end
+
+local toastTween = nil
+local function showToast(message: string, colorName: string?)
+	if toastTween then
+		toastTween:Cancel()
+	end
+	toast.Text = message
+	toast.TextColor3 = COLORS[colorName or "green"] or COLORS.green
+	toast.TextTransparency = 0
+	toast.TextStrokeTransparency = 0.3
+	toastTween = TweenService:Create(
+		toast,
+		TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.In, 0, false, 2),
+		{ TextTransparency = 1, TextStrokeTransparency = 1 }
+	)
+	toastTween:Play()
+end
+
+local function refreshStats()
+	local multiplier = player:GetAttribute("Multiplier") or 1
+	local income = player:GetAttribute("Income") or 0
+	incomeLabel.Text = string.format("%s/s  ·  x%s", Format.cash(income), tostring(multiplier))
+
+	local nextName = player:GetAttribute("NextItemName") or ""
+	if nextName ~= "" then
+		nextLabel.Text = "Next: " .. nextName .. " " .. Format.cash(player:GetAttribute("NextItemPrice") or 0)
+	else
+		nextLabel.Text = "All built! Rebirth for more"
+	end
+
+	local canRebirth = player:GetAttribute("CanRebirth") == true
+	rebirthButton.BackgroundColor3 = if canRebirth then COLORS.gold else COLORS.disabled
+	rebirthButton.Text = if canRebirth
+		then string.format("Rebirth (+%d%%)", Config.RebirthBonus * 100)
+		else "Rebirth (locked)"
+
+	if doubleCashButton then
+		doubleCashButton.Visible = player:GetAttribute("HasDoubleCash") ~= true
+	end
+end
+
+rebirthButton.Activated:Connect(function()
+	if player:GetAttribute("CanRebirth") == true then
+		rebirthRemote:FireServer()
+	else
+		showToast("Build everything to unlock Rebirth", "red")
+	end
+end)
+
+notifyRemote.OnClientEvent:Connect(showToast)
+
+for _, attribute in { "Multiplier", "Income", "NextItemName", "NextItemPrice", "CanRebirth", "HasDoubleCash" } do
+	player:GetAttributeChangedSignal(attribute):Connect(refreshStats)
+end
+refreshStats()
+
+local leaderstats = player:WaitForChild("leaderstats")
+local cashValue = leaderstats:WaitForChild("Cash")
+local function refreshCash()
+	cashLabel.Text = Format.cash(cashValue.Value)
+end
+cashValue.Changed:Connect(refreshCash)
+refreshCash()
+]]></string>
+          </Properties>
+        </Item>
+      </Item>
+    </Item>
+  </Item>
+</roblox>
